@@ -45,7 +45,7 @@ function safeParseItems(itemsJson?: string): Item[] {
   }
 }
 
-export default function CaregiverEditScreen() {
+export default function FamilyEditScreen() {
   const { imageUri, itemsJson, id, title: initialTitle } = useLocalSearchParams<{ 
     imageUri?: string; 
     itemsJson?: string; 
@@ -81,7 +81,7 @@ export default function CaregiverEditScreen() {
     }
     // 使用 replace 防止頁面堆疊導致打轉
     router.replace({
-      pathname: "/caregiver/result",
+      pathname: "/family/result",
       params: {
         id: id ?? "",
         imageUri: imageUri ?? "",

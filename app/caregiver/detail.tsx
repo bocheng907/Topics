@@ -1,15 +1,18 @@
-import { View, Text, Pressable, ScrollView, Image } from "react-native";
+import { View, Text, Pressable, ScrollView, Image, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useStore } from "@/src/store/useStore";
 
-/**
- * 家屬端：藥單詳情
- * 用 URL params 的 id → 去本地 store 找資料
- * 未來換 Firebase：一樣拿 id 去抓，不用改 UI
- */
+// ✅ 1. 定義中文轉換對照表
+const TIME_LABELS: Record<string, string> = {
+  morning: "早上",
+  noon: "中午",
+  afternoon: "下午",
+  night: "晚上",
+};
+
 export default function FamilyDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { getPrescriptionById } = useStore();
+  const { getPrescriptionById, deletePrescription } = useStore();
 
   const p = id ? getPrescriptionById(id) : undefined;
 
@@ -17,65 +20,116 @@ export default function FamilyDetailScreen() {
     return (
       <View style={{ flex: 1, padding: 20, gap: 12 }}>
         <Text style={{ fontSize: 20, fontWeight: "800" }}>找不到資料</Text>
-        <Text style={{ opacity: 0.7 }}>收到的 id：{id ?? "(沒有帶 id)"}</Text>
-
-        <Pressable onPress={() => router.back()} style={{ paddingVertical: 10 }}>
-          <Text style={{ color: "#007AFF", fontSize: 18, fontWeight: "700" }}>
-            回列表
-          </Text>
+        <Pressable onPress={() => router.back()}>
+          <Text style={{ color: "#007AFF" }}>回列表</Text>
         </Pressable>
       </View>
     );
   }
 
-  return (
-    <ScrollView contentContainerStyle={{ padding: 20, gap: 12 }}>
-      <Text style={{ fontSize: 26, fontWeight: "800" }}>藥單詳細</Text>
-      <Text style={{ opacity: 0.7 }}>ID：{p.prescriptionId}</Text>
-      <Text style={{ opacity: 0.7 }}>狀態：{p.status}</Text>
+  // ✅ 2. 編輯功能：確保傳入 id 避免重複創建
+  const goEdit = () => {
+    router.push({
+      pathname: "/caregiver/edit",
+      params: {
+        id: p.prescriptionId,
+        title: p.title || "",
+        imageUri: p.sourceImageUrl || "",
+        itemsJson: JSON.stringify(p.items.map(it => ({
+          name: it.drug_name_zh,
+          dose: it.dose,
+          time: it.time_of_day, 
+          note: it.note_zh || ""
+        }))),
+      },
+    });
+  };
 
-      {/* ✅ 顯示原始照片（本地 store 存的是 sourceImageUrl） */}
-      {p.sourceImageUrl ? (
-        <Image
-          source={{ uri: p.sourceImageUrl }}
-          style={{ width: "100%", height: 240, borderRadius: 12 }}
-          resizeMode="contain"
+  const confirmDelete = () => {
+    Alert.alert("確認刪除", "這筆藥單紀錄將會永久移除。", [
+      { text: "取消", style: "cancel" },
+      { 
+        text: "確定刪除", 
+        style: "destructive", 
+        onPress: () => {
+          deletePrescription(p.prescriptionId);
+          router.back();
+        } 
+      },
+    ]);
+  };
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 16 }}>
+      {/* ✅ 3. 標題區塊：顯示自訂標題 */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 26, fontWeight: "900", color: "#333" }}>
+            {p.title || "藥單詳情"}
+          </Text>
+          <Text style={{ opacity: 0.5, marginTop: 4 }}>
+            錄入日期：{new Date(p.createdAt).toLocaleDateString()}
+          </Text>
+        </View>
+        <Pressable
+          onPress={goEdit} 
+          style={({ pressed }) => ({
+            paddingHorizontal: 15,
+            paddingVertical: 10,
+            backgroundColor: pressed ? '#CFDFFF' : '#E1E9FF',
+            borderRadius: 10,
+            justifyContent: 'center',
+            alignItems: 'center',
+            minWidth: 60,
+          })}
+        >
+          <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 16 }}>編輯</Text>
+        </Pressable>
+      </View>
+
+      {p.sourceImageUrl && (
+        <Image 
+          source={{ uri: p.sourceImageUrl }} 
+          style={{ width: "100%", height: 300, borderRadius: 12, backgroundColor: "#eee" }} 
+          resizeMode="contain" 
         />
-      ) : (
-        <Text style={{ opacity: 0.7 }}>（此筆沒有照片）</Text>
       )}
 
-      {p.items.map((it, idx) => (
-        <View
-          key={`${p.prescriptionId}_${it.itemId ?? "noid"}_${idx}`}
-          style={{ padding: 12, borderWidth: 1, borderRadius: 10, gap: 4 }}
-        >
-          <Text style={{ fontWeight: "800" }}>藥名：{it.drug_name_zh}</Text>
-          <Text>劑量：{it.dose}</Text>
-          <Text>時段：{it.time_of_day.join(", ")}</Text>
-          {it.note_zh ? <Text>備註：{it.note_zh}</Text> : null}
+      <Text style={{ fontSize: 20, fontWeight: "800", marginTop: 10 }}>藥品明細</Text>
 
-          {/* 先留欄位：未來如果有翻譯/英文化 */}
-          {it.drug_name_translated ? (
-            <Text style={{ opacity: 0.75 }}>英文：{it.drug_name_translated}</Text>
-          ) : null}
-          {it.note_translated ? (
-            <Text style={{ opacity: 0.75 }}>Note：{it.note_translated}</Text>
-          ) : null}
+      {p.items.map((it, idx) => (
+        <View 
+          key={idx} 
+          style={{ padding: 14, borderWidth: 1, borderColor: "#eee", borderRadius: 12, backgroundColor: "#fff", gap: 4 }}
+        >
+          <Text style={{ fontSize: 18, fontWeight: "800", color: "#007AFF" }}>
+            {it.drug_name_zh}
+          </Text>
+          <Text style={{ fontSize: 16 }}>用法劑量：{it.dose}</Text>
+          
+          {/* ✅ 4. 使用對照表將英文時段轉為中文 */}
+          <Text style={{ fontSize: 16 }}>
+            服用時段：{it.time_of_day.map(t => TIME_LABELS[t] || t).join(", ")}
+          </Text>
+          
+          <Text style={{ fontSize: 15, color:it.note_zh && it.note_zh.trim() !== "" ? "#666" : "#CCC", marginTop: 4 }}>
+            備註：{it.note_zh && it.note_zh.trim() !== "" ? it.note_zh : "無"}
+          </Text>
         </View>
       ))}
 
-      <Pressable onPress={() => router.back()} style={{ paddingVertical: 10 }}>
-        <Text style={{ color: "#007AFF", fontSize: 18, fontWeight: "700" }}>
-          回列表
-        </Text>
-      </Pressable>
+      <View style={{ marginTop: 20, gap: 12 }}>
+        <Pressable onPress={() => router.back()} style={{ padding: 16, backgroundColor: "#007AFF", borderRadius: 12 }}>
+          <Text style={{ color: "#fff", textAlign: "center", fontSize: 18, fontWeight: "700" }}>返回列表</Text>
+        </Pressable>
 
-      <Pressable onPress={() => router.replace("/caregiver")} style={{ paddingVertical: 10 }}>
-        <Text style={{ color: "#007AFF", fontSize: 18, fontWeight: "700" }}>
-          回看護首頁
-        </Text>
-      </Pressable>
+        <Pressable onPress={confirmDelete} style={{ padding: 12 }}>
+          <Text style={{ color: "#FF3B30", textAlign: "center", fontWeight: "600" }}>刪除此筆紀錄</Text>
+        </Pressable>
+        
+        {/* 把 ID 放在最下面不起眼的地方供開發參考 */}
+        <Text style={{ textAlign: 'center', fontSize: 10, color: '#ccc' }}>ID: {p.prescriptionId}</Text>
+      </View>
     </ScrollView>
   );
 }

@@ -1,25 +1,17 @@
-import { useEffect } from "react";
-import { View, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
-import { useAuth } from "@/src/auth/useAuth";
+import { Redirect } from "expo-router";
+import { useAuthContext } from "@/src/auth/AuthProvider";
 
 export default function Index() {
-  const { ready, user } = useAuth();
+  const { ready, user } = useAuthContext();
 
-  useEffect(() => {
-    if (!ready) return;
+  // Auth 還在初始化 → 什麼都不做
+  if (!ready) return null;
 
-    if (!user) {
-      router.replace("/(auth)/login");
-      return;
-    }
+  // 沒登入 → 去登入頁
+  if (!user) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
-    router.replace(user.role === "caregiver" ? "/caregiver" : "/family");
-  }, [ready, user]);
-
-  return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-      <ActivityIndicator />
-    </View>
-  );
+  // ✅ 已登入，一律先去選長輩
+  return <Redirect href="/care-target/select" />;
 }

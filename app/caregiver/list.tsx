@@ -1,19 +1,13 @@
+import React from "react";
 import { View, Text, Pressable, ScrollView, Alert } from "react-native";
 import { router } from "expo-router";
 import { useStore } from "@/src/store/useStore";
+import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 
-/**
- * 家屬端：藥單列表
- * - 從本地 store 讀取
- * - 支援「單筆刪除（含確認視窗）」
- * - 不提供清空全部（避免誤刪）
- */
-export default function ListScreen() {
-  const {
-    ready,
-    getPrescriptionsByCareTargetId,
-    removePrescription,
-  } = useStore();
+export default function CaregiverListScreen() {
+  const { activeCareTargetId, activeCareTarget } = useActiveCareTarget();
+  const storeAny = useStore() as any;
+  const ready: boolean = !!storeAny.ready;
 
   if (!ready) {
     return (
@@ -23,89 +17,81 @@ export default function ListScreen() {
     );
   }
 
-  // 目前固定（之後可改成從登入者帶入）
-  const list = getPrescriptionsByCareTargetId("ct_001");
-
-  /** ✅ 單筆刪除（有確認視窗） */
-  function confirmDelete(prescriptionId: string) {
-    Alert.alert(
-      "確認刪除",
-      "確定要刪除這筆藥單嗎？此動作無法復原。",
-      [
-        { text: "取消", style: "cancel" },
-        {
-          text: "刪除",
-          style: "destructive",
-          onPress: () => removePrescription(prescriptionId),
-        },
-      ]
+  if (!activeCareTargetId) {
+    return (
+      <View style={{ flex: 1, padding: 20, gap: 12 }}>
+        <Text style={{ fontSize: 22, fontWeight: "800" }}>請先選擇長輩</Text>
+        <Pressable onPress={() => router.replace("/caregiver")}>
+          <Text style={{ color: "#007AFF" }}>前往選擇頁面</Text>
+        </Pressable>
+      </View>
     );
   }
 
+  const list = storeAny.getPrescriptionsByCareTargetId(activeCareTargetId);
+
+  const confirmDelete = (id: string) => {
+    Alert.alert("確認刪除", "刪除後無法還原，確定嗎？", [
+      { text: "取消", style: "cancel" },
+      { text: "確定刪除", style: "destructive", onPress: () => storeAny.deletePrescription(id) },
+    ]);
+  };
+
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, gap: 12 }}>
-      <Text style={{ fontSize: 28, fontWeight: "800" }}>藥單列表</Text>
+    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 12 }}>
+      <Text style={{ fontSize: 28, fontWeight: "800" }}>藥單紀錄簿</Text>
+      <Text style={{ opacity: 0.6 }}>長輩：{activeCareTarget?.name}</Text>
 
       {list.length === 0 ? (
-        <Text style={{ opacity: 0.7 }}>
-          目前沒有藥單（請看護端先送出一筆）
+        <Text style={{ marginTop: 40, textAlign: "center", opacity: 0.5 }}>
+          目前沒有紀錄，請點選「掃描藥單」開始
         </Text>
       ) : (
-        list.map((p) => (
+        list.map((p: any) => (
           <View
             key={p.prescriptionId}
             style={{
-              padding: 14,
+              padding: 16,
               borderWidth: 1,
               borderRadius: 12,
-              gap: 8,
+              borderColor: "#ddd",
+              backgroundColor: "#fff",
+              gap: 4,
             }}
           >
-            <Text style={{ fontWeight: "800" }}>
+            {/* ✅ 改為顯示自訂標題，若無標題則顯示預設字樣 */}
+            <Text style={{ fontSize: 20, fontWeight: "800", color: "#333" }}>
+              {p.title || "未命名藥單"}
+            </Text>
+            
+            <Text style={{ fontSize: 14, color: "#666" }}>
+              日期：{new Date(p.createdAt).toLocaleDateString()}
+            </Text>
+
+            <Text style={{ fontSize: 12, color: "#999", marginBottom: 8 }}>
               ID：{p.prescriptionId}
             </Text>
-            <Text>狀態：{p.status}</Text>
-            <Text>項目數：{p.items.length}</Text>
 
-            {/* 查看詳情 */}
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/caregiver/detail",
-                  params: { id: p.prescriptionId },
-                })
-              }
-              style={{ paddingVertical: 6 }}
-            >
-              <Text
-                style={{ color: "#007AFF", fontSize: 18, fontWeight: "700" }}
+            <View style={{ flexDirection: "row", gap: 16, borderTopWidth: 1, borderTopColor: "#eee", paddingTop: 8 }}>
+              <Pressable
+                onPress={() => router.push({ pathname: "/caregiver/detail", params: { id: p.prescriptionId } })}
               >
-                查看詳情
-              </Text>
-            </Pressable>
+                <Text style={{ color: "#007AFF", fontSize: 16, fontWeight: "700" }}>查看詳情</Text>
+              </Pressable>
 
-            {/* 刪除（含確認） */}
-            <Pressable
-              onPress={() => confirmDelete(p.prescriptionId)}
-              style={{ paddingVertical: 6 }}
-            >
-              <Text
-                style={{ color: "#FF3B30", fontSize: 18, fontWeight: "700" }}
-              >
-                刪除這筆
-              </Text>
-            </Pressable>
+              <Pressable onPress={() => confirmDelete(p.prescriptionId)}>
+                <Text style={{ color: "#FF3B30", fontSize: 16, fontWeight: "700" }}>刪除</Text>
+              </Pressable>
+            </View>
           </View>
         ))
       )}
 
       <Pressable
         onPress={() => router.replace("/caregiver")}
-        style={{ paddingVertical: 10 }}
+        style={{ marginTop: 20, padding: 16, backgroundColor: "#F2F2F7", borderRadius: 12 }}
       >
-        <Text style={{ color: "#007AFF", fontSize: 18, fontWeight: "700" }}>
-          回看護首頁
-        </Text>
+        <Text style={{color: "#666", textAlign: "center", fontWeight: "700", fontSize: 16 }}>返回首頁</Text>
       </Pressable>
     </ScrollView>
   );

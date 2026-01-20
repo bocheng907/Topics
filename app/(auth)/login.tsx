@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, Alert } from "react-native";
-import { router } from "expo-router";
+import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from "react-native";
+import { router, Stack } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 
 export default function LoginScreen() {
@@ -10,57 +10,95 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   async function onLogin() {
+    if (!email || !password) {
+      Alert.alert("提示", "請輸入 Email 與密碼");
+      return;
+    }
     try {
       setLoading(true);
       await login(email, password);
-      router.replace("/"); // 讓 index 做 role 導向
+      router.replace("/care-target/select");
     } catch (e: any) {
-      Alert.alert("登入失敗", e?.message ?? "未知錯誤");
+      Alert.alert("登入失敗", e?.message ?? "帳號或密碼錯誤");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <View style={{ flex: 1, padding: 24, gap: 12, justifyContent: "center" }}>
-      <Text style={{ fontSize: 28, fontWeight: "800" }}>登入</Text>
+    <View style={{ flex: 1, padding: 32, backgroundColor: "#FFF", justifyContent: "center" }}>
+      <Stack.Screen options={{ headerShown: false }} />
+      
+      <View style={{ marginBottom: 40 }}>
+        <Text style={{ fontSize: 36, fontWeight: "900", color: "#333" }}>歡迎回來</Text>
+        <Text style={{ fontSize: 16, color: "#666", marginTop: 8 }}>請登入您的照護帳號</Text>
+      </View>
 
-      <TextInput
-        placeholder="Email"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-        style={{ borderWidth: 1, borderRadius: 12, padding: 12 }}
-      />
+      <View style={{ gap: 16 }}>
+        <View style={{ gap: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: "800", color: "#666", marginLeft: 4 }}>EMAIL</Text>
+          <TextInput
+            placeholder="請輸入 Email"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            style={{ 
+              backgroundColor: "#F2F2F7", 
+              borderRadius: 14, 
+              padding: 16, 
+              fontSize: 16,
+              borderWidth: 1,
+              borderColor: "#EEE"
+            }}
+          />
+        </View>
 
-      <TextInput
-        placeholder="密碼（至少 6 碼）"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        style={{ borderWidth: 1, borderRadius: 12, padding: 12 }}
-      />
+        <View style={{ gap: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: "800", color: "#666", marginLeft: 4 }}>密碼</Text>
+          <TextInput
+            placeholder="請輸入密碼"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            style={{ 
+              backgroundColor: "#F2F2F7", 
+              borderRadius: 14, 
+              padding: 16, 
+              fontSize: 16,
+              borderWidth: 1,
+              borderColor: "#EEE"
+            }}
+          />
+        </View>
 
-      <Pressable
-        onPress={onLogin}
-        disabled={loading}
-        style={{
-          padding: 14,
-          borderRadius: 12,
-          borderWidth: 1,
-          alignItems: "center",
-        }}
-      >
-        <Text style={{ fontSize: 18, fontWeight: "800" }}>
-          {loading ? "登入中…" : "登入"}
-        </Text>
-      </Pressable>
+        <Pressable
+          onPress={onLogin}
+          disabled={loading}
+          style={({ pressed }) => ({
+            marginTop: 20,
+            padding: 18,
+            borderRadius: 16,
+            backgroundColor: loading ? "#CCC" : "#007AFF",
+            alignItems: "center",
+            opacity: pressed ? 0.8 : 1,
+          })}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={{ color: "#FFF", fontSize: 18, fontWeight: "900" }}>立即登入</Text>
+          )}
+        </Pressable>
+      </View>
 
-      <Pressable onPress={() => router.push("/(auth)/register")} style={{ paddingVertical: 6 }}>
-        <Text style={{ color: "#007AFF", fontSize: 16, fontWeight: "700" }}>
-          沒有帳號？去註冊
-        </Text>
-      </Pressable>
+      <View style={{ marginTop: 32, alignItems: "center" }}>
+        <Pressable onPress={() => router.push("/(auth)/register")}>
+          <Text style={{ color: "#666", fontSize: 15, fontWeight: "600" }}>
+            沒有帳號嗎？<Text style={{ color: "#007AFF", fontWeight: "900" }}>去註冊</Text>
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }

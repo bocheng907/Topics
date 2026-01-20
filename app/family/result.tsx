@@ -53,7 +53,7 @@ export default function ResultScreen() { // ✅ 2. 修正組件名稱
       setStatus("loading");
       const t = setTimeout(() => {
         setItems([
-          { name: "普拿疼", dose: "1 顆", time: ["morning"], note: "飯後服用" },
+          { name: "普拿疼", dose: "1 顆", time: ["morning", "night"], note: "飯後服用" },
           { name: "胃藥", dose: "1 包", time: ["night"], note: "睡前服用" },
         ]);
         setStatus("done");
@@ -64,7 +64,7 @@ export default function ResultScreen() { // ✅ 2. 修正組件名稱
 
   const goEdit = () => {
     router.replace({
-      pathname: "/caregiver/edit",
+      pathname: "/family/edit",
       params: {
         id: id ?? "",
         imageUri: imageUri ?? "",
@@ -103,7 +103,7 @@ export default function ResultScreen() { // ✅ 2. 修正組件名稱
       }
     
       Alert.alert("成功", id ? "紀錄已更新" : "藥單已儲存", [
-        { text: "確定", onPress: () => router.replace("/caregiver/list") }
+        { text: "確定", onPress: () => router.replace("/family/list") }
       ]);
     } catch (e) {
       Alert.alert("儲存失敗");

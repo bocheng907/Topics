@@ -1,24 +1,19 @@
 // src/store/prescriptions.ts
 //
-// ✅ 給組員解說用（重點請直接照念）
-// 這支檔案是「Repository（資料存取層）」：
-// - UI 不要直接操作 StoreProvider 的 prescriptions 陣列
-// - UI 只透過這裡提供的函式 add/list/get
-// - 未來換 Firebase：只改這支檔案內容，UI 幾乎不用動（無痛替換）
-//
-// ✅ 目前資料來源：StoreProvider（本地記憶體）
-// 未來資料來源：Firestore + Storage（同樣維持 add/list/get 介面）
+// ✅ Repository（資料存取層）：
+// - UI 透過這裡提供的函式 add/list/get/update 進行資料操作
+// - 統一處理資料格式轉換（例如將 UI 的 Item 轉為資料庫存儲的 PrescriptionItem）
 
 import type { Prescription, PrescriptionItem, TimeOfDay } from "./StoreProvider";
 import { useStore } from "./useStore";
 
 // ----------------------------
-// 對齊你們共同規格的輸入格式
-// （UI 送出時，傳這個就好）
+// 對齊共同規格的輸入格式
 // ----------------------------
 export type AddPrescriptionInput = {
-  careTargetId: string;               // ct_001
-  sourceImageUrl?: string;            // 現在先存 imageUri；未來換 Storage URL
+  careTargetId: string;
+  title?: string;                     // 藥單標題
+  sourceImageUrl?: string;            // 圖片路徑
   status: "parsed" | "need_manual_fix";
   ocrRawText?: string;
   items: Array<{
@@ -31,26 +26,19 @@ export type AddPrescriptionInput = {
   }>;
 };
 
-// ----------------------------
-// Repository APIs（UI 只能用這些）
-// ----------------------------
-
-/**
- * 新增藥單
- *
- * ✅ 給組員解說：
-// - UI 呼叫 addPrescription()，不用知道資料存在哪
-// - 現在存本地 StoreProvider；之後改存 Firebase 也不影響 UI
- */
 export function usePrescriptionsRepo() {
-  const { addPrescription, getPrescriptionsByCareTargetId, getPrescriptionById } = useStore();
+  const { 
+    addPrescription, 
+    updatePrescription, // ✅ 確保 StoreProvider 有提供此函式
+    getPrescriptionsByCareTargetId, 
+    getPrescriptionById 
+  } = useStore() as any; // 暫時使用 any 避免型別定義未同步的錯誤
 
   return {
     /**
-     * 新增一筆藥單，回傳 prescriptionId（例如 p_1768...）
+     * 新增一筆藥單
      */
     async create(input: AddPrescriptionInput): Promise<string> {
-      // 轉成 StoreProvider 需要的型別（它會自己補 createdAt + prescriptionId）
       const items: PrescriptionItem[] = input.items.map((it, idx) => ({
         itemId: `it_${Date.now()}_${idx}`,
         drug_name_zh: it.drug_name_zh,
@@ -63,6 +51,7 @@ export function usePrescriptionsRepo() {
 
       const id = addPrescription({
         careTargetId: input.careTargetId,
+        title: input.title,
         sourceImageUrl: input.sourceImageUrl,
         status: input.status,
         ocrRawText: input.ocrRawText,
@@ -73,15 +62,44 @@ export function usePrescriptionsRepo() {
     },
 
     /**
-     * 依照 careTargetId 列出藥單（家屬 list 用）
+     * ✅ 更新現有藥單（不改變 ID）
      */
-    async listByCareTargetId(careTargetId: string): Promise<Prescription[]> {
-      // 先拿 store 的結果，再排序（新到舊）
-      return getPrescriptionsByCareTargetId(careTargetId).sort((a, b) => b.createdAt - a.createdAt);
+    async update(id: string, input: Partial<AddPrescriptionInput>): Promise<void> {
+      // 如果有傳入新的項目清單，需要重新格式化並生成 itemId
+      let updatedItems: PrescriptionItem[] | undefined;
+      
+      if (input.items) {
+        updatedItems = input.items.map((it, idx) => ({
+          itemId: `it_${Date.now()}_${idx}`,
+          drug_name_zh: it.drug_name_zh,
+          dose: it.dose,
+          time_of_day: it.time_of_day,
+          note_zh: it.note_zh,
+          drug_name_translated: it.drug_name_translated,
+          note_translated: it.note_translated,
+        }));
+      }
+
+      // 呼叫 StoreProvider 的更新邏輯
+      updatePrescription(id, {
+        title: input.title,
+        status: input.status,
+        items: updatedItems,
+        sourceImageUrl: input.sourceImageUrl,
+        ocrRawText: input.ocrRawText,
+      });
     },
 
     /**
-     * 依照 id 取得單張藥單（家屬 detail 用）
+     * 依照 careTargetId 列出藥單
+     */
+    async listByCareTargetId(careTargetId: string): Promise<Prescription[]> {
+      const list = getPrescriptionsByCareTargetId(careTargetId);
+      return [...list].sort((a, b) => b.createdAt - a.createdAt);
+    },
+
+    /**
+     * 依照 id 取得單張藥單
      */
     async getById(id: string): Promise<Prescription | undefined> {
       return getPrescriptionById(id);
