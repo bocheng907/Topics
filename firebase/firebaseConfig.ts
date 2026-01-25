@@ -1,0 +1,25 @@
+// firebase/firebaseConfig.ts
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
+
+// 🔹 Firebase 專案設定（換成你自己的）
+const firebaseConfig = {
+  apiKey: "AIzaSyD_b1MdgnUrwLf8mnii8JCzTOv8DatD_tQ",
+  authDomain: "smart-care-system-1a41e.firebaseapp.com",
+  projectId: "smart-care-system-1a41e",
+  storageBucket: "smart-care-system-1a41e.firebasestorage.app",
+  messagingSenderId: "531785115214",
+  appId: "1:531785115214:web:d7add711b42e2c16b4851f",
+};
+
+// 🔹 避免 Expo Fast Refresh 重複初始化
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+
+// 🔹 Firebase Authentication
+export const auth = getAuth(app);
+
+// 🔹 Firebase Storage
+export const storage = getStorage(app);
+
+export default app;
