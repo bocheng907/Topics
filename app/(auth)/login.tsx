@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from "reac
 import { router, Stack } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 
+
 export default function LoginScreen() {
   const { login } = useAuth();
   const [email, setEmail] = useState("");

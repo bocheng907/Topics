@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { 
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser
+} from "firebase/auth";
+import { auth } from "@/firebase/firebaseConfig";
+
 
 /**
  * ✅ AuthProvider（本地版）
@@ -105,19 +113,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // -------------------
   // Startup: load session
   // -------------------
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(KEY_SESSION);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          setUser(migrateUser(parsed));
-        }
-      } finally {
-        setReady(true);
-      }
-    })();
-  }, []);
+useEffect(() => {
+  const unsub = onAuthStateChanged(auth, async (fbUser) => {
+    if (!fbUser) {
+      setUser(null);
+      setReady(true);
+      return;
+    }
+
+    // 🔑 關鍵：Firebase uid → 對應你原本的 AuthUser
+    const users = await AsyncStorage.getItem(KEY_USERS);
+    const list: StoredUser[] = users ? JSON.parse(users) : [];
+
+    const found = list.find(u => u.uid === fbUser.uid || u.email === fbUser.email);
+
+    if (found) {
+      const { password: _pw, ...sessionUser } = found;
+      setUser(sessionUser);
+    } else {
+      // Firebase 有帳，但本地還沒資料（第一次登入）
+      const newUser: StoredUser = {
+        uid: fbUser.uid,
+        email: fbUser.email ?? "",
+        password: "", // Firebase 管
+        role: "family",
+        linkedCareTargetIds: [],
+        activeCareTargetId: null,
+      };
+      await AsyncStorage.setItem(KEY_USERS, JSON.stringify([newUser, ...list]));
+      const { password: _pw, ...sessionUser } = newUser;
+      setUser(sessionUser);
+    }
+
+    setReady(true);
+  });
+
+  return unsub;
+}, []);
+
 
   // -------------------
   // Persist: session changes
@@ -186,21 +219,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     async function login(email: string, password: string) {
-      email = email.trim().toLowerCase();
+  await signInWithEmailAndPassword(auth, email, password);
+  // user 由 onAuthStateChanged 接手
+}
 
-      const users = await loadUsers();
-      const found = users.find((u) => u.email === email);
-
-      if (!found) throw new Error("找不到此帳號");
-      if (found.password !== password) throw new Error("密碼錯誤");
-
-      const { password: _pw, ...sessionUser } = found;
-      setUser(sessionUser);
-    }
 
     async function logout() {
-      setUser(null);
-    }
+  await signOut(auth);
+  setUser(null);
+}
 
     // ---------- care targets ----------
     async function getMyCareTargets(): Promise<CareTarget[]> {
