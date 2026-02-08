@@ -18,6 +18,7 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 type Item = {
   name: string;
   dose: string;
+  quantity: string;   
   time: string[];
   note: string;
 };
@@ -28,22 +29,27 @@ function mapMedicineFromAI(m: any): Item {
       m.drug_name ??
       m.drug_name_en ??
       m.medicine_name ??
-      "",
+      "（未辨識藥品名稱）",
+
     dose:
       m.dose ??
       m.dose_text ??
       m.dosage ??
-      "",
-    time:
-      m.time ??
-      m.time_of_day ??
-      (m.frequency ? [m.frequency] : []),
-    note:
-      m.note ??
-      m.note_zh ??
-      "",
+      "未提供",
+
+    quantity:
+      m.quantity ??
+      m.amount ??
+      m.total ??
+      "依醫囑",
+
+    // ✅ 一定要寫在同一行
+    time: m.time ?? (m.usage_zh ? [m.usage_zh] : []),
+
+    note: "",
   };
 }
+
 
 
 const TIME_LABELS: Record<string, string> = {
@@ -64,6 +70,8 @@ export default function ResultScreen() {
   const [items, setItems] = useState<Item[]>([]);
   const [title, setTitle] = useState("");
   const [imageUri, setImageUri] = useState<string | undefined>(undefined);
+  const [globalMemo, setGlobalMemo] = useState("");
+
 
   // ====== 從 Firestore 讀資料（唯一新增邏輯） ======
   useEffect(() => {
@@ -89,6 +97,7 @@ export default function ResultScreen() {
         // 🔽 對應回你原本 UI 需要的資料格式
         setImageUri(data.imageUrl);
         setTitle(data.title ?? "");
+        setGlobalMemo(data.analyzeResult?.memo ?? "");
         const meds = data.analyzeResult?.medicines ?? [];
 setItems(meds.map(mapMedicineFromAI));
 
@@ -175,20 +184,22 @@ setItems(meds.map(mapMedicineFromAI));
                   用法劑量：{it.dose}
                 </Text>
                 <Text style={{ fontSize: 15, color: "#444" }}>
+    數量：{it.quantity}
+  </Text>
+                <Text style={{ fontSize: 15, color: "#444" }}>
                   服用時段：
                   {it.time.map(t => TIME_LABELS[t] || t).join(", ")}
                 </Text>
                 <Text
-                  style={{
-                    fontSize: 15,
-                    color:
-                      it.note && it.note.trim() !== "" ? "#666" : "#CCC",
-                    marginTop: 2,
-                  }}
-                >
-                  備註：
-                  {it.note && it.note.trim() !== "" ? it.note : "無"}
-                </Text>
+  style={{
+    fontSize: 15,
+    color: globalMemo ? "#666" : "#CCC",
+    marginTop: 2,
+  }}
+>
+  備註：{globalMemo || "無"}
+</Text>
+
               </View>
             </View>
           ))}
