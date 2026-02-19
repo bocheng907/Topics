@@ -1,18 +1,67 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, Alert } from "react-native";
 import { router } from "expo-router";
-import { useStore } from "@/src/store/useStore";
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+
+function toMillis(ts: any): number {
+  if (ts?.toMillis) return ts.toMillis();
+  if (ts?.seconds) return ts.seconds * 1000;
+  if (typeof ts === "number") return ts;
+  return Date.now();
+}
 
 export default function FamilyListScreen() {
   const { activeCareTargetId, activeCareTarget } = useActiveCareTarget();
-  const storeAny = useStore() as any;
-  const ready: boolean = !!storeAny.ready;
+  const [list, setList] = useState<any[]>([]);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!activeCareTargetId) return;
+
+    const q = query(
+      collection(db, "prescriptions"),
+      where("careTargetId", "==", activeCareTargetId),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            prescriptionId: d.id,
+            title: data.title ?? "未命名藥單",
+            createdAt: toMillis(data.createdAt),
+            status: data.status ?? "",
+            sourceImageUrl: data.sourceImageUrl ?? "",
+          };
+        });
+        setList(rows);
+        setReady(true);
+      },
+      (err) => {
+        console.log("prescriptions snapshot error:", err);
+        setReady(true);
+      }
+    );
+
+    return unsub;
+  }, [activeCareTargetId]);
+
+  const confirmDelete = (id: string) => {
+    Alert.alert("確認刪除", "刪除後無法還原，確定嗎？", [
+      { text: "取消", style: "cancel" },
+      { text: "確定刪除", style: "destructive", onPress: () => Alert.alert("提示", "刪除功能尚未實作") },
+    ]);
+  };
 
   if (!ready) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Text>讀取本機資料中…</Text>
+        <Text>讀取雲端資料中…</Text>
       </View>
     );
   }
@@ -27,15 +76,6 @@ export default function FamilyListScreen() {
       </View>
     );
   }
-
-  const list = storeAny.getPrescriptionsByCareTargetId(activeCareTargetId);
-
-  const confirmDelete = (id: string) => {
-    Alert.alert("確認刪除", "刪除後無法還原，確定嗎？", [
-      { text: "取消", style: "cancel" },
-      { text: "確定刪除", style: "destructive", onPress: () => storeAny.deletePrescription(id) },
-    ]);
-  };
 
   return (
     <ScrollView contentContainerStyle={{ padding: 20, paddingTop:90, gap: 12 }}>
@@ -59,11 +99,10 @@ export default function FamilyListScreen() {
               gap: 4,
             }}
           >
-            {/* ✅ 改為顯示自訂標題，若無標題則顯示預設字樣 */}
             <Text style={{ fontSize: 20, fontWeight: "800", color: "#333" }}>
               {p.title || "未命名藥單"}
             </Text>
-            
+
             <Text style={{ fontSize: 14, color: "#666" }}>
               日期：{new Date(p.createdAt).toLocaleDateString()}
             </Text>
