@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from "reac
 import { router, Stack } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 
+
 export default function LoginScreen() {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
@@ -17,7 +18,6 @@ export default function LoginScreen() {
     try {
       setLoading(true);
       await login(email, password);
-      router.replace("/care-target/select");
     } catch (e: any) {
       Alert.alert("登入失敗", e?.message ?? "帳號或密碼錯誤");
     } finally {
