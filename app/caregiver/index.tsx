@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, Stack } from "expo-router";
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { db } from "@/firebase/firebaseConfig";
 
 import { useAuth } from "@/src/auth/useAuth";
-import { useStore } from "@/src/store/useStore";
 
 type CareTarget = {
   id: string;
@@ -25,9 +26,12 @@ function formatTime(ts?: number) {
 
 export default function CaregiverHomeScreen() {
   const { user, logout } = useAuth();
-  const { prescriptions } = useStore();
   const [target, setTarget] = useState<CareTarget | null>(null);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<{ total: number; latest?: number }>({
+    total: 0,
+    latest: undefined,
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -51,20 +55,59 @@ export default function CaregiverHomeScreen() {
     })();
   }, [user]);
 
-  const stats = useMemo(() => {
-    if (!target) return { total: 0, latest: undefined };
-    const mine = prescriptions.filter((p) => p.careTargetId === target.id);
-    const sorted = [...mine].sort((a, b) => b.createdAt - a.createdAt);
-    return { total: mine.length, latest: sorted[0]?.createdAt };
-  }, [prescriptions, target]);
+  useEffect(() => {
+    if (!user || !target?.id) {
+      setStats({ total: 0, latest: undefined });
+      return;
+    }
+
+    const q = query(
+      collection(db, "prescriptions"),
+      where("caregiverUid", "==", user.uid),
+      where("careTargetId", "==", target.id),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows = snap.docs.map((d) => {
+          const data = d.data() as any;
+          let createdAt: number | undefined = undefined;
+
+          if (data.createdAt?.toMillis) {
+            createdAt = data.createdAt.toMillis();
+          } else if (data.createdAt?.seconds) {
+            createdAt = data.createdAt.seconds * 1000;
+          } else if (typeof data.createdAt === "number") {
+            createdAt = data.createdAt;
+          }
+
+          return { createdAt };
+        });
+
+        setStats({
+          total: rows.length,
+          latest: rows[0]?.createdAt,
+        });
+      },
+      (err) => {
+        console.log("caregiver home firestore error:", err);
+        setStats({ total: 0, latest: undefined });
+        Alert.alert("讀取失敗", "無法讀取雲端藥單紀錄，請檢查 Firestore 索引或權限設定。");
+      }
+    );
+
+    return unsub;
+  }, [user, target?.id]);
 
   const onUnlink = async () => {
     if (!target || !user) return;
     Alert.alert("安全提醒", `確定要解除與「${target.name}」的連結嗎？`, [
       { text: "取消", style: "cancel" },
-      { 
-        text: "確定解除", 
-        style: "destructive", 
+      {
+        text: "確定解除",
+        style: "destructive",
         onPress: async () => {
           const rawLinks = await AsyncStorage.getItem("careapp_careTarget_links_v1");
           const allLinks = rawLinks ? JSON.parse(rawLinks) : {};
@@ -72,7 +115,7 @@ export default function CaregiverHomeScreen() {
           await AsyncStorage.setItem("careapp_careTarget_links_v1", JSON.stringify(allLinks));
           await AsyncStorage.removeItem(activeKey(user.uid));
           router.replace("/care-target/select");
-        } 
+        }
       }
     ]);
   };
@@ -81,17 +124,15 @@ export default function CaregiverHomeScreen() {
 
   return (
     <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 90, gap: 20 }}>
-
       <View style={{ gap: 6 }}>
         <Text style={{ fontSize: 28, fontWeight: "900", color: "#333" }}>照顧控制台</Text>
         <Text style={{ fontSize: 16, color: "#666" }}>你好，{user?.email?.split('@')[0] || '看護人員'}</Text>
       </View>
 
-      {/* 當前長輩狀態卡片 */}
       <View style={{ backgroundColor: "#F2F2F7", borderRadius: 20, padding: 20, gap: 12, borderWidth: 1, borderColor: "#EEE" }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: 'center' }}>
           <Text style={{ fontSize: 16, fontWeight: "800", color: "#666" }}>當前照顧對象</Text>
-          <View style={{ backgroundColor:  "#34C759", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 }}>
+          <View style={{ backgroundColor: "#34C759", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 }}>
             <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "800" }}>看護模式</Text>
           </View>
         </View>
@@ -107,7 +148,6 @@ export default function CaregiverHomeScreen() {
           <Text style={{ color: "#444", fontWeight: "700" }}>🕒 最後更新：{formatTime(stats.latest)}</Text>
         </View>
 
-        {/* 注意事項區塊 */}
         <View style={{ backgroundColor: "#E1E9FF", padding: 14, borderRadius: 12, marginTop: 4 }}>
           <Text style={{ fontSize: 14, fontWeight: "900", color: "#007AFF", marginBottom: 4 }}>⚠️ 注意事項 / 備註：</Text>
           <Text style={{ fontSize: 15, color: "#333", lineHeight: 22 }}>
@@ -131,10 +171,9 @@ export default function CaregiverHomeScreen() {
         </View>
       </View>
 
-      {/* 功能按鈕區 */}
       <View style={{ gap: 12 }}>
         <Text style={{ fontSize: 22, fontWeight: "900" }}>功能選單</Text>
-        
+
         <Pressable
           onPress={() => router.push("/caregiver/camera")}
           style={{ paddingVertical: 18, backgroundColor: "#007AFF", borderRadius: 16, alignItems: "center", flexDirection: 'row', justifyContent: 'center', gap: 10 }}
@@ -150,8 +189,8 @@ export default function CaregiverHomeScreen() {
         </Pressable>
       </View>
 
-      <Pressable 
-        onPress={() => logout().then(() => router.replace("/(auth)/login"))} 
+      <Pressable
+        onPress={() => logout().then(() => router.replace("/(auth)/login"))}
         style={{ marginTop: 10, padding: 10 }}
       >
         <Text style={{ color: "#999", textAlign: "center", fontWeight: "700", fontSize: 16 }}>登出系統</Text>

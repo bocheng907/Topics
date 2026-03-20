@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 
 export type CareTarget = {
@@ -11,20 +20,7 @@ export type CareTarget = {
   updatedAt?: number;
 };
 
-// 跟你 select.tsx 一致（不要改 key，改了就讀不到）
-const KEY_CARE_TARGETS = "careapp_careTargets_v1"; // CareTarget[]
-const KEY_LINKS = "careapp_careTarget_links_v1"; // { [uid]: string[] }
 const activeKey = (uid: string) => `careapp_activeCareTarget_v1:${uid}`;
-
-async function loadCareTargets(): Promise<CareTarget[]> {
-  const raw = await AsyncStorage.getItem(KEY_CARE_TARGETS);
-  return raw ? (JSON.parse(raw) as CareTarget[]) : [];
-}
-
-async function loadLinks(): Promise<Record<string, string[]>> {
-  const raw = await AsyncStorage.getItem(KEY_LINKS);
-  return raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
-}
 
 export function useActiveCareTarget() {
   const { user, ready } = useAuth();
@@ -35,9 +31,9 @@ export function useActiveCareTarget() {
   const [targets, setTargets] = useState<CareTarget[]>([]);
   const [linkedIds, setLinkedIds] = useState<string[]>([]);
 
-  // 讀資料：targets / links / active
   useEffect(() => {
     if (!ready) return;
+
     if (!user) {
       setActiveId(null);
       setTargets([]);
@@ -52,28 +48,94 @@ export function useActiveCareTarget() {
       try {
         setHydrating(true);
 
-        const [allTargets, linksMap, activeRaw] = await Promise.all([
-          loadCareTargets(),
-          loadLinks(),
+        const field = user.role === "family" ? "families" : "caregivers";
+
+        const [snap, activeRaw] = await Promise.all([
+          getDocs(
+            query(
+              collection(db, "patients"),
+              where(field, "array-contains", user.uid)
+            )
+          ),
           AsyncStorage.getItem(activeKey(user.uid)),
         ]);
 
         if (cancelled) return;
 
-        const ids = linksMap[user.uid] ?? [];
-        setTargets(allTargets);
+        const fetchedTargets: CareTarget[] = snap.docs.map((docSnap) => {
+          const data = docSnap.data() as any;
+
+          let createdAt = Date.now();
+          if (data.createdAt?.toMillis) {
+            createdAt = data.createdAt.toMillis();
+          } else if (typeof data.createdAt === "number") {
+            createdAt = data.createdAt;
+          }
+
+          let updatedAt = createdAt;
+          if (data.updatedAt?.toMillis) {
+            updatedAt = data.updatedAt.toMillis();
+          } else if (typeof data.updatedAt === "number") {
+            updatedAt = data.updatedAt;
+          }
+
+          return {
+            id: docSnap.id,
+            name: data.name ?? "",
+            note: data.note ?? data.notes ?? "",
+            inviteCode: data.inviteCode ?? "",
+            createdAt,
+            updatedAt,
+          };
+        });
+
+        const ids = fetchedTargets.map((t) => t.id);
+
+        setTargets(fetchedTargets);
         setLinkedIds(ids);
 
-        // 目前 active
         let activeId = activeRaw || null;
 
-        // ✅ 自動修復：如果 active 缺失，但有連結的長輩，直接指定第一個（避免卡住）
-        if (!activeId && ids.length > 0) {
+        // active 不存在、或 active 已經不是自己有權限的 patients，就自動修正
+        if ((!activeId || !ids.includes(activeId)) && ids.length > 0) {
           activeId = ids[0];
           await AsyncStorage.setItem(activeKey(user.uid), activeId);
+
+          try {
+            await updateDoc(doc(db, "users", user.uid), {
+              activeCareTargetId: activeId,
+            });
+            console.log("[activeCareTarget] auto-synced to firestore:", activeId);
+          } catch (e) {
+            console.log("[activeCareTarget] auto-sync firestore failed:", e);
+          }
         }
 
-        setActiveId(activeId);
+        // 如果完全沒有可選長輩，就清掉 active
+        if (ids.length === 0) {
+          activeId = null;
+          await AsyncStorage.removeItem(activeKey(user.uid));
+
+          try {
+            await updateDoc(doc(db, "users", user.uid), {
+              activeCareTargetId: "",
+            });
+            console.log("[activeCareTarget] cleared in firestore");
+          } catch (e) {
+            console.log("[activeCareTarget] clear firestore failed:", e);
+          }
+        }
+
+        if (!cancelled) {
+          setActiveId(activeId);
+        }
+      } catch (err) {
+        console.log("useActiveCareTarget firestore error:", err);
+        if (!cancelled) {
+          setTargets([]);
+          setLinkedIds([]);
+          setActiveId(null);
+        }
       } finally {
         if (!cancelled) setHydrating(false);
       }
@@ -82,7 +144,7 @@ export function useActiveCareTarget() {
     return () => {
       cancelled = true;
     };
-  }, [ready, user?.uid]);
+  }, [ready, user?.uid, user?.role]);
 
   const linkedCareTargets = useMemo(() => {
     const setIds = new Set(linkedIds);
@@ -96,18 +158,38 @@ export function useActiveCareTarget() {
 
   async function setActiveCareTargetId(id: string) {
     if (!user) return;
+
     await AsyncStorage.setItem(activeKey(user.uid), id);
     setActiveId(id);
+
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        activeCareTargetId: id,
+      });
+      console.log("[activeCareTarget] synced to firestore:", id);
+    } catch (e) {
+      console.log("[activeCareTarget] firestore sync failed:", e);
+    }
   }
 
   async function clearActiveCareTarget() {
     if (!user) return;
+
     await AsyncStorage.removeItem(activeKey(user.uid));
     setActiveId(null);
+
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        activeCareTargetId: "",
+      });
+      console.log("[activeCareTarget] cleared from firestore");
+    } catch (e) {
+      console.log("[activeCareTarget] firestore clear failed:", e);
+    }
   }
 
   return {
-    ready: !hydrating, // 給 UI 判斷：可不可以判定是否已選
+    ready: !hydrating,
     hydrating,
     activeCareTargetId,
     activeCareTarget,

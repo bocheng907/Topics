@@ -1,18 +1,22 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { auth, db } from "@/firebase/firebaseConfig";
 
 /**
- * ✅ AuthProvider（本地版）
- * - 先用 AsyncStorage 做「註冊 / 登入 / session」
- * - 加上「長輩(照護對象)」：
- *   1) 可新增長輩（會產生 inviteCode）
- *   2) 可用 inviteCode 連結到長輩
- *   3) 同一個帳號可以連到多個長輩，並可切換 activeCareTargetId
+ * ✅ AuthProvider（混合版）
+ * - 帳號：Firebase Auth（register/login/logout）
+ * - 本地 AsyncStorage：保留 role / careTargets / linkedCareTargetIds / activeCareTargetId（暫存/快取用）
  *
- * ⚠️ 未來串 Firebase：
- * - register/login 會換成 Firebase Auth
+ * ⚠️ 未來要完全雲端化：
  * - careTargets / 連結關係 會搬到 Firestore
- * - 本地 AsyncStorage 只保留「登入 session（或 token）」或快取
+ * - AsyncStorage 只保留少量快取（或不留）
  */
 
 export type Role = "caregiver" | "family";
@@ -26,7 +30,7 @@ export type CareTarget = {
 };
 
 export type AuthUser = {
-  uid: string; // 本地先用 uid_時間戳，Firebase 之後換成真 uid
+  uid: string; // ✅ Firebase uid
   email: string;
   role: Role;
 
@@ -81,7 +85,12 @@ function makeInviteCode() {
 function migrateUser(u: any): AuthUser {
   const legacyCareTargetId = u?.careTargetId;
   const linked: CareTargetId[] =
-    Array.isArray(u?.linkedCareTargetIds) ? u.linkedCareTargetIds : legacyCareTargetId ? [legacyCareTargetId] : [];
+    Array.isArray(u?.linkedCareTargetIds)
+      ? u.linkedCareTargetIds
+      : legacyCareTargetId
+      ? [legacyCareTargetId]
+      : [];
+
   const active: CareTargetId | null =
     typeof u?.activeCareTargetId === "string"
       ? u.activeCareTargetId
@@ -103,20 +112,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
 
   // -------------------
-  // Startup: load session
+  // Startup: load session (Firebase Auth state)
   // -------------------
   useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(KEY_SESSION);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          setUser(migrateUser(parsed));
-        }
-      } finally {
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (!fbUser) {
+        setUser(null);
         setReady(true);
+        return;
       }
-    })();
+
+      // 🔑 Firebase uid → 對應你原本的 AuthUser（本地資料）
+      const users = await AsyncStorage.getItem(KEY_USERS);
+      const list: StoredUser[] = users ? JSON.parse(users) : [];
+
+      const found = list.find((u) => u.uid === fbUser.uid || u.email === fbUser.email);
+
+      if (found) {
+        const { password: _pw, ...sessionUser } = found;
+        setUser(sessionUser);
+      } else {
+        // Firebase 有帳，但本地還沒資料（第一次登入）
+        const newUser: StoredUser = {
+          uid: fbUser.uid,
+          email: fbUser.email ?? "",
+          password: "", // Firebase 管理密碼
+          role: "family",
+          linkedCareTargetIds: [],
+          activeCareTargetId: null,
+        };
+
+        await AsyncStorage.setItem(KEY_USERS, JSON.stringify([newUser, ...list]));
+        const { password: _pw, ...sessionUser } = newUser;
+        setUser(sessionUser);
+      }
+
+      setReady(true);
+    });
+
+    return unsub;
   }, []);
 
   // -------------------
@@ -165,40 +199,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!email || !password) throw new Error("Email / 密碼不可為空");
       if (password.length < 6) throw new Error("密碼至少 6 碼（先用最簡版規則）");
 
-      const users = await loadUsers();
-      const exists = users.some((u) => u.email === email);
-      if (exists) throw new Error("此 Email 已註冊");
+      try {
+        // ✅ 1) 真的建立 Firebase Auth 帳號
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        const fbUser = cred.user;
 
-      const newUser: StoredUser = {
-        uid: nowId("uid"),
-        email,
-        password,
-        role,
-        linkedCareTargetIds: [],
-        activeCareTargetId: null,
-      };
+        console.log("[register] firebase auth ok uid =", fbUser.uid);
+        console.log("[register] email =", email);
+        console.log("[register] role =", role);
+        console.log("[register] writing firestore users doc...");
 
-      await saveUsers([newUser, ...users]);
+        // ✅ 1.5) 同步建立 Firestore users 文件
+        await setDoc(doc(db, "users", fbUser.uid), {
+          role,
+          createdAt: serverTimestamp(),
+          activeCareTargetId: "",
+        });
 
-      // 註冊完直接登入（不帶 password）
-      const { password: _pw, ...sessionUser } = newUser;
-      setUser(sessionUser);
+        console.log("[register] firestore users doc created");
+
+        // ✅ 2) 在本地保存 role / linkedCareTargetIds / activeCareTargetId（快取用）
+        const users = await loadUsers();
+
+        // 若已存在同 email 或同 uid，更新它（避免重複）
+        const idx = users.findIndex((u) => u.uid === fbUser.uid || u.email === email);
+
+        const base: StoredUser = {
+          uid: fbUser.uid,
+          email,
+          password: "", // Firebase 管理密碼
+          role,
+          linkedCareTargetIds: idx >= 0 ? users[idx].linkedCareTargetIds : [],
+          activeCareTargetId: idx >= 0 ? users[idx].activeCareTargetId : null,
+        };
+
+        let nextUsers: StoredUser[];
+        if (idx >= 0) {
+          nextUsers = [...users];
+          nextUsers[idx] = { ...nextUsers[idx], ...base };
+        } else {
+          nextUsers = [base, ...users];
+        }
+
+        await saveUsers(nextUsers);
+
+        // ✅ 3) 立刻更新 UI 狀態（onAuthStateChanged 也會再同步一次）
+        const { password: _pw, ...sessionUser } = base;
+        setUser(sessionUser);
+
+        console.log("[register] local async user cache saved");
+      } catch (e: any) {
+        console.log("[register] error object =", e);
+        console.log("[register] error code =", e?.code);
+        console.log("[register] error message =", e?.message);
+        throw e;
+      }
     }
 
     async function login(email: string, password: string) {
       email = email.trim().toLowerCase();
-
-      const users = await loadUsers();
-      const found = users.find((u) => u.email === email);
-
-      if (!found) throw new Error("找不到此帳號");
-      if (found.password !== password) throw new Error("密碼錯誤");
-
-      const { password: _pw, ...sessionUser } = found;
-      setUser(sessionUser);
+      await signInWithEmailAndPassword(auth, email, password);
+      // user 由 onAuthStateChanged 接手
     }
 
     async function logout() {
+      await signOut(auth);
       setUser(null);
     }
 
@@ -246,7 +311,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       await saveCareTargets([ct, ...all]);
 
-      const linked = u.linkedCareTargetIds.includes(ct.id) ? u.linkedCareTargetIds : [ct.id, ...u.linkedCareTargetIds];
+      const linked = u.linkedCareTargetIds.includes(ct.id)
+        ? u.linkedCareTargetIds
+        : [ct.id, ...u.linkedCareTargetIds];
+
       setUser({ ...u, linkedCareTargetIds: linked, activeCareTargetId: ct.id });
 
       const users = await loadUsers();
@@ -270,7 +338,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const ct = all.find((x) => x.inviteCode === inviteCode);
       if (!ct) throw new Error("找不到此邀請碼對應的長輩");
 
-      const linked = u.linkedCareTargetIds.includes(ct.id) ? u.linkedCareTargetIds : [ct.id, ...u.linkedCareTargetIds];
+      const linked = u.linkedCareTargetIds.includes(ct.id)
+        ? u.linkedCareTargetIds
+        : [ct.id, ...u.linkedCareTargetIds];
+
       const active = u.activeCareTargetId ?? ct.id; // 如果本來沒選定，就直接選這個
 
       setUser({ ...u, linkedCareTargetIds: linked, activeCareTargetId: active });
@@ -298,6 +369,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       getMyCareTargets,
       getActiveCareTarget,
       setActiveCareTarget,
+
       createCareTarget,
       linkByInviteCode,
     };
