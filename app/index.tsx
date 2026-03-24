@@ -1,6 +1,6 @@
 // app/index.tsx
-import { Redirect } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
+import { Redirect } from "expo-router";
 
 export default function Index() {
   const { user, ready } = useAuth();
@@ -11,6 +11,11 @@ export default function Index() {
   // 沒登入 → 去登入頁
   if (!user) return <Redirect href="/(auth)/login" />;
 
-  // ✅ 已登入 → 一律先到「選擇長輩」
-  return <Redirect href="/care-target/select" />;
+  // ✅ 已登入 → 依照身分導向專屬的控制台
+  if (user?.role === "family") {
+    return <Redirect href="/family" />;
+  } else {
+    // 預設或身分為 caregiver，導向看護控制台
+    return <Redirect href="/caregiver" />;
+  }
 }

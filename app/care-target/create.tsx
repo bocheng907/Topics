@@ -1,10 +1,10 @@
-import React, { useState } from "react";
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import * as Clipboard from "expo-clipboard";
+import { router } from "expo-router";
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db } from "@/firebase/firebaseConfig";
+import React, { useState } from "react";
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 function genInviteCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -58,10 +58,10 @@ export default function CareTargetCreateScreen() {
 
       Alert.alert("建立成功", `已建立 ${trimmedName} 的資料庫。\n邀請碼：${code}`, [
         {
-          text: "複製並返回",
+          text: "複製並進入主畫面",
           onPress: async () => {
             await Clipboard.setStringAsync(code);
-            router.replace("/care-target/select");
+            router.replace("/family"); // 👈 改成跳轉到 /family
           },
         },
       ]);

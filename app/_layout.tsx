@@ -1,16 +1,15 @@
-import { useEffect, useState } from "react";
-import { Stack, useRouter, useSegments } from "expo-router";
-import { StoreProvider } from "@/src/store/StoreProvider";
+// app/_layout.tsx
 import { AuthProvider } from "@/src/auth/AuthProvider";
 import { useAuth } from "@/src/auth/useAuth";
+import { StoreProvider } from "@/src/store/StoreProvider";
+import { Stack, useRouter, useSegments } from "expo-router";
+import { useEffect, useState } from "react";
 
 function RootLayoutNav() {
-  // 修正 1: 這裡只取 user，拿掉 loading
   const { user } = useAuth(); 
   const segments = useSegments();
   const router = useRouter();
   
-  // 用來確保 Root Layout 已經掛載完成
   const [isNavigationReady, setIsNavigationReady] = useState(false);
 
   useEffect(() => {
@@ -18,19 +17,18 @@ function RootLayoutNav() {
   }, []);
 
   useEffect(() => {
-    // 修正 2: 拿掉 loading 的判斷
     if (!isNavigationReady) return;
 
     const inAuthGroup = segments[0] === "(auth)";
 
     if (user && inAuthGroup) {
-      // 已登入 + 在登入頁 -> 自動去首頁
-      router.replace("/care-target/select");
+      // 💡 修正這裡：已登入 + 在登入頁 -> 送到根目錄轉運站，讓它依據身分分流
+      router.replace("/");
     } else if (!user && !inAuthGroup) {
       // 沒登入 + 在內部頁 -> 踢回登入頁
       router.replace("/(auth)/login");
     }
-  }, [user, segments, isNavigationReady]); // 修正 3: 依賴陣列也拿掉 loading
+  }, [user, segments, isNavigationReady]);
 
   return (
     <Stack 
