@@ -1,44 +1,73 @@
 // app/family/index.tsx
-import { useAuth } from "@/src/auth/useAuth";
-import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { db } from "@/firebase/firebaseConfig";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
-import React, { useEffect } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View
-} from "react-native";
+import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+
+import { useAuth } from "@/src/auth/useAuth";
+import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+
+// 定義生理數據狀態型別
+type VitalStatus = 'normal' | 'abnormal' | 'outdated' | 'nodata';
 
 export default function FamilyHomeScreen() {
   const { logout } = useAuth();
-  const { 
-    ready, 
-    activePatient, 
-    activePatientId, 
-    linkedCareTargets, 
-    setActivePatientId, 
-    clearActivePatient 
-  } = useActiveCareTarget();
+  const { ready, activePatient, activePatientId, linkedCareTargets, setActivePatientId, clearActivePatient } = useActiveCareTarget();
 
-  // ==========================================
-  // 邏輯：防呆與權限檢查
-  // ==========================================
+  // 存放最新的生理數據
+  const [vitals, setVitals] = useState<any>({
+    temp: null,
+    hr: null,
+    bp: null,
+    sugar: null,
+    hasAnyData: false
+  });
+
   useEffect(() => {
     if (!ready) return;
-    // 如果沒有半個長輩，強制去建立
     if (linkedCareTargets.length === 0) {
       router.replace("/care-target/create");
     }
   }, [ready, linkedCareTargets.length]);
 
   // ==========================================
-  // 邏輯：複製邀請碼
+  // 邏輯：監聽健康紀錄，抓出最新數值
   // ==========================================
+  useEffect(() => {
+    if (!ready || !activePatientId) return;
+
+    // 抓取最近 10 筆健康紀錄，來拼湊出最新的各項生理數值
+    const q = query(
+      collection(db, "health_records"),
+      where("patientId", "==", activePatientId),
+      orderBy("createdAt", "desc"),
+      limit(10)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      let temp, hr, bp, sugar;
+      let hasAnyData = false;
+
+      snap.docs.forEach(doc => {
+        const d = doc.data();
+        const ts = d.createdAt?.toMillis ? d.createdAt.toMillis() : Date.now();
+        hasAnyData = true;
+
+        // 如果還沒找到該項目的最新值，且這份文件有該數值，就填入
+        if (!temp && d.temperature) temp = { val: d.temperature, ts };
+        if (!hr && d.heartRate) hr = { val: d.heartRate, ts };
+        if (!bp && d.bloodPressureSys && d.bloodPressureDia) bp = { sys: d.bloodPressureSys, dia: d.bloodPressureDia, ts };
+        if (!sugar && d.bloodSugar) sugar = { val: d.bloodSugar, type: d.bloodSugarType || '空腹', ts };
+      });
+
+      setVitals({ temp, hr, bp, sugar, hasAnyData });
+    });
+
+    return unsub;
+  }, [ready, activePatientId]);
+
   const copyInviteCode = async () => {
     if (activePatient?.inviteCode) {
       await Clipboard.setStringAsync(activePatient.inviteCode);
@@ -46,25 +75,11 @@ export default function FamilyHomeScreen() {
     }
   };
 
-  // ==========================================
-  // 邏輯：右上角設定/登出選單 (綁定在右上角漢堡圖標)
-  // ==========================================
   const onMenuPress = () => {
     Alert.alert("系統選項", "請選擇您要執行的動作", [
       { text: "取消", style: "cancel" },
-      { 
-        text: "解除綁定當前長輩", 
-        style: "destructive", 
-        onPress: async () => await clearActivePatient() 
-      },
-      { 
-        text: "登出系統", 
-        style: "destructive", 
-        onPress: async () => {
-          await logout();
-          router.replace("/(auth)/login");
-        } 
-      }
+      { text: "解除綁定當前長輩", style: "destructive", onPress: async () => await clearActivePatient() },
+      { text: "登出系統", style: "destructive", onPress: async () => { await logout(); router.replace("/(auth)/login"); } }
     ]);
   };
 
@@ -72,20 +87,110 @@ export default function FamilyHomeScreen() {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
   }
 
+  // 💡 假資料變數 (藥單部分保留假資料)
+  const stats = { total: 0 }; 
+
+  // ==========================================
+  // UI 輔助函式：判斷醫學數值正常與否 & 時效
+  // ==========================================
+  const checkVitalStatus = (type: string, data: any): VitalStatus => {
+    if (!data) return 'nodata';
+    
+    // 檢查是否超過 24 小時未更新 (灰色)
+    const isOutdated = (Date.now() - data.ts) > 24 * 60 * 60 * 1000;
+    if (isOutdated) return 'outdated';
+
+    // 醫學判斷邏輯 (紅色/綠色)
+    if (type === 'temp') {
+      if (data.val < 36.0 || data.val > 37.5) return 'abnormal';
+    } else if (type === 'hr') {
+      if (data.val < 60 || data.val > 100) return 'abnormal';
+    } else if (type === 'bp') {
+      // 收縮壓 90~140，舒張壓 60~90 算正常 (長輩標準)
+      if (data.sys < 90 || data.sys > 120 || data.dia < 60 || data.dia > 90) return 'abnormal';
+    } else if (type === 'sugar') {
+      if (data.type === '空腹' && (data.val < 70 || data.val > 100)) return 'abnormal';
+      if (data.type === '飯後' && (data.val < 70 || data.val > 140)) return 'abnormal';
+    }
+    return 'normal';
+  };
+
+  // 根據狀態取得對應色號
+  const getVitalColors = (status: VitalStatus) => {
+    if (status === 'normal') return { top: '#7AEE90', bottom: '#849F84' }; // 綠色
+    if (status === 'abnormal') return { top: '#FA7474', bottom: '#987A7A' }; // 紅色
+    return { top: '#D4D4D4', bottom: '#8E8E8E' }; // 灰色 (過期或無資料)
+  };
+
+  // 格式化時間 (顯示 8:00 今日/昨天/X月X日)
+  const formatTime = (ts: number | undefined) => {
+    if (!ts) return { time: '--:--', label: '--' };
+    const d = new Date(ts);
+    const time = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    let label = `${d.getMonth() + 1}月${d.getDate()}日`;
+    if (d.toDateString() === today.toDateString()) label = '今日';
+    else if (d.toDateString() === yesterday.toDateString()) label = '昨天';
+
+    return { time, label };
+  };
+
+  // 渲染獨立的生理卡片
+  const renderVitalBlock = (title: string, type: 'temp'|'hr'|'bp'|'sugar', data: any) => {
+    const status = checkVitalStatus(type, data);
+    const colors = getVitalColors(status);
+    const { time, label } = formatTime(data?.ts);
+
+    return (
+      <View style={styles.vitalBlock}>
+        <Text style={styles.vitalTitle}>{title}</Text>
+        <View style={styles.vitalCardWrap}>
+          {/* 上半部：數據區 */}
+          <View style={[styles.vitalCardTop, { backgroundColor: colors.top }]}>
+            {data ? (
+              type === 'bp' ? (
+                <>
+                  <Text style={[styles.vitalValue, { fontSize: 26 }]}>{data.sys}</Text>
+                  <Text style={[styles.vitalValue, { fontSize: 26, marginBottom: 2 }]}>{data.dia}</Text>
+                  <Text style={[styles.vitalUnit, { fontSize: 12 }]}>mmhg</Text>
+                </>
+              ) : type === 'sugar' ? (
+                <>
+                  <Text style={[styles.vitalValue, { fontSize: 28, marginTop: 4, marginBottom: 2 }]}>{data.val}</Text>
+                  <Text style={[styles.vitalUnit, { fontSize: 12 }]}>{data.type}</Text>
+                  <Text style={[styles.vitalUnit, { fontSize: 12 }]}>mg/dl</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.vitalValue, { fontSize: 34, marginBottom: 2 }]}>{data.val}</Text>
+                  <Text style={[styles.vitalUnit, { fontSize: 14 }]}>{type === 'temp' ? '°C' : 'bpm'}</Text>
+                </>
+              )
+            ) : (
+              <Text style={styles.vitalValue}>--</Text>
+            )}
+          </View>
+          {/* 下半部：時間區 */}
+          <View style={[styles.vitalCardBottom, { backgroundColor: colors.bottom }]}>
+            <Text style={styles.vitalTimeText}>{time}</Text>
+            <Text style={styles.vitalLabelText}>{label}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* ==========================================
-            Header 區塊：長輩切換頭像列
-            ========================================== */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        
+        {/* Header 區塊：長輩切換頭像列 */}
         <View style={styles.header}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarList}>
-            
-            {/* 動態渲染綁定的長輩 */}
             {linkedCareTargets.map((target) => {
               const isActive = target.id === activePatientId;
               return (
@@ -98,461 +203,131 @@ export default function FamilyHomeScreen() {
                 </Pressable>
               );
             })}
-
-            {/* 新增長輩按鈕 */}
             <Pressable onPress={() => router.push("/care-target/create")}>
-              <View style={styles.avatarAdd}>
-                <Text style={styles.avatarAddText}>+</Text>
-              </View>
+              <View style={styles.avatarAdd}><Text style={styles.avatarAddText}>+</Text></View>
             </Pressable>
-            
           </ScrollView>
 
-          {/* 右上角選單按鈕 (解除綁定/登出) */}
           <Pressable onPress={onMenuPress} style={styles.menuIcon}>
-            <View style={styles.menuLine} />
-            <View style={styles.menuLine} />
-            <View style={styles.menuLine} />
+            <View style={styles.menuLine} /><View style={styles.menuLine} /><View style={styles.menuLine} />
           </Pressable>
         </View>
 
-        {/* ==========================================
-            使用者資訊區塊 (姓名 + 邀請碼)
-            ========================================== */}
+        {/* 使用者資訊區塊 */}
         <View style={styles.userInfo}>
           <Text style={styles.userName}>{activePatient?.name ?? "尚未選擇"}</Text>
-          
-          <View style={styles.inviteBadge}>
-            <Text style={styles.inviteText}>邀請碼:{activePatient?.inviteCode ?? "無"}</Text>
-          </View>
-          
-          {/* 複製按鈕 (重現設計圖的重疊方框) */}
+          <View style={styles.inviteBadge}><Text style={styles.inviteText}>邀請碼:{activePatient?.inviteCode ?? "無"}</Text></View>
           <Pressable onPress={copyInviteCode} style={styles.copyIconWrap}>
-            <View style={styles.copyIconBack} />
-            <View style={styles.copyIconFront} />
+            <View style={styles.copyIconBack} /><View style={styles.copyIconFront} />
           </Pressable>
         </View>
 
-        {/* ==========================================
-            今日用藥進度卡片 (🚨 以下目前為假資料)
-            ========================================== */}
+        {/* 今日用藥進度卡片 */}
         <View style={styles.medCard}>
           <Text style={styles.medTitle}>今日用藥進度</Text>
-          <Text style={styles.medProgress}>已服用 2/3 次</Text>
-          <Text style={styles.medDetail}>14:30 飯後高血壓藥 (已確認 ✅)</Text>
+          {stats.total > 0 ? (
+            <><Text style={styles.medProgress}>已準備就緒</Text><Text style={styles.medDetail}>等待看護回報今日服藥狀況...</Text></>
+          ) : (
+            <View style={{ alignItems: "center", marginTop: 10 }}>
+              <Text style={{ fontSize: 16, color: "#999", fontWeight: "bold" }}>目前沒有任何藥單</Text>
+              <Text style={{ fontSize: 14, color: "#CCC", marginTop: 4 }}>請看護協助新增藥單後啟用</Text>
+            </View>
+          )}
         </View>
 
-        {/* ==========================================
-            生理數據卡片 (🚨 以下目前為假資料)
-            ========================================== */}
-        <View style={styles.vitalsCard}>
-          <View style={styles.vitalsRow}>
-            
-            {/* 體溫 */}
-            <View style={styles.vitalCol}>
-              <Text style={styles.vitalTitle}>體溫</Text>
-              <View style={styles.vitalBox}>
-                <View style={[styles.vitalTop, { backgroundColor: '#FA7474' }]}>
-                  <Text style={styles.vitalValue}>37</Text>
-                  <Text style={styles.vitalUnit}>°C</Text>
-                </View>
-                <View style={[styles.vitalBottom, { backgroundColor: '#987A7A' }]}>
-                  <Text style={styles.vitalTime}>8:00</Text>
-                  <Text style={styles.vitalDate}>今日</Text>
-                </View>
-              </View>
+        {/* 生理數據卡片 (✅ 動態資料綁定) */}
+        <View style={styles.vitalsOuterCard}>
+          {!vitals.hasAnyData ? (
+            <View style={{ paddingVertical: 30, alignItems: "center" }}>
+              <Text style={{ fontSize: 18, color: "#999", fontWeight: "bold" }}>尚無生理數據紀錄</Text>
+              <Text style={{ fontSize: 14, color: "#CCC", marginTop: 8 }}>長輩或看護開始記錄後將顯示於此</Text>
             </View>
-
-            {/* 心跳 */}
-            <View style={styles.vitalCol}>
-              <Text style={styles.vitalTitle}>心跳</Text>
-              <View style={styles.vitalBox}>
-                <View style={[styles.vitalTop, { backgroundColor: '#D4D4D4' }]}>
-                  <Text style={styles.vitalValue}>85</Text>
-                  <Text style={styles.vitalUnit}>bpm</Text>
-                </View>
-                <View style={[styles.vitalBottom, { backgroundColor: '#8E8E8E' }]}>
-                  <Text style={styles.vitalTime}>8:00</Text>
-                  <Text style={styles.vitalDate}>昨天</Text>
-                </View>
-              </View>
+          ) : (
+            <View style={styles.vitalsGrid}>
+              {renderVitalBlock('體溫', 'temp', vitals.temp)}
+              {renderVitalBlock('心跳', 'hr', vitals.hr)}
+              {renderVitalBlock('血壓', 'bp', vitals.bp)}
+              {renderVitalBlock('血糖', 'sugar', vitals.sugar)}
             </View>
-
-            {/* 血壓 */}
-            <View style={styles.vitalCol}>
-              <Text style={styles.vitalTitle}>血壓</Text>
-              <View style={styles.vitalBox}>
-                <View style={[styles.vitalTop, { backgroundColor: '#7AEE90', paddingVertical: 4 }]}>
-                  <Text style={styles.vitalValueSm}>120</Text>
-                  <Text style={styles.vitalValueSm}>80</Text>
-                  <Text style={styles.vitalUnitXs}>mmhg</Text>
-                </View>
-                <View style={[styles.vitalBottom, { backgroundColor: '#849F84' }]}>
-                  <Text style={styles.vitalTime}>8:00</Text>
-                  <Text style={styles.vitalDate}>今日</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* 血糖 */}
-            <View style={styles.vitalCol}>
-              <Text style={styles.vitalTitle}>血糖</Text>
-              <View style={styles.vitalBox}>
-                <View style={[styles.vitalTop, { backgroundColor: '#D4D4D4' }]}>
-                  <Text style={[styles.vitalValueSm, { marginTop: 4 }]}>90</Text>
-                  <Text style={styles.vitalUnitXs}>飯前</Text>
-                  <Text style={styles.vitalUnitXs}>mg/dl</Text>
-                </View>
-                <View style={[styles.vitalBottom, { backgroundColor: '#8E8E8E' }]}>
-                  <Text style={styles.vitalTime}>16:30</Text>
-                  <Text style={styles.vitalDate}>3月16日</Text>
-                </View>
-              </View>
-            </View>
-
-          </View>
-
-          {/* 查看圖表按鈕 (✅ 已綁定跳轉) */}
-          <Pressable onPress={() => router.push("/family/dashboard")} style={styles.chartBtn}>
+          )}
+          <Pressable onPress={() => router.push("/family/dashboard" as any)} style={styles.chartBtn}>
             <Text style={styles.chartBtnText}>查看圖表 📊</Text>
           </Pressable>
         </View>
 
-        {/* ==========================================
-            底部三大功能按鈕 (✅ 已綁定跳轉路徑)
-            ========================================== */}
+        {/* 底部三大功能按鈕 */}
         <View style={styles.actionsRow}>
           <Pressable onPress={() => router.push("/family/list")} style={[styles.actionBtn, { backgroundColor: '#FCE671' }]}>
-            <Text style={styles.actionEmoji}>📋</Text>
-            <Text style={styles.actionText}>藥單紀錄</Text>
+            <Text style={styles.actionEmoji}>📋</Text><Text style={styles.actionText}>藥單紀錄</Text>
           </Pressable>
           <Pressable onPress={() => router.push("/family/condition")} style={[styles.actionBtn, { backgroundColor: '#85C6F9' }]}>
-            <Text style={styles.actionEmoji}>📹</Text>
-            <Text style={styles.actionText}>狀況查看</Text>
+            <Text style={styles.actionEmoji}>📹</Text><Text style={styles.actionText}>狀況查看</Text>
           </Pressable>
           <Pressable onPress={() => router.push("/family/voice")} style={[styles.actionBtn, { backgroundColor: '#85E785' }]}>
-            <Text style={styles.actionEmoji}>🎙️</Text>
-            <Text style={styles.actionText}>錄製語音</Text>
+            <Text style={styles.actionEmoji}>🎙️</Text><Text style={styles.actionText}>錄製語音</Text>
           </Pressable>
         </View>
-
       </ScrollView>
-
-      {/* ==========================================
-          底部導覽列
-          (備註: 未來建議移至 app/family/_layout.tsx 以支援全域切換)
-          ========================================== */}
-      <View style={styles.bottomNav}>
-        <Pressable><Text style={styles.navIcon}>🏠</Text></Pressable>
-        <Pressable><Text style={styles.navIcon}>📅</Text></Pressable>
-        <Pressable><Text style={styles.navIcon}>🔔</Text></Pressable>
-        <Pressable><Text style={styles.navIcon}>💬</Text></Pressable>
-      </View>
-
     </View>
   );
 }
 
-// ==========================================
-// 樣式表 (將 Tailwind 完美轉譯為 RN StyleSheet)
-// ==========================================
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  scrollContent: {
-    paddingBottom: 120, // 避免內容被底部導覽列遮擋
-    paddingTop: 60, // 避開手機狀態列(瀏海)
-  },
-  // --- Header ---
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-  },
-  avatarList: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarActive: {
-    backgroundColor: "#000", // 設計圖當前選中的是深色嗎？我先設定預設凸顯色
-  },
-  avatarInactive: {
-    backgroundColor: "#D9D9D9",
-  },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: "bold",
-  },
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  scrollContent: { paddingBottom: 40, paddingTop: 60 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8 },
+  avatarList: { flexDirection: "row", alignItems: "center", gap: 8 },
+  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: "center", alignItems: "center" },
+  avatarActive: { backgroundColor: "#000" },
+  avatarInactive: { backgroundColor: "#D9D9D9" },
+  avatarText: { fontSize: 20, fontWeight: "bold" },
   textWhite: { color: "#FFF" },
   textGray: { color: "#666" },
-  avatarAdd: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#E0E0E0",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarAddText: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#000",
-    marginBottom: 4,
-  },
-  menuIcon: {
-    height: 28,
-    width: 36,
-    justifyContent: "space-around",
-    marginLeft: 16,
-  },
-  menuLine: {
-    height: 4,
-    width: "100%",
-    backgroundColor: "#000",
-    borderRadius: 2,
-  },
-  // --- User Info ---
-  userInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  userName: {
-    fontSize: 28,
-    fontWeight: "bold",
-    letterSpacing: 2,
-    color: "#000",
-    marginRight: 12,
-  },
-  inviteBadge: {
-    backgroundColor: "#E5E5E5",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginRight: 12,
-  },
-  inviteText: {
-    color: "#4B5563", // Tailwind gray-600
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  copyIconWrap: {
-    width: 24,
-    height: 24,
-    position: "relative",
-  },
-  copyIconBack: {
-    position: "absolute",
-    top: 2,
-    left: 2,
-    width: 18,
-    height: 18,
-    borderWidth: 2,
-    borderColor: "#000",
-    borderRadius: 4,
-  },
-  copyIconFront: {
-    position: "absolute",
-    bottom: 2,
-    right: 2,
-    width: 18,
-    height: 18,
-    borderWidth: 2,
-    borderColor: "#000",
-    borderRadius: 4,
-    backgroundColor: "#FFF",
-  },
-  // --- Med Card ---
-  medCard: {
-    backgroundColor: "#F7F7F7",
-    marginHorizontal: 20,
-    borderRadius: 20,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  medTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#000",
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  medProgress: {
-    fontSize: 26,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#000",
-    marginBottom: 12,
-  },
-  medDetail: {
-    fontSize: 16,
-    textAlign: "center",
-    color: "#000",
-    fontWeight: "500",
-  },
-  // --- Vitals Card ---
-  vitalsCard: {
-    backgroundColor: "#F2F2F2",
-    marginHorizontal: 20,
-    marginTop: 16,
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  vitalsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  vitalCol: {
-    flex: 1,
-    alignItems: "center",
-  },
-  vitalTitle: {
-    fontWeight: "bold",
-    fontSize: 16,
-    color: "#000",
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  vitalBox: {
-    width: "100%",
-    height: 130,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  vitalTop: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  vitalBottom: {
-    height: 46,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  vitalValue: {
-    fontSize: 34,
-    fontWeight: "600",
-    color: "#000",
-    lineHeight: 38,
-  },
-  vitalValueSm: {
-    fontSize: 26,
-    fontWeight: "600",
-    color: "#000",
-    lineHeight: 30,
-  },
-  vitalUnit: {
-    fontSize: 14,
-    color: "#000",
-  },
-  vitalUnitXs: {
-    fontSize: 12,
-    color: "#000",
-  },
-  vitalTime: {
-    color: "#FFF",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  vitalDate: {
-    color: "#F3F4F6", // Tailwind gray-100
-    fontSize: 12,
-  },
-  chartBtn: {
-    backgroundColor: "#F5A623",
-    borderRadius: 24,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    alignSelf: "center",
-    marginTop: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  chartBtnText: {
-    color: "#FFF",
-    fontSize: 17,
-    fontWeight: "bold",
-  },
-  // --- Actions Row ---
-  actionsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-    marginHorizontal: 20,
-    marginTop: 20,
-  },
-  actionBtn: {
-    flex: 1,
-    aspectRatio: 1, // 保持正方形
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  actionEmoji: {
-    fontSize: 40,
-    marginBottom: 8,
-  },
-  actionText: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#000",
-    letterSpacing: 1,
-  },
-  // --- Bottom Nav ---
-  bottomNav: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "#EAEAEA",
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingBottom: 32, // 適應 iPhone 底部海苔條
-    borderTopWidth: 1,
-    borderColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  navIcon: {
-    fontSize: 32,
-  }
+  avatarAdd: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#E0E0E0", justifyContent: "center", alignItems: "center" },
+  avatarAddText: { fontSize: 24, fontWeight: "bold", color: "#000", marginBottom: 4 },
+  menuIcon: { height: 28, width: 36, justifyContent: "space-around", marginLeft: 16 },
+  menuLine: { height: 4, width: "100%", backgroundColor: "#000", borderRadius: 2 },
+  userInfo: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginTop: 8, marginBottom: 16 },
+  userName: { fontSize: 28, fontWeight: "bold", letterSpacing: 2, color: "#000", marginRight: 12 },
+  inviteBadge: { backgroundColor: "#E5E5E5", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 12 },
+  inviteText: { color: "#4B5563", fontWeight: "600", fontSize: 14 },
+  copyIconWrap: { width: 24, height: 24, position: "relative" },
+  copyIconBack: { position: "absolute", top: 2, left: 2, width: 18, height: 18, borderWidth: 2, borderColor: "#000", borderRadius: 4 },
+  copyIconFront: { position: "absolute", bottom: 2, right: 2, width: 18, height: 18, borderWidth: 2, borderColor: "#000", borderRadius: 4, backgroundColor: "#FFF" },
+  
+  // 藥單卡片
+  medCard: { backgroundColor: "#F7F7F7", marginHorizontal: 20, borderRadius: 20, paddingVertical: 20, paddingHorizontal: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
+  medTitle: { fontSize: 22, fontWeight: "bold", textAlign: "center", color: "#000", letterSpacing: 1, marginBottom: 8 },
+  medProgress: { fontSize: 26, fontWeight: "bold", textAlign: "center", color: "#000", marginBottom: 12 },
+  medDetail: { fontSize: 16, textAlign: "center", color: "#000", fontWeight: "500" },
+  
+  // 生理數據卡片外框
+  vitalsOuterCard: { backgroundColor: "#F2F2F2", marginHorizontal: 20, marginTop: 16, borderRadius: 20, padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
+  vitalsGrid: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  
+  // 獨立的生理數據小方塊
+  vitalBlock: { flex: 1, alignItems: "center" },
+  vitalTitle: { fontSize: 18, fontWeight: "bold", color: "#000", letterSpacing: 2, marginBottom: 8 },
+  vitalCardWrap: { width: "100%", height: 130, borderRadius: 12, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
+  
+  // 💡 修正這裡：拿掉過多的 padding，改用 justifyContent 均勻分佈
+  vitalCardTop: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 2 },
+  vitalCardBottom: { height: 46, justifyContent: "center", alignItems: "center" },
+  
+  // 💡 修正這裡：把 lineHeight 拿掉，避免行高過大擠壓到後面的單位
+  vitalValue: { color: "#000", fontWeight: "500" }, 
+  
+  // 💡 修正這裡：拿掉 marginTop 避免單位被往下推
+  vitalUnit: { color: "#000", fontWeight: "400" },
+  
+  vitalTimeText: { color: "#FFF", fontSize: 15, fontWeight: "500" },
+  vitalLabelText: { color: "#F3F4F6", fontSize: 13 },
+  
+
+  chartBtn: { backgroundColor: "#F5A623", borderRadius: 24, paddingVertical: 10, paddingHorizontal: 24, alignSelf: "center", marginTop: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  chartBtnText: { color: "#FFF", fontSize: 17, fontWeight: "bold" },
+  actionsRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, marginHorizontal: 20, marginTop: 20 },
+  actionBtn: { flex: 1, aspectRatio: 1, borderRadius: 20, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2 },
+  actionEmoji: { fontSize: 40, marginBottom: 8 },
+  actionText: { fontSize: 15, fontWeight: "bold", color: "#000", letterSpacing: 1 }
 });
