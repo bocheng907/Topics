@@ -1,131 +1,305 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, Image, ActivityIndicator, ScrollView, Pressable, TextInput, Alert } from "react-native";
+import {
+  View,
+  Text,
+  Image,
+  ActivityIndicator,
+  ScrollView,
+  Pressable,
+  TextInput,
+  Alert,
+} from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { useStore } from "@/src/store/useStore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
+} from "firebase/firestore";
+import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
-import { usePrescriptionsRepo } from "@/src/store/prescriptions";
+import { useAuth } from "@/src/auth/useAuth";
+import { createMedicationReminders } from "@/src/reminders/createMedicationReminders";
 
-// ✅ 1. 確保 time 是字串陣列
-type Item = { name: string; dose: string; time: string[]; note: string };
-
-const TIME_LABELS: Record<string, string> = {
-  morning: "早上",
-  noon: "中午",
-  afternoon: "下午",
-  night: "晚上",
+type Item = {
+  name: string;
+  dose: string;
+  quantity: string;
+  time: string[];
+  note: string;
 };
 
-function safeParseItems(itemsJson?: string): Item[] | null {
-  if (!itemsJson) return null;
-  try {
-    const data = JSON.parse(itemsJson);
-    return Array.isArray(data) ? data : null;
-  } catch {
-    return null;
-  }
+function toArray(v: any): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x));
+  if (typeof v === "string" && v.trim()) return [v];
+  return [];
 }
 
-export default function ResultScreen() { // ✅ 2. 修正組件名稱
-  const { imageUri, itemsJson, id, title: incomingTitle } = useLocalSearchParams<{ 
-    imageUri?: string; 
-    itemsJson?: string;
-    id?: string;
-    title?: string;
-  }>();
-  
-  const { activeCareTargetId } = useActiveCareTarget();
-  const { deletePrescription } = useStore();
-  const repo = usePrescriptionsRepo();
+function mapItemFromFirestore(it: any): Item {
+  return {
+    name: it.drug_name_zh ?? it.drug_name ?? it.name ?? "（未辨識藥品名稱）",
+    dose: it.dose ?? it.dosage ?? "未提供",
+    quantity: it.quantity ?? "依醫囑",
+    time: toArray(it.usage_zh ?? it.usage ?? it.time),
+    note: it.note_zh ?? "",
+  };
+}
 
-  const editedItems = useMemo(() => safeParseItems(itemsJson), [itemsJson]);
+function mapItemFromAnalyze(it: any): Item {
+  return {
+    name: it.drug_name ?? it.name ?? "（未辨識藥品名稱）",
+    dose: it.dosage ?? it.dose ?? "未提供",
+    quantity: it.quantity ?? "依醫囑",
+    time: it.usage_zh ? [it.usage_zh] : [],
+    note: it.note_zh ?? "",
+  };
+}
+
+function makePrescriptionId(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  const ss = String(date.getSeconds()).padStart(2, "0");
+
+  return `${y}-${m}-${d}-${hh}-${mm}-${ss}`;
+}
+
+export default function ResultScreen() {
+  const { prescriptionId, imageUrl, draftTitle, analyzeResult } =
+    useLocalSearchParams<{
+      prescriptionId?: string;
+      imageUrl?: string;
+      draftTitle?: string;
+      analyzeResult?: string;
+    }>();
+
+  const { activePatientId } = useActiveCareTarget();
+  const { user } = useAuth();
+
   const [status, setStatus] = useState<"loading" | "done">("loading");
   const [items, setItems] = useState<Item[]>([]);
-  const [title, setTitle] = useState(incomingTitle || "");
-  const [submitting, setSubmitting] = useState(false);
+  const [title, setTitle] = useState("");
+  const [imageUri, setImageUri] = useState<string | undefined>(undefined);
+  const [globalMemo, setGlobalMemo] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const isDraftMode = !prescriptionId && !!analyzeResult;
+
+  const safeAnalyze = useMemo(() => {
+    try {
+      return analyzeResult ? JSON.parse(analyzeResult) : null;
+    } catch {
+      return null;
+    }
+  }, [analyzeResult]);
 
   useEffect(() => {
-    // ✅ 3. 核心修正：如果有傳回來的資料，直接設為 done，不再啟動 setTimeout
-    if (editedItems) {
-      setItems(editedItems);
+    if (isDraftMode) {
+      const safe = safeAnalyze ?? {};
+
+      const rawMeds =
+        safe.medicines ??
+        safe.items ??
+        safe.result?.medicines ??
+        safe.result?.items ??
+        safe.data?.medicines ??
+        safe.data?.items ??
+        safe.payload?.medicines ??
+        safe.payload?.items ??
+        [];
+
+      const medicines: any[] = Array.isArray(rawMeds)
+        ? rawMeds
+        : rawMeds && typeof rawMeds === "object"
+        ? Object.values(rawMeds)
+        : [];
+
+      setImageUri(imageUrl);
+      setTitle(draftTitle ?? "未命名藥單");
+      setGlobalMemo(safe.memo ?? "");
+      setItems(medicines.map((it) => mapItemFromAnalyze(it)));
       setStatus("done");
-    } else {
-      // 只有第一次進來（沒 itemsJson）才跑模擬解析
-      setStatus("loading");
-      const t = setTimeout(() => {
-        setItems([
-          { name: "普拿疼", dose: "1 顆", time: ["morning"], note: "飯後服用" },
-          { name: "胃藥", dose: "1 包", time: ["night"], note: "睡前服用" },
-        ]);
-        setStatus("done");
-      }, 1500);
-      return () => clearTimeout(t);
-    }
-  }, [editedItems]);
-
-  const goEdit = () => {
-    router.replace({
-      pathname: "/caregiver/edit",
-      params: {
-        id: id ?? "",
-        imageUri: imageUri ?? "",
-        itemsJson: JSON.stringify(items),
-        title: title,
-      },
-    });
-  };
-
-  const onConfirmSave = async () => {
-    if (!activeCareTargetId) {
-      Alert.alert("錯誤", "請先選擇長輩");
       return;
     }
-    setSubmitting(true);
-    try {
-      const payload = {
-        careTargetId: activeCareTargetId,
-        title: title.trim(), // ✅ 傳入標題
-        sourceImageUrl: imageUri,
-        status: "parsed" as const,
-        items: items.map(it => ({
-          drug_name_zh: it.name,
-          dose: it.dose,
-          time_of_day: it.time as any,
-          note_zh: it.note,
-        })),
-      };
 
-      if (id) {
-        // ✅ 模式 A：直接更新現有資料，ID 不會變
-        await repo.update(id, payload);
-      } else {
-        // ✅ 模式 B：新增紀錄
-        await repo.create(payload);
-      }
-    
-      Alert.alert("成功", id ? "紀錄已更新" : "藥單已儲存", [
-        { text: "確定", onPress: () => router.replace("/caregiver/list") }
-      ]);
-    } catch (e) {
-      Alert.alert("儲存失敗");
-    } finally {
-      setSubmitting(false);
+    if (!prescriptionId) {
+      Alert.alert("錯誤", "缺少藥單 ID");
+      router.replace("/caregiver");
+      return;
     }
-  };
+
+    (async () => {
+      try {
+        const ref = doc(db, "prescriptions", prescriptionId);
+        const snap = await getDoc(ref);
+
+        if (!snap.exists()) {
+          Alert.alert("錯誤", "找不到藥單資料");
+          router.replace("/caregiver");
+          return;
+        }
+
+        const data = snap.data() as any;
+
+        setImageUri(data.sourceImageUrl);
+        setTitle(data.title ?? "");
+        setGlobalMemo(data.memo ?? "");
+
+        const itemsQ = query(
+          collection(db, "prescriptions", prescriptionId, "items"),
+          orderBy("__name__", "asc")
+        );
+        const itemsSnap = await getDocs(itemsQ);
+
+        const mapped = itemsSnap.docs.map((d) => mapItemFromFirestore(d.data()));
+        setItems(mapped);
+
+        setStatus("done");
+      } catch (e) {
+        console.log("read prescription error:", e);
+        Alert.alert("讀取失敗", "無法讀取藥單資料");
+        router.replace("/caregiver");
+      }
+    })();
+  }, [prescriptionId, isDraftMode, safeAnalyze, imageUrl, draftTitle]);
+
+  async function handlePrimaryAction() {
+    if (isDraftMode) {
+      if (!user) {
+        Alert.alert("尚未登入", "請先登入");
+        return;
+      }
+
+      if (!activePatientId) {
+        Alert.alert("尚未選擇長輩", "請先選擇長輩");
+        return;
+      }
+
+      const finalTitle = title.trim();
+      if (!finalTitle) {
+        Alert.alert("請輸入標題", "紀錄標題不能為空白");
+        return;
+      }
+
+      try {
+        setSaving(true);
+
+        const safe = safeAnalyze ?? {};
+
+        const rawMeds =
+          safe.medicines ??
+          safe.items ??
+          safe.result?.medicines ??
+          safe.result?.items ??
+          safe.data?.medicines ??
+          safe.data?.items ??
+          safe.payload?.medicines ??
+          safe.payload?.items ??
+          [];
+
+        const medicines: any[] = Array.isArray(rawMeds)
+          ? rawMeds
+          : rawMeds && typeof rawMeds === "object"
+          ? Object.values(rawMeds)
+          : [];
+
+        const prescriptionId = makePrescriptionId();
+        const presRef = doc(db, "prescriptions", prescriptionId);
+
+        await setDoc(presRef, {
+          createdBy: user.uid,
+          patientId: activePatientId,
+          sourceImageUrl: imageUrl ?? "",
+          status: "parsed",
+          title: finalTitle,
+          createdAt: serverTimestamp(),
+          clinic_name: safe.clinic_name ?? "",
+          visit_date: safe.visit_date ?? "",
+          patient_name: safe.patient_name ?? "",
+          memo: safe.memo ?? "",
+          aiRaw: safe,
+        });
+
+        const batch = writeBatch(db);
+
+        for (const it of medicines) {
+          const itemRef = doc(collection(db, "prescriptions", presRef.id, "items"));
+
+          batch.set(itemRef, {
+            raw: it,
+            drug_name_zh: it.drug_name ?? "",
+            dose: it.dosage ?? "",
+            quantity: it.quantity ?? "",
+            usage_zh: it.usage_zh ?? "",
+            drug_name_translated: "",
+            note_zh: "",
+            note_translated: "",
+          });
+        }
+
+        await batch.commit();
+
+console.log("[save] prescriptionId =", presRef.id);
+console.log("[save] createdBy =", user.uid);
+console.log("[save] patientId =", activePatientId);
+
+// ✅ ⭐ 加在這裡 ⭐
+await createMedicationReminders({
+  patientId: activePatientId,
+  prescriptionId: presRef.id,
+  items: medicines.map((it) => ({
+    drug_name_zh: it.drug_name ?? "",
+    dose: it.dosage ?? "",
+    time_of_day: it.usage_zh ?? "",
+  })),
+});
+
+router.replace("/caregiver/list");
+      } catch (e) {
+        console.log("save prescription error:", e);
+        Alert.alert("儲存失敗", "無法儲存藥單資料");
+      } finally {
+        setSaving(false);
+      }
+
+      return;
+    }
+
+    router.replace("/caregiver/list");
+  }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop:90, gap: 16 }}>
+    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 16 }}>
       <Text style={{ fontSize: 24, fontWeight: "900", color: "#333" }}>
         {status === "loading" ? "解析中..." : "確認藥單資訊"}
       </Text>
 
       {imageUri && (
-        <Image source={{ uri: imageUri }} style={{ width: "100%", height: 200, borderRadius: 12, backgroundColor: '#eee' }} resizeMode="contain" />
+        <Image
+          source={{ uri: imageUri }}
+          style={{
+            width: "100%",
+            height: 200,
+            borderRadius: 12,
+            backgroundColor: "#eee",
+          }}
+          resizeMode="contain"
+        />
       )}
 
       {status === "loading" ? (
-        <View style={{ padding: 40, alignItems: 'center' }}>
+        <View style={{ padding: 40, alignItems: "center" }}>
           <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={{ marginTop: 10, opacity: 0.6 }}>AI 正在努力解析中...</Text>
+          <Text style={{ marginTop: 10, opacity: 0.6 }}>
+            AI 正在努力解析中...
+          </Text>
         </View>
       ) : (
         <View style={{ gap: 12 }}>
@@ -134,43 +308,90 @@ export default function ResultScreen() { // ✅ 2. 修正組件名稱
             <TextInput
               value={title}
               onChangeText={setTitle}
-              placeholder="例如：1/18 診所感冒藥"
-              style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 12, backgroundColor: "#fff" }}
+              editable={isDraftMode && !saving}
+              placeholder="請輸入紀錄標題"
+              style={{
+                borderWidth: 1,
+                borderColor: "#ccc",
+                borderRadius: 8,
+                padding: 12,
+                backgroundColor: "#f5f5f5",
+              }}
             />
           </View>
 
-          <Text style={{ fontSize: 18, fontWeight: "800", marginTop: 8 }}>藥品明細</Text>
+          <Text style={{ fontSize: 18, fontWeight: "800", marginTop: 8 }}>
+            藥品明細
+          </Text>
 
           {items.map((it, idx) => (
-            <View key={idx} style={{ padding: 16, borderWidth: 1, borderColor: '#eee', borderRadius: 12, backgroundColor: '#fff', gap: 6 }}>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: "#007AFF" }}>{it.name}</Text>
+            <View
+              key={idx}
+              style={{
+                padding: 16,
+                borderWidth: 1,
+                borderColor: "#eee",
+                borderRadius: 12,
+                backgroundColor: "#fff",
+                gap: 6,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "800",
+                  color: "#007AFF",
+                }}
+              >
+                {it.name}
+              </Text>
               <View style={{ gap: 2 }}>
-                <Text style={{ fontSize: 15, color: "#444" }}>用法劑量：{it.dose}</Text>
                 <Text style={{ fontSize: 15, color: "#444" }}>
-                  服用時段：{it.time.map(t => TIME_LABELS[t] || t).join(", ")}
+                  用法劑量：{it.dose}
                 </Text>
-                <Text style={{ 
-                  fontSize: 15, 
-                  color: it.note && it.note.trim() !== "" ? "#666" : "#CCC", 
-                  marginTop: 2 
-                }}>
-                  備註：{it.note && it.note.trim() !== "" ? it.note : "無"}
+                <Text style={{ fontSize: 15, color: "#444" }}>
+                  數量：{it.quantity}
+                </Text>
+                <Text style={{ fontSize: 15, color: "#444" }}>
+                  服用時段：{it.time.join(", ") || "未提供"}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 15,
+                    color: globalMemo ? "#666" : "#CCC",
+                    marginTop: 2,
+                  }}
+                >
+                  備註：{globalMemo || "無"}
                 </Text>
               </View>
             </View>
           ))}
 
           <View style={{ marginTop: 20, gap: 12 }}>
-            <Pressable onPress={goEdit} style={{ padding: 16, borderWidth: 1, borderColor: "#007AFF", borderRadius: 12 }}>
-              <Text style={{ color: "#007AFF", textAlign: "center", fontWeight: "700" }}>回編輯頁修正</Text>
-            </Pressable>
-            <Pressable 
-              onPress={onConfirmSave} 
-              disabled={submitting}
-              style={{ padding: 18, backgroundColor: submitting ? "#ccc" : "#007AFF", borderRadius: 12 }}
+            <Pressable
+              onPress={handlePrimaryAction}
+              style={{
+                padding: 18,
+                backgroundColor: "#007AFF",
+                borderRadius: 12,
+                opacity: saving ? 0.6 : 1,
+              }}
+              disabled={saving}
             >
-              <Text style={{ color: "#fff", textAlign: "center", fontWeight: "800", fontSize: 18 }}>
-                {id ? "儲存更新" : "確認並存入病歷"}
+              <Text
+                style={{
+                  color: "#fff",
+                  textAlign: "center",
+                  fontWeight: "800",
+                  fontSize: 18,
+                }}
+              >
+                {saving
+                  ? "儲存中..."
+                  : isDraftMode
+                  ? "確認並儲存"
+                  : "返回藥單列表"}
               </Text>
             </Pressable>
           </View>

@@ -16,9 +16,9 @@ export default function CareTargetSelectScreen() {
   const { user, ready } = useAuth();
   const {
     ready: ctReady,
-    activeCareTargetId,
+    activePatientId,              // ✅ 改這裡
     linkedCareTargets,
-    setActiveCareTargetId,
+    setActivePatientId,           // ✅ 改這裡
   } = useActiveCareTarget();
 
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export default function CareTargetSelectScreen() {
     if (!user) return;
     try {
       setSubmittingId(id);
-      await setActiveCareTargetId(id);
+      await setActivePatientId(id); // ✅ 改這裡
       const home = user.role === "caregiver" ? "/caregiver" : "/family";
       router.replace(home as any);
     } catch (e) {
@@ -60,7 +60,7 @@ export default function CareTargetSelectScreen() {
       </Text>
 
       {(linkedCareTargets as CareTarget[]).map((ct) => {
-        const isSelected = ct.id === activeCareTargetId;
+        const isSelected = ct.id === activePatientId; // ✅ 改這裡
         return (
           <View 
             key={ct.id}
@@ -81,7 +81,6 @@ export default function CareTargetSelectScreen() {
                 {isSelected && <Text style={{ color: "#007AFF", fontWeight: "800" }}>使用中</Text>}
               </View>
 
-              {/* ✅ 顯示備註內容 */}
               {ct.notes ? (
                 <Text style={{ color: "#666", fontSize: 14 }} numberOfLines={2}>
                   備註：{ct.notes}
@@ -91,7 +90,6 @@ export default function CareTargetSelectScreen() {
               )}
             </Pressable>
 
-            {/* 邀請碼與複製區 */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: isSelected ? "#C0D1FF" : "#F2F2F7", paddingTop: 10 }}>
               <View style={{ flex: 1, backgroundColor: isSelected ? "#FFF" : "#F2F2F7", padding: 8, borderRadius: 8 }}>
                 <Text style={{ fontSize: 13, fontWeight: "700", color: "#666" }}>

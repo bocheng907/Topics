@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from "react-native";
-import { router, Stack } from "expo-router";
+// app/(auth)/login.tsx
 import { useAuth } from "@/src/auth/useAuth";
+import { router, Stack } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -17,7 +18,11 @@ export default function LoginScreen() {
     try {
       setLoading(true);
       await login(email, password);
-      router.replace("/care-target/select");
+      
+      // 💡 登入成功後，跳轉到根目錄的轉運站 (app/index.tsx)
+      // 轉運站會自動根據使用者的身分 (role)，派發到 /family 或 /caregiver 的主畫面
+      //router.replace("/");
+      
     } catch (e: any) {
       Alert.alert("登入失敗", e?.message ?? "帳號或密碼錯誤");
     } finally {
