@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { View, Text, TextInput, ScrollView, Pressable, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
-// 定義資料型別，將 time 改為字串陣列以支援多選
 type Item = { name: string; dose: string; time: string[]; note: string };
 
 const TIME_LABELS: Record<string, string> = {
@@ -19,24 +18,20 @@ function safeParseItems(itemsJson?: string): Item[] {
     if (!Array.isArray(data)) return [];
 
     return data.map((it: any) => {
-      // ✅ 修正重點：判斷 time 是否已經是陣列
-      let parsedTime: string[] = ["morning"]; // 預設值
+      let parsedTime: string[] = ["morning"];
 
       if (Array.isArray(it.time)) {
-        // 如果是編輯頁傳回來的 (it.time)
         parsedTime = it.time;
       } else if (Array.isArray(it.time_of_day)) {
-        // 如果是從資料庫/詳細頁傳過來的 (it.time_of_day)
         parsedTime = it.time_of_day;
-      } else if (typeof it.time === 'string' && it.time) {
-        // 如果是舊格式的字串，轉成陣列
+      } else if (typeof it.time === "string" && it.time) {
         parsedTime = [it.time];
       }
 
       return {
         name: it.name || it.drug_name_zh || "",
         dose: it.dose || "",
-        time: parsedTime, // ✅ 確保這裡一定是字串陣列
+        time: parsedTime,
         note: it.note || it.note_zh || "",
       };
     });
@@ -46,11 +41,11 @@ function safeParseItems(itemsJson?: string): Item[] {
 }
 
 export default function CaregiverEditScreen() {
-  const { imageUri, itemsJson, id, title: initialTitle } = useLocalSearchParams<{ 
-    imageUri?: string; 
-    itemsJson?: string; 
-    id?: string; 
-    title?: string 
+  const { imageUri, itemsJson, id, title: initialTitle } = useLocalSearchParams<{
+    imageUri?: string;
+    itemsJson?: string;
+    id?: string;
+    title?: string;
   }>();
 
   const initial = useMemo(() => safeParseItems(itemsJson), [itemsJson]);
@@ -75,15 +70,15 @@ export default function CaregiverEditScreen() {
   }
 
   function onSave() {
-    if (items.some(it => !it.name.trim())) {
+    if (items.some((it) => !it.name.trim())) {
       Alert.alert("請檢查", "藥名不能為空");
       return;
     }
-    // 使用 replace 防止頁面堆疊導致打轉
+
     router.replace({
       pathname: "/caregiver/result",
       params: {
-        id: id ?? "",
+        prescriptionId: id ?? "",
         imageUri: imageUri ?? "",
         itemsJson: JSON.stringify(items),
         title: initialTitle ?? "",
@@ -92,11 +87,21 @@ export default function CaregiverEditScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop:90, paddingBottom: 60, gap: 16 }}>
+    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, paddingBottom: 60, gap: 16 }}>
       <Text style={{ fontSize: 24, fontWeight: "800" }}>修正藥單資訊</Text>
-      
+
       {items.map((it, idx) => (
-        <View key={idx} style={{ padding: 16, borderWidth: 1, borderColor: "#ddd", borderRadius: 12, backgroundColor: "#fefefe", gap: 12 }}>
+        <View
+          key={idx}
+          style={{
+            padding: 16,
+            borderWidth: 1,
+            borderColor: "#ddd",
+            borderRadius: 12,
+            backgroundColor: "#fefefe",
+            gap: 12,
+          }}
+        >
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={{ fontWeight: "800", color: "#007AFF" }}>項目 {idx + 1}</Text>
             <Pressable onPress={() => removeRow(idx)}>
@@ -115,7 +120,7 @@ export default function CaregiverEditScreen() {
 
           <View style={{ gap: 4 }}>
             <Text style={{ fontSize: 14, fontWeight: "600" }}>服用時段 (可多選)</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
               {Object.entries(TIME_LABELS).map(([value, label]) => {
                 const isSelected = it.time.includes(value);
                 return (
@@ -123,7 +128,7 @@ export default function CaregiverEditScreen() {
                     key={value}
                     onPress={() => {
                       const nextTime = isSelected
-                        ? it.time.filter(t => t !== value)
+                        ? it.time.filter((t) => t !== value)
                         : [...it.time, value];
                       updateItem(idx, { time: nextTime });
                     }}
@@ -136,7 +141,7 @@ export default function CaregiverEditScreen() {
                       backgroundColor: isSelected ? "#007AFF" : "#fff",
                     }}
                   >
-                    <Text style={{ color: isSelected ? "#fff" : "#333", fontWeight: '600', fontSize: 13 }}>
+                    <Text style={{ color: isSelected ? "#fff" : "#333", fontWeight: "600", fontSize: 13 }}>
                       {label}
                     </Text>
                   </Pressable>
@@ -173,13 +178,27 @@ export default function CaregiverEditScreen() {
       <Pressable onPress={onSave} style={{ padding: 16, backgroundColor: "#007AFF", borderRadius: 12, marginTop: 10 }}>
         <Text style={{ color: "#fff", textAlign: "center", fontSize: 18, fontWeight: "700" }}>完成修正並預覽</Text>
       </Pressable>
-      <Pressable 
+
+      <Pressable
         onPress={() => {
           Alert.alert("取消編輯", "尚未儲存的變更將會消失，確定要取消嗎？", [
             { text: "繼續編輯", style: "cancel" },
-            { text: "確定取消", style: "destructive", onPress: () => router.back() }
+            {
+              text: "確定取消",
+              style: "destructive",
+              onPress: () => {
+                if (id) {
+                  router.replace({
+                    pathname: "/caregiver/detail",
+                    params: { id },
+                  });
+                } else {
+                  router.replace("/caregiver/list");
+                }
+              },
+            },
           ]);
-        }} 
+        }}
         style={{ padding: 12, marginTop: 4 }}
       >
         <Text style={{ color: "#999", textAlign: "center", fontWeight: "600", fontSize: 15 }}>

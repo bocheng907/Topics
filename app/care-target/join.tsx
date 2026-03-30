@@ -1,59 +1,94 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
-
-const KEY_CARE_TARGETS = "careapp_careTargets_v1";
-const KEY_LINKS = "careapp_careTarget_links_v1";
+import {
+  arrayUnion,
+  collection,
+  doc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import { db } from "@/firebase/firebaseConfig";
 
 export default function CareTargetJoinScreen() {
   const { user } = useAuth();
-  const { setActiveCareTargetId } = useActiveCareTarget();
+  const { setActivePatientId } = useActiveCareTarget();
   const [code, setCode] = useState("");
 
-  const onJoin = async () => {
-    if (!user || !code) return;
-    try {
-      const rawTargets = await AsyncStorage.getItem(KEY_CARE_TARGETS);
-      const allTargets = rawTargets ? JSON.parse(rawTargets) : [];
-      const found = allTargets.find((t: any) => t.inviteCode.toUpperCase() === code.trim().toUpperCase());
+  const normalizedCode = useMemo(() => code.trim().toUpperCase(), [code]);
+  const canSubmit = normalizedCode.length >= 4;
 
-      if (!found) {
+  const onJoin = async () => {
+    if (!user || !normalizedCode) return;
+
+    try {
+      const q = query(
+        collection(db, "patients"),
+        where("inviteCode", "==", normalizedCode)
+      );
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
         Alert.alert("無效的邀請碼", "請確認邀請碼是否正確。");
         return;
       }
 
-      const rawLinks = await AsyncStorage.getItem(KEY_LINKS);
-      const allLinks = rawLinks ? JSON.parse(rawLinks) : {};
-      const userLinks = allLinks[user.uid] || [];
-      
-      if (userLinks.includes(found.id)) {
-        Alert.alert("提示", "您已經加入過這位長輩了。");
-        router.replace("/care-target/select");
+      const foundDoc = snap.docs[0];
+      const found = foundDoc.data() as any;
+
+      const roleField = user.role === "family" ? "families" : "caregivers";
+      const currentList = Array.isArray(found?.[roleField]) ? found[roleField] : [];
+
+      if (currentList.includes(user.uid)) {
+        Alert.alert("提示", "您已經加入過這位長輩了。", [
+          {
+            text: "前往使用",
+            onPress: async () => {
+              await setActivePatientId(foundDoc.id);
+              const home = user.role === "caregiver" ? "/caregiver" : "/family";
+              router.replace(home as any);
+            },
+          },
+        ]);
         return;
       }
 
-      allLinks[user.uid] = [...userLinks, found.id];
-      await AsyncStorage.setItem(KEY_LINKS, JSON.stringify(allLinks));
+      await updateDoc(doc(db, "patients", foundDoc.id), {
+        [roleField]: arrayUnion(user.uid),
+      });
 
-      Alert.alert("成功加入", `已成功連結到：${found.name}`, [
-        { text: "開始使用", 
+      await setActivePatientId(foundDoc.id);
+
+      Alert.alert("成功加入", `已成功連結到：${found?.name ?? "此照顧對象"}`, [
+        {
+          text: "開始使用",
           onPress: async () => {
-            await setActiveCareTargetId(found.id);
-            const home = user?.role === "caregiver" ? "/caregiver" : "/family";
+            const home = user.role === "caregiver" ? "/caregiver" : "/family";
             router.replace(home as any);
-          }
+          },
         },
       ]);
-    } catch (e) {
-      Alert.alert("加入失敗");
+    } catch (e: any) {
+      console.log("join patient error:", e);
+
+      if (e?.code === "permission-denied") {
+        Alert.alert(
+          "加入失敗",
+          "目前權限規則不允許用邀請碼查詢照顧對象，請先調整 Firestore Rules。"
+        );
+        return;
+      }
+
+      Alert.alert("加入失敗", "請稍後再試一次");
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 24, paddingTop:90, gap: 24 }}>
+    <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 90, gap: 24 }}>
       <View style={{ gap: 8 }}>
         <Text style={{ fontSize: 28, fontWeight: "900" }}>加入照顧對象</Text>
         <Text style={{ fontSize: 16, color: "#666" }}>請向其他護理人員或家屬索取邀請碼</Text>
@@ -65,26 +100,28 @@ export default function CareTargetJoinScreen() {
           onChangeText={setCode}
           placeholder="請輸入 6-8 碼邀請碼"
           autoCapitalize="characters"
-          style={{ 
-            borderWidth: 1, 
-            borderColor: "#007AFF", 
-            borderRadius: 12, 
-            padding: 20, 
-            fontSize: 24, 
+          style={{
+            borderWidth: 1,
+            borderColor: "#007AFF",
+            borderRadius: 12,
+            padding: 20,
+            fontSize: 24,
             fontWeight: "800",
             textAlign: "center",
             letterSpacing: 4,
-            backgroundColor: "#F9FBFF"
+            backgroundColor: "#F9FBFF",
           }}
         />
       </View>
 
-      <Pressable 
+      <Pressable
         onPress={onJoin}
-        disabled={code.length < 4}
-        style={{ backgroundColor: code.length >= 4 ? "#007AFF" : "#CCC", padding: 18, borderRadius: 12 }}
+        disabled={!canSubmit}
+        style={{ backgroundColor: canSubmit ? "#007AFF" : "#CCC", padding: 18, borderRadius: 12 }}
       >
-        <Text style={{ color: "#FFF", textAlign: "center", fontWeight: "900", fontSize: 18 }}>立即加入</Text>
+        <Text style={{ color: "#FFF", textAlign: "center", fontWeight: "900", fontSize: 18 }}>
+          立即加入
+        </Text>
       </Pressable>
 
       <Pressable onPress={() => router.back()}>
