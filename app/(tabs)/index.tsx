@@ -1,17 +1,20 @@
-import { Redirect } from "expo-router";
+// app/(tabs)/index.tsx
 import { useAuthContext } from "@/src/auth/AuthProvider";
+import { Redirect } from "expo-router";
 
 export default function Index() {
   const { ready, user } = useAuthContext();
 
-  // Auth 還在初始化 → 什麼都不做
   if (!ready) return null;
 
-  // 沒登入 → 去登入頁
   if (!user) {
     return <Redirect href="/(auth)/login" />;
   }
 
-  // ✅ 已登入，一律先去選長輩
-  return <Redirect href="/care-target/select" />;
+  // 💡 修正這裡：依照身分派發，而不是一律去 select
+  if (user.role === "family") {
+    return <Redirect href="/family" />;
+  } else {
+    return <Redirect href="/caregiver" />;
+  }
 }

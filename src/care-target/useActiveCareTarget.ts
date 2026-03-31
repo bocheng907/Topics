@@ -1,43 +1,39 @@
 import { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 
 export type CareTarget = {
   id: string;
   name: string;
-  note?: string;
+  notes?: string;
   inviteCode?: string;
   createdAt: number;
   updatedAt?: number;
 };
 
-// 跟你 select.tsx 一致（不要改 key，改了就讀不到）
-const KEY_CARE_TARGETS = "careapp_careTargets_v1"; // CareTarget[]
-const KEY_LINKS = "careapp_careTarget_links_v1"; // { [uid]: string[] }
-const activeKey = (uid: string) => `careapp_activeCareTarget_v1:${uid}`;
-
-async function loadCareTargets(): Promise<CareTarget[]> {
-  const raw = await AsyncStorage.getItem(KEY_CARE_TARGETS);
-  return raw ? (JSON.parse(raw) as CareTarget[]) : [];
-}
-
-async function loadLinks(): Promise<Record<string, string[]>> {
-  const raw = await AsyncStorage.getItem(KEY_LINKS);
-  return raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
-}
+const activeKey = (uid: string) => `careapp_activePatient_v1:${uid}`;
 
 export function useActiveCareTarget() {
   const { user, ready } = useAuth();
 
   const [hydrating, setHydrating] = useState(true);
-  const [activeCareTargetId, setActiveId] = useState<string | null>(null);
+  const [activePatientId, setActiveId] = useState<string | null>(null);
 
   const [targets, setTargets] = useState<CareTarget[]>([]);
   const [linkedIds, setLinkedIds] = useState<string[]>([]);
 
-  // 讀資料：targets / links / active
   useEffect(() => {
     if (!ready) return;
+
     if (!user) {
       setActiveId(null);
       setTargets([]);
@@ -52,28 +48,117 @@ export function useActiveCareTarget() {
       try {
         setHydrating(true);
 
-        const [allTargets, linksMap, activeRaw] = await Promise.all([
-          loadCareTargets(),
-          loadLinks(),
+        const role = user?.role;
+
+        if (!role) {
+          console.log("useActiveCareTarget: user.role missing");
+          setTargets([]);
+          setLinkedIds([]);
+          setActiveId(null);
+          setHydrating(false);
+          return;
+        }
+
+        const field = role === "family" ? "families" : "caregivers";
+
+        const [snap, activeRaw] = await Promise.all([
+          getDocs(
+            query(
+              collection(db, "patients"),
+              where(field, "array-contains", user.uid)
+            )
+          ),
           AsyncStorage.getItem(activeKey(user.uid)),
         ]);
 
         if (cancelled) return;
 
-        const ids = linksMap[user.uid] ?? [];
-        setTargets(allTargets);
+        const fetchedTargets: CareTarget[] = snap.docs.map((docSnap) => {
+          const data = docSnap.data() as any;
+
+          let createdAt = Date.now();
+          if (data.createdAt?.toMillis) {
+            createdAt = data.createdAt.toMillis();
+          } else if (typeof data.createdAt === "number") {
+            createdAt = data.createdAt;
+          }
+
+          let updatedAt = createdAt;
+          if (data.updatedAt?.toMillis) {
+            updatedAt = data.updatedAt.toMillis();
+          } else if (typeof data.updatedAt === "number") {
+            updatedAt = data.updatedAt;
+          }
+
+          return {
+            id: docSnap.id,
+            name: data.name ?? "",
+            notes: data.notes ?? data.note ?? "",
+            inviteCode: data.inviteCode ?? "",
+            createdAt,
+            updatedAt,
+          };
+        });
+
+        const ids = fetchedTargets.map((t) => t.id);
+
+        setTargets(fetchedTargets);
         setLinkedIds(ids);
 
-        // 目前 active
-        let activeId = activeRaw || null;
+        let nextActiveId =
+          typeof activeRaw === "string" && activeRaw.trim() !== ""
+            ? activeRaw
+            : null;
 
-        // ✅ 自動修復：如果 active 缺失，但有連結的長輩，直接指定第一個（避免卡住）
-        if (!activeId && ids.length > 0) {
-          activeId = ids[0];
-          await AsyncStorage.setItem(activeKey(user.uid), activeId);
+        if ((!nextActiveId || !ids.includes(nextActiveId)) && ids.length > 0) {
+          nextActiveId = ids[0];
+          await AsyncStorage.setItem(activeKey(user.uid), nextActiveId);
+
+          try {
+            const userSnap = await getDocs(
+              query(collection(db, "users"), where("uid", "==", user.uid))
+            );
+
+            if (!userSnap.empty) {
+              await updateDoc(doc(db, "users", userSnap.docs[0].id), {
+                activePatientId: nextActiveId,
+              });
+            }
+          } catch (e) {
+            console.log("update activePatientId failed:", e);
+          }
         }
 
-        setActiveId(activeId);
+        if (ids.length === 0) {
+          nextActiveId = null;
+          await AsyncStorage.removeItem(activeKey(user.uid));
+
+          try {
+            const userSnap = await getDocs(
+              query(collection(db, "users"), where("uid", "==", user.uid))
+            );
+
+            if (!userSnap.empty) {
+              await updateDoc(doc(db, "users", userSnap.docs[0].id), {
+                activePatientId: "",
+              });
+            }
+          } catch (e) {
+            console.log("clear activePatientId failed:", e);
+          }
+        }
+
+        if (!cancelled) {
+          setActiveId(nextActiveId);
+        }
+      } catch (err) {
+        console.log("useActiveCareTarget load failed:", err);
+
+        if (!cancelled) {
+          setTargets([]);
+          setLinkedIds([]);
+          setActiveId(null);
+        }
       } finally {
         if (!cancelled) setHydrating(false);
       }
@@ -82,37 +167,73 @@ export function useActiveCareTarget() {
     return () => {
       cancelled = true;
     };
-  }, [ready, user?.uid]);
+  }, [ready, user?.uid, user?.role]);
 
   const linkedCareTargets = useMemo(() => {
     const setIds = new Set(linkedIds);
     return targets.filter((t) => setIds.has(t.id));
   }, [targets, linkedIds]);
 
-  const activeCareTarget = useMemo(() => {
-    if (!activeCareTargetId) return null;
-    return targets.find((t) => t.id === activeCareTargetId) ?? null;
-  }, [targets, activeCareTargetId]);
+  const activePatient = useMemo(() => {
+    if (!activePatientId) return null;
+    return targets.find((t) => t.id === activePatientId) ?? null;
+  }, [targets, activePatientId]);
 
-  async function setActiveCareTargetId(id: string) {
+  async function setActivePatientId(id: string) {
     if (!user) return;
+
+    const exists = targets.some((t) => t.id === id);
+    if (!exists) {
+      console.log("setActivePatientId failed: patient not found", id);
+      return;
+    }
+
     await AsyncStorage.setItem(activeKey(user.uid), id);
     setActiveId(id);
+
+    try {
+      const userSnap = await getDocs(
+        query(collection(db, "users"), where("uid", "==", user.uid))
+      );
+
+      if (!userSnap.empty) {
+        await updateDoc(doc(db, "users", userSnap.docs[0].id), {
+          activePatientId: id,
+        });
+      }
+    } catch (e) {
+      console.log("set activePatientId failed:", e);
+    }
   }
 
-  async function clearActiveCareTarget() {
+  async function clearActivePatient() {
     if (!user) return;
+
     await AsyncStorage.removeItem(activeKey(user.uid));
     setActiveId(null);
+
+    try {
+      const userSnap = await getDocs(
+        query(collection(db, "users"), where("uid", "==", user.uid))
+      );
+
+      if (!userSnap.empty) {
+        await updateDoc(doc(db, "users", userSnap.docs[0].id), {
+          activePatientId: "",
+        });
+      }
+    } catch (e) {
+      console.log("clear activePatientId failed:", e);
+    }
   }
 
   return {
-    ready: !hydrating, // 給 UI 判斷：可不可以判定是否已選
+    ready: !hydrating,
     hydrating,
-    activeCareTargetId,
-    activeCareTarget,
+    activePatientId,
+    activePatient,
     linkedCareTargets,
-    setActiveCareTargetId,
-    clearActiveCareTarget,
+    setActivePatientId,
+    clearActivePatient,
   };
 }
