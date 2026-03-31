@@ -22,13 +22,13 @@ function RoleDot({ role }: { role: "caregiver" | "family" }) {
 
 export default function ActiveCareTargetBanner() {
   const { user } = useAuth();
-  const { activeCareTarget, activeCareTargetId } = useActiveCareTarget();
+  const { activePatient, activePatientId } = useActiveCareTarget();
 
   // 未登入或還沒有資料：不顯示（避免一直跳）
   if (!user) return null;
 
-  const name = activeCareTarget?.name ?? "(尚未選擇長輩)";
-  const hint = activeCareTargetId ? `ID：${activeCareTargetId}` : "請先選擇要查看的長輩";
+  const name = activePatient?.name ?? "(尚未選擇長輩)";
+  const hint = activePatientId ? `ID：${activePatientId}` : "請先選擇要查看的長輩";
 
   return (
     <View
