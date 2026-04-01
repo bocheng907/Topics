@@ -1,161 +1,622 @@
+// app/caregiver/index.tsx
+import { db } from "@/firebase/firebaseConfig";
+import { router } from "expo-router";
+import {
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  where,
+} from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router, Stack } from "expo-router";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { useAuth } from "@/src/auth/useAuth";
-import { useStore } from "@/src/store/useStore";
+import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 
 type CareTarget = {
   id: string;
   name: string;
   notes?: string;
-  inviteCode: string;
-  createdAt: number;
+  inviteCode?: string;
+  createdAt?: number;
+  updatedAt?: number;
 };
 
-const KEY_CARE_TARGETS = "careapp_careTargets_v1";
-const activeKey = (uid: string) => `careapp_activeCareTarget_v1:${uid}`;
+type Reminder = {
+  id: string;
+  patientId: string;
+  prescriptionId?: string;
+  medicineName: string;
+  doseText: string;
+  scheduleTime: string;
+  enabled: boolean;
+  notifyUserIds?: string[];
+  lastSentDate?: string;
+  createdAt?: any;
+};
 
-function formatTime(ts?: number) {
-  if (!ts) return "—";
-  const d = new Date(ts);
-  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+type MedicationLog = {
+  id: string;
+  reminderId: string;
+  patientId: string;
+  dateKey: string;
+};
+
+function getTaipeiDateKey() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function hhmmToMinutes(hhmm?: string) {
+  if (!hhmm || !hhmm.includes(":")) return Number.MAX_SAFE_INTEGER;
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
 }
 
 export default function CaregiverHomeScreen() {
   const { user, logout } = useAuth();
-  const { prescriptions } = useStore();
+  const { activePatient, activePatientId, ready, clearActivePatient } =
+    useActiveCareTarget();
+
   const [target, setTarget] = useState<CareTarget | null>(null);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<{ total: number; latest?: number }>({
+    total: 0,
+    latest: undefined,
+  });
 
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [todayLogs, setTodayLogs] = useState<MedicationLog[]>([]);
+  const [doneLoading, setDoneLoading] = useState(false);
+
+  const todayKey = useMemo(() => getTaipeiDateKey(), []);
+
+  // ==========================================
+  // 邏輯：防呆與權限檢查 (沒有長輩則去加入)
+  // ==========================================
   useEffect(() => {
+    if (!ready) return;
     if (!user) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const activeId = await AsyncStorage.getItem(activeKey(user.uid));
-        if (!activeId) {
-          router.replace("/care-target/select");
-          return;
-        }
-        const raw = await AsyncStorage.getItem(KEY_CARE_TARGETS);
-        if (raw) {
-          const all: CareTarget[] = JSON.parse(raw);
-          const found = all.find((it) => it.id === activeId);
-          if (found) setTarget(found);
-        }
-      } finally {
-        setLoading(false);
+
+    setLoading(true);
+
+    if (!activePatient || !activePatientId) {
+      setTarget(null);
+      setLoading(false);
+      router.replace("/care-target/join");
+      return;
+    }
+
+    setTarget(activePatient as CareTarget);
+    setLoading(false);
+  }, [ready, user, activePatient, activePatientId]);
+
+  // ==========================================
+  // 邏輯：監聽藥單數據
+  // ==========================================
+  useEffect(() => {
+    if (!ready || !user || !activePatientId) {
+      setStats({ total: 0, latest: undefined });
+      return;
+    }
+
+    const q = query(
+      collection(db, "prescriptions"),
+      where("patientId", "==", activePatientId),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows = snap.docs.map((d) => d.data());
+        setStats({
+          total: rows.length,
+          latest: rows[0]?.createdAt,
+        });
+      },
+      (err) => {
+        console.log("caregiver home firestore error:", err);
+        setStats({ total: 0, latest: undefined });
       }
-    })();
-  }, [user]);
+    );
 
-  const stats = useMemo(() => {
-    if (!target) return { total: 0, latest: undefined };
-    const mine = prescriptions.filter((p) => p.careTargetId === target.id);
-    const sorted = [...mine].sort((a, b) => b.createdAt - a.createdAt);
-    return { total: mine.length, latest: sorted[0]?.createdAt };
-  }, [prescriptions, target]);
+    return unsub;
+  }, [ready, user, activePatientId]);
 
-  const onUnlink = async () => {
-    if (!target || !user) return;
-    Alert.alert("安全提醒", `確定要解除與「${target.name}」的連結嗎？`, [
+  // ==========================================
+  // 邏輯：監聽目前長輩的提醒
+  // ==========================================
+  useEffect(() => {
+    if (!ready || !user || !activePatientId) {
+      setReminders([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "medication_reminders"),
+      where("patientId", "==", activePatientId),
+      where("enabled", "==", true)
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows: Reminder[] = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            patientId: data.patientId ?? "",
+            prescriptionId: data.prescriptionId ?? "",
+            medicineName: data.medicineName ?? "未命名藥物",
+            doseText: data.doseText ?? "",
+            scheduleTime: data.scheduleTime ?? "",
+            enabled: !!data.enabled,
+            notifyUserIds: Array.isArray(data.notifyUserIds)
+              ? data.notifyUserIds
+              : [],
+            lastSentDate: data.lastSentDate ?? "",
+            createdAt: data.createdAt,
+          };
+        });
+
+        rows.sort(
+          (a, b) =>
+            hhmmToMinutes(a.scheduleTime) - hhmmToMinutes(b.scheduleTime)
+        );
+
+        setReminders(rows);
+      },
+      (err) => {
+        console.log("reminders snapshot error:", err);
+        setReminders([]);
+      }
+    );
+
+    return unsub;
+  }, [ready, user, activePatientId]);
+
+  // ==========================================
+  // 邏輯：監聽今天已完成的服藥紀錄
+  // ==========================================
+  useEffect(() => {
+    if (!ready || !user || !activePatientId) {
+      setTodayLogs([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "medication_logs"),
+      where("patientId", "==", activePatientId),
+      where("dateKey", "==", todayKey)
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows: MedicationLog[] = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            reminderId: data.reminderId ?? "",
+            patientId: data.patientId ?? "",
+            dateKey: data.dateKey ?? "",
+          };
+        });
+        setTodayLogs(rows);
+      },
+      (err) => {
+        console.log("medication logs snapshot error:", err);
+        setTodayLogs([]);
+      }
+    );
+
+    return unsub;
+  }, [ready, user, activePatientId, todayKey]);
+
+  const currentReminder = useMemo(() => {
+    if (!reminders.length) return null;
+
+    // 先挑今天還沒完成的第一筆
+    const unfinished = reminders.find(
+      (r) => !todayLogs.some((log) => log.reminderId === r.id)
+    );
+
+    return unfinished ?? reminders[0] ?? null;
+  }, [reminders, todayLogs]);
+
+  const currentReminderDone = useMemo(() => {
+    if (!currentReminder) return false;
+    return todayLogs.some((log) => log.reminderId === currentReminder.id);
+  }, [currentReminder, todayLogs]);
+
+  // ==========================================
+  // 邏輯：右上角設定/登出選單
+  // ==========================================
+  const onMenuPress = () => {
+    Alert.alert("系統選項", "請選擇您要執行的動作", [
       { text: "取消", style: "cancel" },
-      { 
-        text: "確定解除", 
-        style: "destructive", 
+      {
+        text: "切換 / 解除綁定當前長輩",
+        style: "destructive",
         onPress: async () => {
-          const rawLinks = await AsyncStorage.getItem("careapp_careTarget_links_v1");
-          const allLinks = rawLinks ? JSON.parse(rawLinks) : {};
-          allLinks[user.uid] = (allLinks[user.uid] || []).filter((id: any) => id !== target.id);
-          await AsyncStorage.setItem("careapp_careTarget_links_v1", JSON.stringify(allLinks));
-          await AsyncStorage.removeItem(activeKey(user.uid));
-          router.replace("/care-target/select");
-        } 
-      }
+          try {
+            await clearActivePatient();
+            router.replace("/care-target/join");
+          } catch (err) {
+            console.log("unlink error:", err);
+            Alert.alert("解除失敗", "請稍後再試一次");
+          }
+        },
+      },
+      {
+        text: "登出系統",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await logout();
+            router.replace("/(auth)/login");
+          } catch (err) {
+            console.log("logout error:", err);
+            Alert.alert("登出失敗", "請稍後再試一次");
+          }
+        },
+      },
     ]);
   };
 
-  if (loading) return <ActivityIndicator style={{ flex: 1 }} />;
+  async function handleDonePress() {
+    if (!user) {
+      Alert.alert("尚未登入", "請先登入");
+      return;
+    }
+
+    if (!activePatientId) {
+      Alert.alert("尚未選擇長輩", "請先選擇長輩");
+      return;
+    }
+
+    if (!currentReminder) {
+      Alert.alert("目前沒有提醒", "暫時沒有可完成的用藥提醒");
+      return;
+    }
+
+    if (currentReminderDone) {
+      Alert.alert("已完成", "這筆提醒今天已經記錄過了");
+      return;
+    }
+
+    try {
+      setDoneLoading(true);
+
+      await addDoc(collection(db, "medication_logs"), {
+        reminderId: currentReminder.id,
+        prescriptionId: currentReminder.prescriptionId ?? "",
+        patientId: activePatientId,
+        medicineName: currentReminder.medicineName,
+        doseText: currentReminder.doseText,
+        scheduleTime: currentReminder.scheduleTime,
+        status: "taken",
+        confirmedBy: user.uid,
+        takenAt: serverTimestamp(),
+        dateKey: todayKey,
+        createdAt: serverTimestamp(),
+      });
+
+      Alert.alert("完成", "已記錄服藥 ✅");
+    } catch (error) {
+      console.log("done error:", error);
+      Alert.alert("錯誤", "記錄失敗，請稍後再試");
+    } finally {
+      setDoneLoading(false);
+    }
+  }
+
+  if (loading || !ready) {
+    return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
+  }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 90, gap: 20 }}>
+    <View style={styles.container}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable onPress={onMenuPress} style={styles.menuIcon}>
+            <View style={styles.menuLine} />
+            <View style={styles.menuLine} />
+            <View style={styles.menuLine} />
+          </Pressable>
+        </View>
 
-      <View style={{ gap: 6 }}>
-        <Text style={{ fontSize: 28, fontWeight: "900", color: "#333" }}>照顧控制台</Text>
-        <Text style={{ fontSize: 16, color: "#666" }}>你好，{user?.email?.split('@')[0] || '看護人員'}</Text>
-      </View>
+        {/* 使用者姓名 */}
+        <View style={styles.userInfo}>
+          <Text style={styles.userName}>{target?.name ?? "尚未選擇"}</Text>
+        </View>
 
-      {/* 當前長輩狀態卡片 */}
-      <View style={{ backgroundColor: "#F2F2F7", borderRadius: 20, padding: 20, gap: 12, borderWidth: 1, borderColor: "#EEE" }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: 'center' }}>
-          <Text style={{ fontSize: 16, fontWeight: "800", color: "#666" }}>當前照顧對象</Text>
-          <View style={{ backgroundColor:  "#34C759", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 }}>
-            <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "800" }}>看護模式</Text>
+        {/* 用藥提醒卡片 */}
+        <View style={styles.reminderCard}>
+          <View style={styles.reminderTitleRow}>
+            <Text style={styles.emojiLarge}>⏰</Text>
+            <Text style={styles.reminderTitle}>
+              {currentReminder
+                ? `${currentReminder.scheduleTime} 用藥提醒`
+                : "目前沒有提醒"}
+            </Text>
           </View>
-        </View>
 
-        <Text style={{ fontSize: 32, fontWeight: "900", color: "#007AFF" }}>
-          {target?.name ?? "尚未選擇"}
-        </Text>
+          <View style={styles.reminderSubRow}>
+            <Text style={styles.emojiMedium}>💊</Text>
+            <Text style={styles.reminderSubText}>
+              {currentReminder
+                ? `${currentReminder.medicineName} (${currentReminder.doseText || "依醫囑"})`
+                : "請先掃描藥單建立提醒"}
+            </Text>
+          </View>
 
-        <View style={{ height: 1, backgroundColor: "#DDD" }} />
-
-        <View style={{ gap: 6 }}>
-          <Text style={{ color: "#444", fontWeight: "700" }}>📊 累積紀錄：{stats.total} 筆</Text>
-          <Text style={{ color: "#444", fontWeight: "700" }}>🕒 最後更新：{formatTime(stats.latest)}</Text>
-        </View>
-
-        {/* 注意事項區塊 */}
-        <View style={{ backgroundColor: "#E1E9FF", padding: 14, borderRadius: 12, marginTop: 4 }}>
-          <Text style={{ fontSize: 14, fontWeight: "900", color: "#007AFF", marginBottom: 4 }}>⚠️ 注意事項 / 備註：</Text>
-          <Text style={{ fontSize: 15, color: "#333", lineHeight: 22 }}>
-            {target?.notes && target.notes.trim() !== "" ? target.notes : "暫無填寫注意事項"}
-          </Text>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
           <Pressable
-            onPress={() => router.replace("/care-target/select")}
-            style={{ flex: 1, paddingVertical: 12, backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#007AFF" }}
+            style={[
+              styles.doneBtn,
+              (!currentReminder || currentReminderDone || doneLoading) && {
+                opacity: 0.5,
+              },
+            ]}
+            onPress={handleDonePress}
+            disabled={!currentReminder || currentReminderDone || doneLoading}
           >
-            <Text style={{ color: "#007AFF", fontWeight: "800", textAlign: "center" }}>切換長輩</Text>
-          </Pressable>
-          <Pressable
-            onPress={onUnlink}
-            style={{ flex: 1, paddingVertical: 12, backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#FF3B30" }}
-          >
-            <Text style={{ color: "#FF3B30", fontWeight: "800", textAlign: "center" }}>解除連結</Text>
+            <Text style={styles.doneBtnText}>
+              {doneLoading
+                ? "..."
+                : currentReminderDone
+                ? "DONE ✓"
+                : "DONE"}
+            </Text>
           </Pressable>
         </View>
-      </View>
 
-      {/* 功能按鈕區 */}
-      <View style={{ gap: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: "900" }}>功能選單</Text>
-        
+        {/* 功能選單標題 */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>功能選單</Text>
+        </View>
+
+        {/* 掃描藥單 */}
         <Pressable
           onPress={() => router.push("/caregiver/camera")}
-          style={{ paddingVertical: 18, backgroundColor: "#007AFF", borderRadius: 16, alignItems: "center", flexDirection: 'row', justifyContent: 'center', gap: 10 }}
+          style={styles.mainActionButton}
         >
-          <Text style={{ fontSize: 18, fontWeight: "900", color: "#fff" }}>📷 拍藥單 / 選照片</Text>
+          <Text style={styles.mainActionEmoji}>📷</Text>
+          <Text style={styles.mainActionText}>掃描藥單</Text>
         </Pressable>
 
-        <Pressable
-          onPress={() => router.push("/caregiver/list")}
-          style={{ paddingVertical: 18, borderWidth: 2, borderColor: "#007AFF", borderRadius: 16, alignItems: "center" }}
-        >
-          <Text style={{ fontSize: 18, fontWeight: "900", color: "#007AFF" }}>📖 查看藥單紀錄</Text>
-        </Pressable>
-      </View>
+        {/* 2x2 功能網格 */}
+        <View style={styles.gridContainer}>
+          <View style={styles.gridRow}>
+            <Pressable
+              onPress={() => router.push("/caregiver/list")}
+              style={[styles.gridItem, { backgroundColor: "#F4E770" }]}
+            >
+              <Text style={styles.gridEmoji}>📋</Text>
+              <Text style={styles.gridText}>查看藥單紀錄</Text>
+            </Pressable>
 
-      <Pressable 
-        onPress={() => logout().then(() => router.replace("/(auth)/login"))} 
-        style={{ marginTop: 10, padding: 10 }}
-      >
-        <Text style={{ color: "#999", textAlign: "center", fontWeight: "700", fontSize: 16 }}>登出系統</Text>
-      </Pressable>
-    </ScrollView>
+            <Pressable
+              onPress={() => router.push("/caregiver/health-report" as any)}
+              style={[styles.gridItem, { backgroundColor: "#EEAC6F" }]}
+            >
+              <Text style={styles.gridEmoji}>🩺</Text>
+              <Text style={styles.gridText}>每日健康回報</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.gridRow}>
+            <Pressable
+              onPress={() =>
+                router.push("/caregiver/communication-cards" as any)
+              }
+              style={[styles.gridItem, { backgroundColor: "#81E87A" }]}
+            >
+              <Text style={styles.gridEmoji}>🖼️</Text>
+              <Text style={styles.gridText}>溝通語音圖卡</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => router.push("/caregiver/video-record" as any)}
+              style={[styles.gridItem, { backgroundColor: "#7BC6F9" }]}
+            >
+              <Text style={styles.gridEmoji}>📹</Text>
+              <Text style={styles.gridText}>狀況錄影</Text>
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
+
+// ==========================================
+// 樣式表
+// ==========================================
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  scrollContent: {
+    paddingBottom: 80,
+    paddingTop: 60,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  menuIcon: {
+    height: 28,
+    width: 40,
+    justifyContent: "space-around",
+  },
+  menuLine: {
+    height: 6,
+    width: "100%",
+    backgroundColor: "#000",
+    borderRadius: 3,
+  },
+  userInfo: {
+    paddingHorizontal: 24,
+    marginBottom: 16,
+  },
+  userName: {
+    fontSize: 38,
+    fontWeight: "bold",
+    letterSpacing: 2,
+    color: "#000",
+  },
+  reminderCard: {
+    backgroundColor: "#F7F7F7",
+    marginHorizontal: 20,
+    borderRadius: 24,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  reminderTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+    width: "100%",
+    justifyContent: "center",
+  },
+  emojiLarge: {
+    fontSize: 36,
+  },
+  reminderTitle: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#000",
+    letterSpacing: 1,
+  },
+  reminderSubRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 24,
+    width: "100%",
+    justifyContent: "center",
+  },
+  emojiMedium: {
+    fontSize: 28,
+  },
+  reminderSubText: {
+    fontSize: 22,
+    fontWeight: "600",
+    color: "#000",
+  },
+  doneBtn: {
+    width: 110,
+    height: 110,
+    backgroundColor: "#D9D9D9",
+    borderRadius: 55,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  doneBtnText: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#000",
+    letterSpacing: 1,
+  },
+  sectionHeader: {
+    paddingHorizontal: 24,
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#000",
+  },
+  mainActionButton: {
+    backgroundColor: "#4651DB",
+    marginHorizontal: 20,
+    borderRadius: 16,
+    paddingVertical: 16,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  mainActionEmoji: {
+    fontSize: 24,
+  },
+  mainActionText: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#FFF",
+    letterSpacing: 1,
+  },
+  gridContainer: {
+    marginHorizontal: 20,
+    gap: 16,
+  },
+  gridRow: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  gridItem: {
+    flex: 1,
+    height: 120,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  gridEmoji: {
+    fontSize: 42,
+    marginBottom: 8,
+  },
+  gridText: {
+    fontSize: 17,
+    fontWeight: "bold",
+    color: "#000",
+  },
+});
