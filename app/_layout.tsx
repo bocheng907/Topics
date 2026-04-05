@@ -33,16 +33,26 @@ function RootLayoutNav() {
   return (
     <Stack 
       screenOptions={{ 
-        headerTitleAlign: "center",
         headerShown: false,
         gestureEnabled: false
       }}
     >
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="caregiver" options={{ headerShown: false }} />
-      <Stack.Screen name="family" options={{ headerShown: false }} />
-      <Stack.Screen name="care-target" options={{ headerShown: false }} />
+      {/* 1. 先放分組路由 */}
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(tabs)" />
+      
+      {/* 2. 再放獨立功能頁面 */}
+      <Stack.Screen name="care-target" />
+
+      {/* 💡 修正：如果警告持續存在，嘗試「不」在根目錄定義子頁面，
+          讓 Expo Router 自動根據檔案路徑解析。
+          或者，確保這裡的 name 字串與路徑完全相同（無副檔名）。 */}
+      <Stack.Screen name="caregiver/chat-room" />
+      <Stack.Screen name="family/chat-room" />
+      
+      {/* 3. 最後放資料夾入口 */}
+      <Stack.Screen name="family" />
+      <Stack.Screen name="caregiver" />
     </Stack>
   );
 }

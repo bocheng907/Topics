@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, ScrollView, Alert } from "react-native";
+import { View, Text, Pressable, ScrollView, Alert, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
@@ -85,79 +85,76 @@ export default function CaregiverListScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 12 }}>
-      <Text style={{ fontSize: 28, fontWeight: "800" }}>藥單紀錄簿</Text>
-      <Text style={{ opacity: 0.6 }}>長輩：{activePatient?.name}</Text>
+  <View style={{ flex: 1, backgroundColor: "#FFF" }}>
+    {/* 修改後的 Header：只保留黃色背景與返回鍵 */}
+    <View style={styles.header}>
+       <Pressable 
+          onPress={() => router.replace("/caregiver")}
+          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+       >
+       </Pressable>
+       {/* 💡 這裡原本的 <Text>藥單紀錄簿</Text> 已被刪除 */}
+       <View style={{ width: 40 }} /> 
+    </View>
 
+    <ScrollView contentContainerStyle={styles.scrollContainer}>
+      {/* 確保這裡的條件判斷不會噴出純文字 */}
       {list.length === 0 ? (
-        <Text style={{ marginTop: 40, textAlign: "center", opacity: 0.5 }}>
-          目前沒有紀錄，請點選「掃描藥單」開始
-        </Text>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyEmoji}>📋</Text>
+          <Text style={styles.emptyTitle}>目前尚無藥單紀錄</Text>
+          <Text style={styles.emptySubtitle}>
+            {"您可以點擊下方的相機按鈕\n為長輩掃描第一份藥單"}
+          </Text>
+        </View>
       ) : (
         list.map((p: any) => (
-          <View
-            key={p.prescriptionId}
-            style={{
-              padding: 16,
-              borderWidth: 1,
-              borderRadius: 12,
-              borderColor: "#ddd",
-              backgroundColor: "#fff",
-              gap: 4,
-            }}
-          >
-            <Text style={{ fontSize: 20, fontWeight: "800", color: "#333" }}>
-              {p.title || "未命名藥單"}
-            </Text>
-
-            <Text style={{ fontSize: 14, color: "#666" }}>
+          <View key={p.prescriptionId} style={styles.card}>
+            {/* 確保變數 p.title 也是被 <Text> 包住的 */}
+            <Text style={styles.cardTitle}>{p.title || "未命名藥單"}</Text>
+            <Text style={styles.cardDate}>
               日期：{new Date(p.createdAt).toLocaleDateString()}
             </Text>
-
-            <Text style={{ fontSize: 12, color: "#999", marginBottom: 8 }}>
-              ID：{p.prescriptionId}
-            </Text>
-
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 16,
-                borderTopWidth: 1,
-                borderTopColor: "#eee",
-                paddingTop: 8,
-              }}
-            >
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: "/caregiver/detail",
-                    params: { id: p.prescriptionId },
-                  })
-                }
-              >
-                <Text style={{ color: "#007AFF", fontSize: 16, fontWeight: "700" }}>
-                  查看詳情
-                </Text>
+            
+            <View style={styles.divider} />
+            
+            <View style={{ flexDirection: "row", gap: 20 }}>
+              <Pressable onPress={() => router.push({ pathname: "/caregiver/detail", params: { id: p.prescriptionId } })}>
+                <Text style={styles.linkText}>查看詳情</Text>
               </Pressable>
-
               <Pressable onPress={() => confirmDelete(p.prescriptionId)}>
-                <Text style={{ color: "#FF3B30", fontSize: 16, fontWeight: "700" }}>
-                  刪除
-                </Text>
+                <Text style={[styles.linkText, { color: "#FF3B30" }]}>刪除</Text>
               </Pressable>
             </View>
           </View>
         ))
       )}
-
-      <Pressable
-        onPress={() => router.replace("/caregiver")}
-        style={{ marginTop: 20, padding: 16, backgroundColor: "#F2F2F7", borderRadius: 12 }}
-      >
-        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700", fontSize: 16 }}>
-          返回首頁
-        </Text>
-      </Pressable>
     </ScrollView>
-  );
+  </View>
+);
 }
+
+const styles = StyleSheet.create({
+  header: { 
+    backgroundColor: "#F4E770", 
+    paddingTop: 60, 
+    paddingBottom: 20, 
+    paddingHorizontal: 20, 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center' 
+  },
+  scrollContainer: { padding: 20, paddingBottom: 150, gap: 16 },
+  // 提示詞樣式
+  emptyContainer: { alignItems: 'center', marginTop: 100 },
+  emptyEmoji: { fontSize: 80, marginBottom: 20 },
+  emptyTitle: { fontSize: 22, fontWeight: '900', color: '#333' },
+  emptySubtitle: { fontSize: 16, color: '#999', textAlign: 'center', marginTop: 10, lineHeight: 24 },
+  // 卡片樣式
+  card: { padding: 16, borderWidth: 1.5, borderRadius: 16, borderColor: "#333", backgroundColor: "#fff" },
+  cardTitle: { fontSize: 22, fontWeight: "800", color: "#000", marginBottom: 4 },
+  cardDate: { fontSize: 16, color: "#666", marginBottom: 12 },
+  divider: { height: 1, backgroundColor: "#EEE", marginBottom: 12 },
+  linkText: { color: "#4651DB", fontSize: 18, fontWeight: "700" }
+});

@@ -98,84 +98,41 @@ export default function FamilyListScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 12 }}>
-      <Text style={{ fontSize: 28, fontWeight: "800" }}>藥單紀錄簿</Text>
-      <Text style={{ opacity: 0.6 }}>長輩：{activePatient?.name ?? "未命名長輩"}</Text>
-
-      {list.length === 0 ? (
-        <Text style={{ marginTop: 40, textAlign: "center", opacity: 0.5 }}>
-          目前沒有紀錄，請點選「掃描藥單」開始
-        </Text>
-      ) : (
-        list.map((p: any) => (
-          <View
-            key={p.prescriptionId}
-            style={{
-              padding: 16,
-              borderWidth: 1,
-              borderRadius: 12,
-              borderColor: "#ddd",
-              backgroundColor: "#fff",
-              gap: 4,
-            }}
-          >
-            <Text style={{ fontSize: 20, fontWeight: "800", color: "#333" }}>
-              {p.title}
-            </Text>
-
-            <Text style={{ fontSize: 14, color: "#666" }}>
-              日期：{formatDate(p.createdAt)}
-            </Text>
-
-            <Text style={{ fontSize: 12, color: "#999", marginBottom: 8 }}>
-              ID：{p.prescriptionId}
-            </Text>
-
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 16,
-                borderTopWidth: 1,
-                borderTopColor: "#eee",
-                paddingTop: 8,
-              }}
-            >
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: "/family/detail",
-                    params: { id: p.prescriptionId },
-                  })
-                }
-              >
-                <Text style={{ color: "#007AFF", fontSize: 16, fontWeight: "700" }}>
-                  查看詳情
-                </Text>
-              </Pressable>
-
-              <Pressable onPress={() => confirmDelete(p.prescriptionId)}>
-                <Text style={{ color: "#FF3B30", fontSize: 16, fontWeight: "700" }}>
-                  刪除
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        ))
-      )}
-
-      <Pressable
-        onPress={() => router.replace("/family")}
-        style={{
-          marginTop: 20,
-          padding: 16,
-          backgroundColor: "#F2F2F7",
-          borderRadius: 12,
-        }}
-      >
-        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700", fontSize: 16 }}>
-          返回首頁
-        </Text>
+  <View style={{ flex: 1, backgroundColor: "#FFF" }}>
+    {/* 設計圖風格 Header */}
+    <View style={{ backgroundColor: "#FDE982", paddingTop: 60, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <View style={{ width: 40 }} /> {/* 保持平衡 */}
+      <Text style={{ fontSize: 24, fontWeight: '900', color: '#000' }}>藥單紀錄簿</Text>
+      <Pressable onPress={() => Alert.alert("選單", "開啟側邊欄")}>
+        <Text style={{ fontSize: 30 }}>≡</Text>
       </Pressable>
+    </View>
+
+    <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+      {list.map((p) => (
+        <View key={p.prescriptionId} style={{
+          padding: 16,
+          borderWidth: 1.5,
+          borderRadius: 12,
+          borderColor: "#333", // 深色邊框
+          backgroundColor: "#fff",
+        }}>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: "#000" }}>{p.title}</Text>
+          <Text style={{ fontSize: 16, color: "#666", marginBottom: 12 }}>日期：{formatDate(p.createdAt)}</Text>
+          
+          <View style={{ height: 1, backgroundColor: "#eee", marginBottom: 12 }} />
+          
+          <View style={{ flexDirection: "row", alignItems: 'center', gap: 15 }}>
+            <Pressable onPress={() => router.push({ pathname: "/family/detail", params: { id: p.prescriptionId } })}>
+              <Text style={{ color: "#4A90E2", fontSize: 18, fontWeight: "700", textDecorationLine: 'underline' }}>查看詳情</Text>
+            </Pressable>
+            <Pressable onPress={() => confirmDelete(p.prescriptionId)}>
+              <Text style={{ color: "#FF3B30", fontSize: 18, fontWeight: "700" }}>刪除</Text>
+            </Pressable>
+          </View>
+        </View>
+      ))}
     </ScrollView>
-  );
+  </View>
+);
 }

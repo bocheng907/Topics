@@ -161,93 +161,54 @@ export default function FamilyDetailScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 16 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 26, fontWeight: "900", color: "#333" }}>
-            {p.title || "藥單詳情"}
-          </Text>
-          <Text style={{ opacity: 0.5, marginTop: 4 }}>
-            錄入日期：{new Date(p.createdAt).toLocaleDateString()}
-          </Text>
-        </View>
-
-        <Pressable
-          onPress={goEdit}
-          style={({ pressed }) => ({
-            paddingHorizontal: 15,
-            paddingVertical: 10,
-            backgroundColor: pressed ? "#CFDFFF" : "#E1E9FF",
-            borderRadius: 10,
-            justifyContent: "center",
-            alignItems: "center",
-            minWidth: 60,
-          })}
-        >
-          <Text style={{ color: "#007AFF", fontWeight: "800", fontSize: 16 }}>編輯</Text>
+    <View style={{ flex: 1, backgroundColor: "#FFF" }}>
+      {/* 統一 Header */}
+      <View style={{ backgroundColor: "#007AFF", paddingTop: 60, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center' }}>
+        <Pressable onPress={() => router.back()} hitSlop={20}>
+          <Text style={{ fontSize: 30, color: '#FFF', fontWeight: 'bold' }}>← 返回</Text>
         </Pressable>
+        <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFF', marginLeft: 10 }}>藥單詳情</Text>
       </View>
 
-      {p.sourceImageUrl && (
-        <Image
-          source={{ uri: p.sourceImageUrl }}
-          style={{ width: "100%", height: 300, borderRadius: 12, backgroundColor: "#eee" }}
-          resizeMode="contain"
-        />
-      )}
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 150, gap: 16 }}>
+        <Text style={{ fontSize: 26, fontWeight: "900", color: "#333" }}>{p.title}</Text>
+        
+        {p.sourceImageUrl && (
+          <Image
+            source={{ uri: p.sourceImageUrl }}
+            style={{ width: "100%", height: 250, borderRadius: 16, borderWidth: 1, borderColor: '#EEE' }}
+            resizeMode="contain"
+          />
+        )}
 
-      <Text style={{ fontSize: 20, fontWeight: "800", marginTop: 10 }}>藥品明細</Text>
+        <Text style={{ fontSize: 20, fontWeight: "800", marginTop: 10 }}>藥品明細</Text>
 
-      {(p.items ?? []).map((it: any, idx: number) => (
-        <View
-          key={idx}
-          style={{
-            padding: 14,
-            borderWidth: 1,
-            borderColor: "#eee",
+        {(p.items ?? []).map((it: any, idx: number) => (
+          <View key={idx} style={{
+            padding: 16,
+            borderWidth: 1.5,
+            borderColor: "#333", // 統一深色邊框
             borderRadius: 12,
             backgroundColor: "#fff",
-            gap: 4,
-          }}
-        >
-          <Text style={{ fontSize: 18, fontWeight: "800", color: "#007AFF" }}>
-            {it.drug_name_zh}
-          </Text>
-          <Text style={{ fontSize: 16 }}>用法劑量：{it.dose}</Text>
+            marginBottom: 16
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: "#4A90E2", marginBottom: 8 }}>
+              {it.drug_name_zh}
+            </Text>
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontSize: 16, fontWeight: '600' }}>用法劑量：{it.dose}</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600' }}>服用時段：{it.time_of_day.join(", ")}</Text>
+              <Text style={{ fontSize: 15, color: "#666", marginTop: 4 }}>
+                備註：{it.note_zh || "無"}
+              </Text>
+            </View>
+          </View>
+        ))}
 
-          <Text style={{ fontSize: 16 }}>
-            服用時段：{(it.time_of_day ?? []).map((t: string) => TIME_LABELS[t] || t).join(", ")}
-          </Text>
-
-          <Text
-            style={{
-              fontSize: 15,
-              color: it.note_zh && it.note_zh.trim() !== "" ? "#666" : "#CCC",
-              marginTop: 4,
-            }}
-          >
-            備註：{it.note_zh && it.note_zh.trim() !== "" ? it.note_zh : "無"}
-          </Text>
-        </View>
-      ))}
-
-      <View style={{ marginTop: 20, gap: 12 }}>
-        <Pressable onPress={() => router.replace("/family/list")} style={{ padding: 16, backgroundColor: "#007AFF", borderRadius: 12 }}>
-          <Text style={{ color: "#fff", textAlign: "center", fontSize: 18, fontWeight: "700" }}>
-            返回列表
-          </Text>
+        <Pressable onPress={goEdit} style={{ backgroundColor: '#007AFF', padding: 18, borderRadius: 16, marginTop: 10 }}>
+          <Text style={{ color: '#FFF', textAlign: 'center', fontSize: 18, fontWeight: '900' }}>編輯藥單資訊</Text>
         </Pressable>
-
-        <Pressable onPress={confirmDelete} style={{ padding: 12 }}>
-          <Text style={{ color: "#FF3B30", textAlign: "center", fontWeight: "600" }}>
-            刪除此筆紀錄
-          </Text>
-        </Pressable>
-
-        <Text style={{ textAlign: "center", fontSize: 10, color: "#ccc" }}>
-          ID: {p.prescriptionId}
-        </Text>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }

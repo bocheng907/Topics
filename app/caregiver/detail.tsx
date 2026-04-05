@@ -163,91 +163,45 @@ export default function CaregiverDetailScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 16 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 26, fontWeight: "900", color: "#333" }}>
-            {p.title || "藥單詳情"}
-          </Text>
-          <Text style={{ opacity: 0.5, marginTop: 4 }}>
-            錄入日期：{new Date(p.createdAt ?? Date.now()).toLocaleDateString()}
-          </Text>
+  <View style={{ flex: 1, backgroundColor: "#FFF" }}>
+    {/* 頂部黃色導覽列與返回 */}
+    <View style={{ backgroundColor: "#F4E770", paddingTop: 60, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'space-between' }}>
+       <Pressable onPress={() => router.back()}><Text style={{ fontSize: 30 }}>← 返回</Text></Pressable>
+       <View style={{ height: 28, width: 40, justifyContent: "space-around" }}>
+          <View style={{ height: 6, backgroundColor: "#000", borderRadius: 3 }} />
+          <View style={{ height: 6, backgroundColor: "#000", borderRadius: 3 }} />
+          <View style={{ height: 6, backgroundColor: "#000", borderRadius: 3 }} />
+       </View>
+    </View>
+
+    <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 150, gap: 20 }}>
+      {/* 標題與編輯按鈕 */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <View>
+          <Text style={{ fontSize: 32, fontWeight: "900" }}>{p.title}</Text>
+          <Text style={{ color: "#666", marginTop: 4 }}>紀錄日期：{new Date(p.createdAt).toLocaleDateString()}</Text>
         </View>
-        <Pressable
-          onPress={goEdit}
-          style={({ pressed }) => ({
-            paddingHorizontal: 15,
-            paddingVertical: 10,
-            backgroundColor: pressed ? "#CFDFFF" : "#E1E9FF",
-            borderRadius: 10,
-            justifyContent: "center",
-            alignItems: "center",
-            minWidth: 60,
-          })}
-        >
-          <Text style={{ color: "#007AFF", fontWeight: "800", fontSize: 16 }}>編輯</Text>
+        <Pressable onPress={goEdit} style={{ backgroundColor: "#A7C7FF", paddingHorizontal: 20, paddingVertical: 8, borderRadius: 12 }}>
+          <Text style={{ color: "#007AFF", fontWeight: "bold", fontSize: 18 }}>編輯</Text>
         </Pressable>
       </View>
 
+      {/* 藥單圖片預覽 */}
       {p.sourceImageUrl && (
-        <Image
-          source={{ uri: p.sourceImageUrl }}
-          style={{ width: "100%", height: 300, borderRadius: 12, backgroundColor: "#eee" }}
-          resizeMode="contain"
-        />
+        <Image source={{ uri: p.sourceImageUrl }} style={{ width: "100%", height: 220, borderRadius: 20, backgroundColor: "#F2F2F7" }} resizeMode="cover" />
       )}
 
-      <Text style={{ fontSize: 20, fontWeight: "800", marginTop: 10 }}>藥品明細</Text>
+      <Text style={{ fontSize: 24, fontWeight: "900" }}>內容</Text>
 
-      {items.map((it, idx) => {
-        const times = it.usage ? [it.usage] : (it.time_of_day ?? []);
-        const timeText = times.map((t) => TIME_LABELS[t] || t).join(", ");
-
-        return (
-          <View
-            key={idx}
-            style={{
-              padding: 14,
-              borderWidth: 1,
-              borderColor: "#eee",
-              borderRadius: 12,
-              backgroundColor: "#fff",
-              gap: 4,
-            }}
-          >
-            <Text style={{ fontSize: 18, fontWeight: "800", color: "#007AFF" }}>
-              {it.drug_name_zh}
-            </Text>
-            <Text style={{ fontSize: 16 }}>用法劑量：{it.dose}</Text>
-
-            <Text style={{ fontSize: 16 }}>
-              服用時段：{timeText || "未提供"}
-            </Text>
-
-            <Text
-              style={{
-                fontSize: 15,
-                color: it.note_zh && it.note_zh.trim() !== "" ? "#666" : "#CCC",
-                marginTop: 4,
-              }}
-            >
-              備註：{it.note_zh && it.note_zh.trim() !== "" ? it.note_zh : "無"}
-            </Text>
-          </View>
-        );
-      })}
-
-      <View style={{ marginTop: 20, gap: 12 }}>
-        <Pressable onPress={() => router.replace("/caregiver")} style={{ padding: 16, backgroundColor: "#007AFF", borderRadius: 12 }}>
-          <Text style={{ color: "#fff", textAlign: "center", fontSize: 18, fontWeight: "700" }}>返回列表</Text>
-        </Pressable>
-
-        <Pressable onPress={confirmDelete} style={{ padding: 12 }}>
-          <Text style={{ color: "#FF3B30", textAlign: "center", fontWeight: "600" }}>刪除此筆紀錄</Text>
-        </Pressable>
-
-        <Text style={{ textAlign: "center", fontSize: 10, color: "#ccc" }}>ID: {p.prescriptionId}</Text>
-      </View>
+      {items.map((it, idx) => (
+        <View key={idx} style={{ padding: 20, borderWidth: 1.5, borderColor: "#333", borderRadius: 20, backgroundColor: "#fff", gap: 6 }}>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: "#4651DB" }}>{it.drug_name_zh}</Text>
+          <Text style={{ fontSize: 18, fontWeight: "600" }}>用法劑量：{it.dose}</Text>
+          <Text style={{ fontSize: 18, fontWeight: "600" }}>服用時段：{it.time_of_day?.join(", ") || "未提供"}</Text>
+          <Text style={{ fontSize: 18, color: "#666" }}>備註：{it.note_zh || "無"}</Text>
+        </View>
+      ))}
     </ScrollView>
-  );
+  </View>
+);
 }

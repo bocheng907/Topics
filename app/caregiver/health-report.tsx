@@ -73,7 +73,7 @@ export default function HealthReportScreen() {
       const min = String(now.getMinutes()).padStart(2, '0');
       const ss = String(now.getSeconds()).padStart(2, '0');
       
-      const timeString = `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
+      const timeString = `${yyyy}-${mm}-${dd}_${hh}-${min}-${ss}`;
       const shortId = activePatientId.slice(-4); // 取長輩ID最後4碼防撞
       const customDocId = `${timeString}_rec_${shortId}`;
 

@@ -174,7 +174,7 @@ export default function CameraScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, paddingTop: 90, paddingBottom: 40 },
+  container: { padding: 24, paddingTop: 90, paddingBottom: 160 },
 
   header: { marginBottom: 20 },
   title: { fontSize: 28, fontWeight: "900", color: "#333" },
