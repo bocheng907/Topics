@@ -1,7 +1,8 @@
-import { db } from "@/firebase/firebaseConfig";
+import { auth, db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
+import { signOut } from "firebase/auth";
 import {
   collection,
   doc,
@@ -170,8 +171,18 @@ export default function CareTargetCreateScreen() {
         </Text>
       </Pressable>
 
-      <Pressable onPress={() => router.back()}>
-        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700" }}>返回</Text>
+      {/* 🟢 終極解法：先登出，再換頁！ */}
+      <Pressable 
+        onPress={async () => {
+          try {
+            await signOut(auth); // 1. 真正登出 Firebase 帳號
+            router.replace("/login"); // 2. 登出後再跳回登入頁
+          } catch (error) {
+            console.error("登出失敗:", error);
+          }
+        }}
+      > 
+        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700" }}>登出並返回</Text>
       </Pressable>
     </ScrollView>
   );
