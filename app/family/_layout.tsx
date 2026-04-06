@@ -1,8 +1,11 @@
 // app/family/_layout.tsx
-import { Stack, router } from "expo-router";
+import { Stack, router, useSegments } from "expo-router";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function FamilyLayout() {
+  const segments = useSegments() as string[];
+  const isChatRoom = segments[segments.length - 1] === "chat-room";
+
   return (
     <View style={styles.container}>
       {/* 1. 上方的畫面區域 (會自動切換 index, list, dashboard 等畫面) */}
@@ -11,12 +14,25 @@ export default function FamilyLayout() {
       </View>
 
       {/* 2. 下方的全域共用導覽列 */}
-      <View style={styles.bottomNav}>
-        <Pressable onPress={() => router.navigate("/family")}><Text style={styles.navIcon}>🏠</Text></Pressable>
-        <Pressable onPress={() => Alert.alert("提示", "行事曆功能建置中")}><Text style={styles.navIcon}>📅</Text></Pressable>
-        <Pressable onPress={() => Alert.alert("提示", "通知功能建置中")}><Text style={styles.navIcon}>🔔</Text></Pressable>
-        <Pressable onPress={() => Alert.alert("提示", "訊息功能建置中")}><Text style={styles.navIcon}>💬</Text></Pressable>
-      </View>
+      {!isChatRoom && (
+        <View style={styles.bottomNav}>
+          <Pressable onPress={() => router.navigate("/family")}>
+            <Text style={styles.navIcon}>🏠</Text>
+          </Pressable>
+
+          <Pressable onPress={() => Alert.alert("提示", "行事曆功能建置中")}>
+            <Text style={styles.navIcon}>📅</Text>
+          </Pressable>
+
+          <Pressable onPress={() => Alert.alert("提示", "通知功能建置中")}>
+            <Text style={styles.navIcon}>🔔</Text>
+          </Pressable>
+
+          <Pressable onPress={() => router.push("/family/chat-list")}>
+            <Text style={styles.navIcon}>💬</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
