@@ -1,204 +1,175 @@
-import { useMemo, useState } from "react";
-import { View, Text, TextInput, ScrollView, Pressable, Alert } from "react-native";
+import React, { useMemo, useState } from "react";
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  ScrollView, 
+  Pressable, 
+  Alert, 
+  StyleSheet, 
+  StatusBar 
+} from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { useAuthContext } from "@/src/auth/AuthProvider";
+import { Ionicons } from "@expo/vector-icons";
 
-// 定義資料型別，將 time 改為字串陣列以支援多選
-type Item = { name: string; dose: string; time: string[]; note: string };
-
-const TIME_LABELS: Record<string, string> = {
-  morning: "早上",
-  noon: "中午",
-  afternoon: "下午",
-  night: "晚上",
-};
-
-function safeParseItems(itemsJson?: string): Item[] {
-  if (!itemsJson) return [];
+// 💡 修正 1：解析傳入的 JSON，並明確兼容最新的 Firebase 欄位名稱
+function safeParseItems(itemsJson?: string) {
+  if (!itemsJson) return [{ name: "", dose: "", usage: "", note: "" }];
   try {
     const data = JSON.parse(itemsJson);
-    if (!Array.isArray(data)) return [];
-
-    return data.map((it: any) => {
-      let parsedTime: string[] = ["morning"];
-
-      if (Array.isArray(it.time)) {
-        parsedTime = it.time;
-      } else if (Array.isArray(it.time_of_day)) {
-        parsedTime = it.time_of_day;
-      } else if (typeof it.time === "string" && it.time) {
-        parsedTime = [it.time];
-      }
-
-      return {
-        name: it.name || it.drug_name_zh || "",
-        dose: it.dose || "",
-        time: parsedTime,
-        note: it.note || it.note_zh || "",
-      };
-    });
-  } catch {
-    return [];
+    return data.map((it: any) => ({
+      // ✅ 對齊最新欄位：優先讀取 drug_name / dosage / usage_zh / memo
+      name: it.drug_name ?? it.name ?? it.drug_name_zh ?? "",
+      dose: it.dosage ?? it.dose ?? "",
+      usage: it.usage_zh ?? it.usage ?? "",
+      note: it.memo ?? it.note ?? it.note_zh ?? "",
+    }));
+  } catch (e) {
+    return [{ name: "", dose: "", usage: "", note: "" }];
   }
 }
 
-export default function FamilyEditScreen() {
-  const { imageUri, itemsJson, id, title: initialTitle } = useLocalSearchParams<{
-    imageUri?: string;
-    itemsJson?: string;
-    id?: string;
-    title?: string;
-  }>();
+export default function EditScreen() {
+  const { id, itemsJson } = useLocalSearchParams<{ id?: string; itemsJson?: string }>();
+  const { ready } = useAuthContext();
+  
+  // 💡 修正 2：初始化狀態
+  const [items, setItems] = useState(() => safeParseItems(itemsJson));
 
-  const initial = useMemo(() => safeParseItems(itemsJson), [itemsJson]);
-  const [items, setItems] = useState<Item[]>(
-    initial.length > 0 ? initial : [{ name: "", dose: "", time: ["morning"], note: "" }]
-  );
-
-  function updateItem(idx: number, patch: Partial<Item>) {
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-  }
-
-  function addRow() {
-    setItems((prev) => [...prev, { name: "", dose: "", time: ["morning"], note: "" }]);
-  }
-
-  function removeRow(idx: number) {
-    if (items.length <= 1) {
-      Alert.alert("提醒", "至少需保留一個項目");
-      return;
-    }
-    setItems((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  function onSave() {
-    if (items.some((it) => !it.name.trim())) {
-      Alert.alert("請檢查", "藥名不能為空");
-      return;
-    }
-
-    router.replace({
-      pathname: "/family/result",
-      params: {
-        id: id ?? "",
-        imageUri: imageUri ?? "",
-        itemsJson: JSON.stringify(items),
-        title: initialTitle ?? "",
-      },
-    });
-  }
+  if (!ready) return <View style={styles.center}><Text>載入中…</Text></View>;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, paddingBottom: 60, gap: 16 }}>
-      <Text style={{ fontSize: 24, fontWeight: "800" }}>修正藥單資訊</Text>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      
+      {/* Header 部分 */}
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={28} color="#333" />
+        </Pressable>
+        <Text style={styles.headerTitle}>修正藥單資訊</Text>
+        <Pressable style={styles.saveBtn}>
+          <Text style={styles.saveBtnText}>儲存</Text>
+        </Pressable>
+      </View>
 
-      {items.map((it, idx) => (
-        <View
-          key={idx}
-          style={{ padding: 16, borderWidth: 1, borderColor: "#ddd", borderRadius: 12, backgroundColor: "#fefefe", gap: 12 }}
-        >
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ fontWeight: "800", color: "#007AFF" }}>項目 {idx + 1}</Text>
-            <Pressable onPress={() => removeRow(idx)}>
-              <Text style={{ color: "#FF3B30", fontWeight: "600" }}>刪除</Text>
-            </Pressable>
-          </View>
-
-          <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600" }}>藥名</Text>
-            <TextInput
-              value={it.name}
-              onChangeText={(t) => updateItem(idx, { name: t })}
-              style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 10, backgroundColor: "#fff" }}
-            />
-          </View>
-
-          <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600" }}>服用時段 (可多選)</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
-              {Object.entries(TIME_LABELS).map(([value, label]) => {
-                const isSelected = it.time.includes(value);
-                return (
-                  <Pressable
-                    key={value}
-                    onPress={() => {
-                      const nextTime = isSelected
-                        ? it.time.filter((t) => t !== value)
-                        : [...it.time, value];
-                      updateItem(idx, { time: nextTime });
-                    }}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 20,
-                      borderWidth: 1,
-                      borderColor: isSelected ? "#007AFF" : "#ccc",
-                      backgroundColor: isSelected ? "#007AFF" : "#fff",
-                    }}
-                  >
-                    <Text style={{ color: isSelected ? "#fff" : "#333", fontWeight: "600", fontSize: 13 }}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+      <ScrollView contentContainerStyle={{ padding: 20, gap: 20 }}>
+        {/* 💡 修正 3：明確標註 (it: any, idx: number) 解決紅字警告 */}
+        {items.map((it: any, idx: number) => (
+          <View key={idx} style={styles.editCard}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.itemTag}>項目 {idx + 1}</Text>
+              <Pressable>
+                <Text style={styles.delBtnText}>刪除</Text>
+              </Pressable>
             </View>
-          </View>
+            
+            {/* 藥名輸入框 */}
+            <View style={styles.inputBox}>
+              <Text style={styles.label}>藥名</Text>
+              <TextInput 
+                style={styles.input} 
+                value={it.name} 
+                onChangeText={(text) => {
+                  const newItems = [...items];
+                  newItems[idx].name = text;
+                  setItems(newItems);
+                }}
+              />
+            </View>
 
-          <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600" }}>劑量</Text>
-            <TextInput
-              value={it.dose}
-              onChangeText={(t) => updateItem(idx, { dose: t })}
-              style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 10, backgroundColor: "#fff" }}
+            {/* 劑量輸入框 */}
+            <View style={styles.inputBox}>
+              <Text style={styles.label}>用法劑量</Text>
+              <TextInput 
+                style={styles.input} 
+                value={it.dose} 
+                onChangeText={(text) => {
+                  const newItems = [...items];
+                  newItems[idx].dose = text;
+                  setItems(newItems);
+                }}
+              />
+            </View>
+
+            {/* 服用時段輸入框 */}
+            <View style={styles.inputBox}>
+              <Text style={styles.label}>服用時段</Text>
+              <TextInput 
+                style={styles.input} 
+                value={it.usage} 
+                onChangeText={(text) => {
+                  const newItems = [...items];
+                  newItems[idx].usage = text;
+                  setItems(newItems);
+                }}
+              />
+            </View>
+
+            {/* 備註輸入框 */}
+            <TextInput 
+              style={styles.memo} 
+              placeholder="備註" 
+              value={it.note} 
+              multiline 
+              onChangeText={(text) => {
+                const newItems = [...items];
+                newItems[idx].note = text;
+                setItems(newItems);
+              }}
             />
           </View>
-
-          <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600" }}>備註</Text>
-            <TextInput
-              value={it.note}
-              onChangeText={(t) => updateItem(idx, { note: t })}
-              placeholder="例如：飯後服用"
-              style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 10, backgroundColor: "#fff" }}
-            />
-          </View>
-        </View>
-      ))}
-
-      <Pressable onPress={addRow} style={{ padding: 16, borderStyle: "dashed", borderWidth: 1, borderColor: "#007AFF", borderRadius: 12 }}>
-        <Text style={{ color: "#007AFF", textAlign: "center", fontWeight: "700" }}>＋ 新增藥品項目</Text>
-      </Pressable>
-
-      <Pressable onPress={onSave} style={{ padding: 16, backgroundColor: "#007AFF", borderRadius: 12, marginTop: 10 }}>
-        <Text style={{ color: "#fff", textAlign: "center", fontSize: 18, fontWeight: "700" }}>完成修正並預覽</Text>
-      </Pressable>
-
-      <Pressable
-        onPress={() => {
-          Alert.alert("取消編輯", "尚未儲存的變更將會消失，確定要取消嗎？", [
-            { text: "繼續編輯", style: "cancel" },
-            {
-              text: "確定取消",
-              style: "destructive",
-              onPress: () => {
-                if (id) {
-                  router.replace({
-                    pathname: "/family/detail",
-                    params: { id },
-                  });
-                } else {
-                  router.replace("/family/list");
-                }
-              },
-            },
-          ]);
-        }}
-        style={{ padding: 12, marginTop: 4 }}
-      >
-        <Text style={{ color: "#999", textAlign: "center", fontWeight: "600", fontSize: 15 }}>
-          取消並返回
-        </Text>
-      </Pressable>
-    </ScrollView>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#fff" },
+  header: { 
+    backgroundColor: "#FFE043", 
+    height: 110, 
+    paddingTop: 50, 
+    paddingHorizontal: 15, 
+    flexDirection: "row", 
+    alignItems: "center" 
+  },
+  backBtn: { marginRight: 10 },
+  headerTitle: { flex: 1, fontSize: 22, fontWeight: "bold", color: "#333" },
+  saveBtn: { 
+    backgroundColor: "#7BA9FF", 
+    paddingHorizontal: 15, 
+    paddingVertical: 8, 
+    borderRadius: 10 
+  },
+  saveBtnText: { color: "#fff", fontWeight: "bold" },
+  editCard: { 
+    padding: 20, 
+    borderRadius: 20, 
+    borderWidth: 1, 
+    borderColor: "#E0E0E0", 
+    backgroundColor: "#fff", 
+    gap: 15 
+  },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between" },
+  itemTag: { color: "#007AFF", fontWeight: "bold", fontSize: 16 },
+  delBtnText: { color: "#FF3B30", fontWeight: "bold" },
+  inputBox: { gap: 5 },
+  label: { fontSize: 16, fontWeight: "bold", color: "#333" },
+  input: { 
+    backgroundColor: "#F5F5F5", 
+    borderRadius: 10, 
+    padding: 12, 
+    fontSize: 16 
+  },
+  memo: { 
+    backgroundColor: "#F5F5F5", 
+    borderRadius: 10, 
+    padding: 12, 
+    height: 80, 
+    textAlignVertical: "top" 
+  },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" }
+});

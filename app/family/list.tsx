@@ -1,181 +1,128 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, ScrollView, Alert } from "react-native";
+import { View, Text, Pressable, ScrollView, StyleSheet, StatusBar, Alert } from "react-native";
 import { router } from "expo-router";
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, where, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
-
-function toMillis(ts: any): number {
-  if (ts?.toMillis) return ts.toMillis();
-  if (ts?.seconds) return ts.seconds * 1000;
-  if (typeof ts === "number") return ts;
-  return 0;
-}
-
-function formatDate(value: any) {
-  const ms = toMillis(value);
-  if (!ms) return "未知日期";
-  return new Date(ms).toLocaleDateString("zh-TW");
-}
+import { useAuthContext } from "@/src/auth/AuthProvider";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function FamilyListScreen() {
-  const { activePatientId, activePatient } = useActiveCareTarget();
+  const { activePatientId } = useActiveCareTarget();
+  const { ready } = useAuthContext();
   const [list, setList] = useState<any[]>([]);
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setList([]);
-    setReady(false);
-
-    if (!activePatientId) {
-      setReady(true);
-      return;
-    }
+    if (!activePatientId) return;
 
     const q = query(
       collection(db, "prescriptions"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc")
+      where("patientId", "==", activePatientId)
     );
 
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const rows = snap.docs.map((d) => {
-          const data = d.data() as any;
-          return {
-            prescriptionId: d.id,
-            title: data.title ?? "未命名藥單",
-            createdAt: data.createdAt ?? null,
-            status: data.status ?? "",
-            sourceImageUrl: data.sourceImageUrl ?? "",
-          };
-        });
-
-        setList(rows);
-        setReady(true);
-      },
-      (err) => {
-        console.log("prescriptions snapshot error:", err);
-        setList([]);
-        setReady(true);
-      }
-    );
-
+    const unsub = onSnapshot(q, (snap) => {
+      setList(snap.docs.map(d => {
+        const data = d.data() as any;
+        return {
+          prescriptionId: d.id,
+          title: data.title || "未命名藥單",
+          createdAt: data.createdAt, 
+        };
+      }));
+    });
     return () => unsub();
   }, [activePatientId]);
 
-  const confirmDelete = (id: string) => {
-    Alert.alert("確認刪除", "刪除後無法還原，確定嗎？", [
+  const handleDelete = (id: string) => {
+    Alert.alert("刪除藥單", "確定要刪除這份藥單紀錄嗎？", [
       { text: "取消", style: "cancel" },
-      {
-        text: "確定刪除",
-        style: "destructive",
-        onPress: () => Alert.alert("提示", "刪除功能尚未實作"),
-      },
+      { text: "確定刪除", style: "destructive", onPress: async () => {
+        try {
+          await deleteDoc(doc(db, "prescriptions", id));
+        } catch (e) {
+          Alert.alert("錯誤", "刪除失敗，請檢查權限");
+        }
+      }}
     ]);
   };
 
-  if (!ready) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Text>讀取雲端資料中…</Text>
-      </View>
-    );
-  }
-
-  if (!activePatientId) {
-    return (
-      <View style={{ flex: 1, padding: 20, justifyContent: "center", gap: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: "800" }}>請先選擇長輩</Text>
-        <Pressable onPress={() => router.replace("/family")}>
-          <Text style={{ color: "#007AFF", fontSize: 16, fontWeight: "700" }}>
-            前往選擇頁面
-          </Text>
-        </Pressable>
-      </View>
-    );
-  }
+  if (!ready) return <View style={styles.center}><Text>讀取中…</Text></View>;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 12 }}>
-      <Text style={{ fontSize: 28, fontWeight: "800" }}>藥單紀錄簿</Text>
-      <Text style={{ opacity: 0.6 }}>長輩：{activePatient?.name ?? "未命名長輩"}</Text>
-
-      {list.length === 0 ? (
-        <Text style={{ marginTop: 40, textAlign: "center", opacity: 0.5 }}>
-          目前沒有紀錄，請點選「掃描藥單」開始
-        </Text>
-      ) : (
-        list.map((p: any) => (
-          <View
-            key={p.prescriptionId}
-            style={{
-              padding: 16,
-              borderWidth: 1,
-              borderRadius: 12,
-              borderColor: "#ddd",
-              backgroundColor: "#fff",
-              gap: 4,
-            }}
-          >
-            <Text style={{ fontSize: 20, fontWeight: "800", color: "#333" }}>
-              {p.title}
-            </Text>
-
-            <Text style={{ fontSize: 14, color: "#666" }}>
-              日期：{formatDate(p.createdAt)}
-            </Text>
-
-            <Text style={{ fontSize: 12, color: "#999", marginBottom: 8 }}>
-              ID：{p.prescriptionId}
-            </Text>
-
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 16,
-                borderTopWidth: 1,
-                borderTopColor: "#eee",
-                paddingTop: 8,
-              }}
-            >
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: "/family/detail",
-                    params: { id: p.prescriptionId },
-                  })
-                }
-              >
-                <Text style={{ color: "#007AFF", fontSize: 16, fontWeight: "700" }}>
-                  查看詳情
-                </Text>
-              </Pressable>
-
-              <Pressable onPress={() => confirmDelete(p.prescriptionId)}>
-                <Text style={{ color: "#FF3B30", fontSize: 16, fontWeight: "700" }}>
-                  刪除
-                </Text>
-              </Pressable>
-            </View>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={28} color="#333" />
+          <Text style={styles.backText}>返回</Text>
+        </Pressable>
+      </View>
+      
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {list.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="document-text-outline" size={60} color="#CCC" />
+            <Text style={styles.emptyText}>目前尚無藥單紀錄</Text>
           </View>
-        ))
-      )}
-
-      <Pressable
-        onPress={() => router.replace("/family")}
-        style={{
-          marginTop: 20,
-          padding: 16,
-          backgroundColor: "#F2F2F7",
-          borderRadius: 12,
-        }}
-      >
-        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700", fontSize: 16 }}>
-          返回首頁
-        </Text>
-      </Pressable>
-    </ScrollView>
+        ) : (
+          list.map((p) => (
+            <View key={p.prescriptionId} style={styles.card}>
+              <View style={{ gap: 4 }}>
+                <Text style={styles.cardTitle}>{p.title || "藥單名稱"}</Text>
+                <Text style={styles.cardDate}>
+                  日期：{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "未知"}
+                </Text>
+              </View>
+              {/* 💡 底部按鈕排版 */}
+              <View style={styles.cardFooter}>
+                <Pressable onPress={() => router.push({ pathname: "/family/detail", params: { id: p.prescriptionId } })}>
+                  <Text style={styles.detailText}>查看詳情</Text>
+                </Pressable>
+                <Pressable onPress={() => handleDelete(p.prescriptionId)}>
+                  <Text style={styles.deleteText}>刪除</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#fff" },
+  header: { 
+    backgroundColor: "#FFE043", 
+    height: 115, 
+    paddingTop: 60, 
+    paddingHorizontal: 15,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  backButton: { flexDirection: "row", alignItems: "center" },
+  backText: { fontSize: 20, fontWeight: 'bold', color: '#000', marginLeft: 2 },
+  scrollContent: { padding: 20, gap: 15 },
+  emptyContainer: { marginTop: 100, alignItems: "center", justifyContent: "center", gap: 10 },
+  emptyText: { fontSize: 18, fontWeight: "bold", color: "#666" },
+  card: { 
+    padding: 18, 
+    borderRadius: 15, 
+    borderWidth: 1, 
+    borderColor: "#E0E0E0", 
+    backgroundColor: "#fff", 
+    gap: 12 
+  },
+  cardTitle: { fontSize: 20, fontWeight: "bold", color: "#333" },
+  cardDate: { fontSize: 14, color: "#999" },
+  cardFooter: { 
+    flexDirection: "row", 
+    borderTopWidth: 1, 
+    borderTopColor: "#EEE", 
+    paddingTop: 10, 
+    gap: 15 
+  },
+  detailText: { color: "#007AFF", fontWeight: "bold", fontSize: 16 },
+  deleteText: { color: "#FF3B30", fontWeight: "bold", fontSize: 16 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" }
+});

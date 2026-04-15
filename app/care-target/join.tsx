@@ -12,7 +12,8 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { db } from "@/firebase/firebaseConfig";
+import { signOut } from "firebase/auth";
+import { db,auth } from "@/firebase/firebaseConfig";
 
 export default function CareTargetJoinScreen() {
   const { user } = useAuth();
@@ -124,8 +125,30 @@ export default function CareTargetJoinScreen() {
         </Text>
       </Pressable>
 
-      <Pressable onPress={() => router.back()}>
-        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700" }}>返回</Text>
+      <Pressable
+        onPress={async () => {
+          try {
+            // 1. 強制登出 Firebase Auth 帳號
+            await signOut(auth); 
+            
+            // 2. 清除登入頁面之前的歷史堆疊，強制回到登入頁
+            // 💡 根據你的目錄結構，路徑應為 "/(auth)/login"
+            router.replace("/(auth)/login"); 
+          } catch (error) {
+            console.error("登出失敗:", error);
+            // 即使登出 API 失敗，通常也建議強制跳轉回登入頁以防卡死
+            router.replace("/(auth)/login");
+          }
+        }}
+        style={({ pressed }) => ({
+          marginTop: 10,
+          padding: 12,
+          opacity: pressed ? 0.6 : 1, // 加入簡單的點擊回饋
+        })}
+      >
+        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700", fontSize: 16 }}>
+          返回登入頁面
+        </Text>
       </Pressable>
     </ScrollView>
   );

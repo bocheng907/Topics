@@ -44,7 +44,7 @@ export default function FamilyChatListScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerSpacer}>
-        <Text style={styles.headerTitle}>訊息</Text>
+        
       </View>
 
       <ScrollView>
