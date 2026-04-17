@@ -1,10 +1,86 @@
-// app/caregiver/_layout.tsx
+import { db } from "@/firebase/firebaseConfig";
+import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { Stack, router, useSegments } from "expo-router";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { doc, getDoc } from "firebase/firestore";
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function CaregiverLayout() {
   const segments = useSegments() as string[];
   const isChatRoom = segments[segments.length - 1] === "chat-room";
+
+  const activeCareTarget = useActiveCareTarget();
+  const activePatientId =
+    (activeCareTarget as any)?.activePatientId ??
+    (activeCareTarget as any)?.activeCareTargetId ??
+    "";
+
+  async function makePhoneCall(phone: string) {
+    try {
+      const url = `tel:${phone}`;
+      const supported = await Linking.canOpenURL(url);
+
+      if (!supported) {
+        Alert.alert("撥號失敗", "此裝置目前無法開啟撥號功能");
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch (e) {
+      console.log("phone call failed:", e);
+      Alert.alert("撥號失敗", "目前無法撥打這支電話");
+    }
+  }
+
+  async function onEmergencyCall() {
+    if (!activePatientId) {
+      Alert.alert("提醒", "目前沒有選擇照顧對象");
+      return;
+    }
+
+    try {
+      const patientSnap = await getDoc(doc(db, "patients", activePatientId));
+
+      if (!patientSnap.exists()) {
+        Alert.alert("錯誤", "找不到照顧對象資料");
+        return;
+      }
+
+      const data = patientSnap.data() as any;
+      const phone1 = String(data.emergencyPhone1 ?? "").trim();
+      const phone2 = String(data.emergencyPhone2 ?? "").trim();
+
+      const phones = [phone1, phone2].filter(Boolean);
+
+      if (phones.length === 0) {
+        Alert.alert("尚未設定", "這位長輩尚未設定緊急聯絡電話");
+        return;
+      }
+
+      if (phones.length === 1) {
+        await makePhoneCall(phones[0]);
+        return;
+      }
+
+      Alert.alert("選擇要撥打的電話", "請選擇緊急聯絡人", [
+        {
+          text: `聯絡電話 1：${phones[0]}`,
+          onPress: () => {
+            void makePhoneCall(phones[0]);
+          },
+        },
+        {
+          text: `聯絡電話 2：${phones[1]}`,
+          onPress: () => {
+            void makePhoneCall(phones[1]);
+          },
+        },
+        { text: "取消", style: "cancel" },
+      ]);
+    } catch (e) {
+      console.log("emergency call failed:", e);
+      Alert.alert("撥號失敗", "目前無法撥打緊急聯絡電話");
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -15,16 +91,13 @@ export default function CaregiverLayout() {
       {!isChatRoom && (
         <View style={styles.footerWrapper}>
           <View style={styles.fabContainer}>
-            <Pressable
-              style={styles.fabButton}
-              onPress={() => Alert.alert("緊急聯絡", "即將撥打給家屬...")}
-            >
+            <Pressable style={styles.fabButton} onPress={onEmergencyCall}>
               <Text style={styles.fabIcon}>📞</Text>
             </Pressable>
           </View>
 
           <View style={styles.bottomNav}>
-            <Pressable onPress={() => router.navigate("/caregiver")}>
+            <Pressable onPress={() => router.navigate("/caregiver" as any)}>
               <Text style={styles.navIcon}>🏠</Text>
             </Pressable>
 
@@ -36,7 +109,7 @@ export default function CaregiverLayout() {
               <Text style={[styles.navIcon, { paddingLeft: 48 }]}>🔔</Text>
             </Pressable>
 
-            <Pressable onPress={() => router.push("/caregiver/chat-list")}>
+            <Pressable onPress={() => router.push("/caregiver/chat-list" as any)}>
               <Text style={styles.navIcon}>💬</Text>
             </Pressable>
           </View>
@@ -94,4 +167,3 @@ const styles = StyleSheet.create({
   },
   navIcon: { fontSize: 32 },
 });
-

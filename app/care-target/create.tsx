@@ -23,6 +23,13 @@ function genInviteCode() {
   return out;
 }
 
+function genPatientsId() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
 export default function CareTargetCreateScreen() {
   const { user } = useAuth();
   const [name, setName] = useState("");
@@ -31,7 +38,6 @@ export default function CareTargetCreateScreen() {
   const onCreate = async () => {
     if (!user) return;
 
-    // 依目前 rules：只有 family 可以建立 patient
     if (user.role !== "family") {
       Alert.alert("無法建立", "目前只有家屬帳號可以新增照顧對象，請改用邀請碼加入現有資料。");
       return;
@@ -48,6 +54,22 @@ export default function CareTargetCreateScreen() {
     const code = genInviteCode();
 
     try {
+      let emergencyPhone1 = "";
+      let emergencyPhone2 = "";
+
+      try {
+        const q = query(collection(db, "users"), where("uid", "==", user.uid));
+        const snap = await getDocs(q);
+
+        if (!snap.empty) {
+          const userData = snap.docs[0].data() as any;
+          emergencyPhone1 = String(userData.emergencyPhone1 ?? "").trim();
+          emergencyPhone2 = String(userData.emergencyPhone2 ?? "").trim();
+        }
+      } catch (e) {
+        console.log("load family emergency phones failed:", e);
+      }
+
       const now = new Date();
       const yyyy = now.getFullYear();
       const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -57,10 +79,32 @@ export default function CareTargetCreateScreen() {
       const ss = String(now.getSeconds()).padStart(2, "0");
 
       const timeString = `${yyyy}-${mm}-${dd}_${hh}-${min}-${ss}`;
-      const shortId = user.uid.slice(-4); // 取 user uid 最後4碼防撞
-      const customDocId = `${timeString}_pat_${shortId}`;
+
+      let patientsId = "";
+      let patientRef;
+      let customDocId = "";
+
+      for (let i = 0; i < 10; i++) {
+        const newPatientsId = genPatientsId();
+        const last4 = newPatientsId.slice(-4);
+        const newDocId = `${timeString}_pat_${last4}`;
+        const newRef = doc(db, "patients", newDocId);
+
+        const existed = await getDocs(query(collection(db, "patients"), where("patientsId", "==", newPatientsId)));
+        if (existed.empty) {
+          patientsId = newPatientsId;
+          customDocId = newDocId;
+          patientRef = newRef;
+          break;
+        }
+      }
+
+      if (!patientsId || !patientRef || !customDocId) {
+        throw new Error("failed to generate unique patientsId");
+      }
 
       const payload = {
+        patientsId,
         name: trimmedName,
         notes: trimmedNotes,
         inviteCode: code,
@@ -68,16 +112,14 @@ export default function CareTargetCreateScreen() {
         families: [user.uid],
         createdAt: serverTimestamp(),
         createdBy: user.uid,
+        emergencyPhone1,
+        emergencyPhone2,
       };
 
-      const patientRef = doc(db, "patients", customDocId);
       await setDoc(patientRef, payload);
 
       try {
-        const q = query(
-          collection(db, "users"),
-          where("uid", "==", user.uid)
-        );
+        const q = query(collection(db, "users"), where("uid", "==", user.uid));
         const snap = await getDocs(q);
 
         if (snap.empty) {
@@ -93,15 +135,19 @@ export default function CareTargetCreateScreen() {
         console.log("sync activePatientId error:", e);
       }
 
-      Alert.alert("建立成功", `已建立 ${trimmedName} 的資料庫。\n邀請碼：${code}`, [
-        {
-          text: "複製並進入主畫面",
-          onPress: async () => {
-            await Clipboard.setStringAsync(code);
-            router.replace("/family"); // 👈 改成跳轉到 /family
+      Alert.alert(
+        "建立成功",
+        `已建立 ${trimmedName} 的資料庫。\n邀請碼：${code}\n患者編號：${patientsId}`,
+        [
+          {
+            text: "複製並進入主畫面",
+            onPress: async () => {
+              await Clipboard.setStringAsync(code);
+              router.replace("/family");
+            },
           },
-        },
-      ]);
+        ]
+      );
     } catch (e: any) {
       console.log("create patient error:", e);
 
@@ -171,17 +217,16 @@ export default function CareTargetCreateScreen() {
         </Text>
       </Pressable>
 
-      {/* 🟢 終極解法：先登出，再換頁！ */}
-      <Pressable 
+      <Pressable
         onPress={async () => {
           try {
-            await signOut(auth); // 1. 真正登出 Firebase 帳號
-            router.replace("/login"); // 2. 登出後再跳回登入頁
+            await signOut(auth);
+            router.replace("/login");
           } catch (error) {
             console.error("登出失敗:", error);
           }
         }}
-      > 
+      >
         <Text style={{ color: "#666", textAlign: "center", fontWeight: "700" }}>登出並返回</Text>
       </Pressable>
     </ScrollView>
