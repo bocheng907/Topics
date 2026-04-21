@@ -94,7 +94,10 @@ export default function ResultScreen() {
   const [saving, setSaving] = useState(false);
 
   const isDraftMode = !prescriptionId && !!analyzeResult;
-
+  const safeImageUrl =
+    typeof imageUrl === "string" && imageUrl.length > 0
+      ? imageUrl
+      : "";
   const safeAnalyze = useMemo(() => {
     try {
       return analyzeResult ? JSON.parse(analyzeResult) : null;
@@ -124,7 +127,7 @@ export default function ResultScreen() {
         ? Object.values(rawMeds)
         : [];
 
-      setImageUri(imageUrl);
+      setImageUri(safeImageUrl);
       setTitle(draftTitle ?? "未命名藥單");
       setGlobalMemo(safe.memo ?? "");
       setItems(medicines.map((it) => mapItemFromAnalyze(it)));
@@ -219,7 +222,7 @@ export default function ResultScreen() {
         await setDoc(presRef, {
           createdBy: user.uid,
           patientId: activePatientId,
-          sourceImageUrl: imageUrl ?? "",
+          sourceImageUrl: safeImageUrl,
           status: "parsed",
           title: finalTitle,
           createdAt: serverTimestamp(),

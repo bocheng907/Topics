@@ -99,7 +99,7 @@ export default function CameraScreen() {
       router.replace({
         pathname: "/caregiver/result",
         params: {
-          imageUrl: downloadURL,
+          imageUrl: encodeURIComponent(downloadURL),
           draftTitle,
           analyzeResult: JSON.stringify(safe),
         },

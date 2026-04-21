@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, Pressable, ScrollView, Image, StyleSheet, StatusBar } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router"; 
 import { doc, getDoc, collection, getDocs, query } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { useAuthContext } from "@/src/auth/AuthProvider";
@@ -11,79 +11,143 @@ export default function FamilyDetailScreen() {
   const { ready } = useAuthContext();
   const [p, setP] = useState<any | null>(null);
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!id) return;
-    (async () => {
-      try {
-        const presRef = doc(db, "prescriptions", id);
-        const presSnap = await getDoc(presRef);
-        
-        if (presSnap.exists()) {
-          const data = presSnap.data() as any;
-          
-          // 💡 讀取子集合 items
-          const itemsSnap = await getDocs(query(collection(db, "prescriptions", id, "items")));
-          
-          const mappedItems = itemsSnap.docs.map(d => {
-            const it = d.data() as any;
-            return {
-              name: it.drug_name ?? it.drug_name_zh ?? "",
-              dose: it.dosage ?? it.dose ?? "",
-              usage: it.usage_zh ?? it.usage ?? "未設定",
-              note: it.memo ?? it.note_zh ?? "無",
-            };
-          });
+    try {
+      const presRef = doc(db, "prescriptions", id);
+      const presSnap = await getDoc(presRef);
+      
+      if (presSnap.exists()) {
+        const data = presSnap.data() as any;
 
-          setP({ 
-            prescriptionId: presSnap.id, 
-            ...data, 
-            items: mappedItems 
-          });
-        }
-      } catch (error) {
-        console.error("讀取詳情失敗:", error);
+        // 1. 抓取子集合資料
+        const itemsSnap = await getDocs(query(collection(db, "prescriptions", id, "items")));
+        const mappedItems = itemsSnap.docs.map(d => {
+          const it = d.data() as any;
+          return {
+            name: it.drug_name ?? it.name ?? "未命名藥品",
+            dosage: it.dosage ?? it.dose ?? "",
+            usage_zh: it.usage_zh ?? it.usage ?? "",
+            memo: it.memo ?? it.note ?? "",
+          };
+        });
+
+        // 2. 處理圖片網址：僅進行去空白，不做其他過濾，確保與資料庫原始資料一致
+        const rawUrl = data.sourceImageUrl;
+        const cleanImageUrl =
+          typeof rawUrl === "string" && rawUrl.trim().length > 0
+            ? rawUrl.trim()
+            : null;
+
+        setP({ 
+          ...data, 
+          prescriptionId: presSnap.id, 
+          sourceImageUrl: cleanImageUrl, 
+          items: mappedItems 
+        });
+
+        // 💡 除錯專用：這行非常重要，請查看 Terminal
+        console.log("----------------------------");
+        console.log("【資料庫原始網址】:", rawUrl);
+        console.log("【清理後最終網址】:", cleanImageUrl);
+        console.log("----------------------------");
       }
-    })();
+    } catch (error) {
+      console.error("讀取詳情失敗:", error);
+    }
   }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [fetchData])
+  );
 
   if (!ready || !p) return <View style={styles.center}><Text>載入中…</Text></View>;
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color="#333" />
           <Text style={styles.backText}>返回</Text>
         </Pressable>
       </View>
-      
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.titleRow}>
-          <View>
-            <Text style={styles.mainTitle}>{p.title || "藥單名稱"}</Text>
-            {/* ✅ 修正：截圖中 createdAt 是字串，直接顯示即可 */}
-            <Text style={styles.subInfo}>紀錄日期：{p.createdAt || "未知"}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.mainTitle}>{p.title || "藥單詳情"}</Text>
+            <Text style={styles.subInfo}>
+              紀錄日期：{p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() : "未知"}
+            </Text>
           </View>
           <Pressable 
-            onPress={() => router.push({ pathname: "/family/edit", params: { id: p.prescriptionId, itemsJson: JSON.stringify(p.items), title: p.title } })} 
+            onPress={() => router.push({
+              pathname: "/family/edit",
+              params: { id: p.prescriptionId, itemsJson: JSON.stringify(p.items) }
+            })} 
             style={styles.editBtn}
           >
-            <Text style={styles.editBtnText}>編輯</Text>
+            <Text style={styles.editBtnText}>修正</Text>
           </Pressable>
         </View>
 
-        {p.sourceImageUrl && <Image source={{ uri: p.sourceImageUrl }} style={styles.img} resizeMode="contain" />}
-        
-        <Text style={styles.sectionTitle}>內容</Text>
-        {p.items?.map((it: any, idx: number) => (
-          <View key={idx} style={styles.itemCard}>
-            <Text style={styles.itemName}>{it.name}</Text>
-            <Text style={styles.itemInfo}>用法劑量：{it.dose}</Text>
-            <Text style={styles.itemInfo}>服用時段：{it.usage}</Text>
-            <Text style={styles.itemNote}>備註：{it.note}</Text>
+        {p.sourceImageUrl ? (
+          <Image
+            source={{ uri: p.sourceImageUrl }}
+            style={styles.img}
+            resizeMode="contain"
+            onLoad={() => console.log("圖片載入成功:", p.sourceImageUrl)}
+            onError={(e) => console.log("圖片載入失敗:", e.nativeEvent, p.sourceImageUrl)}
+          />
+        ) : (
+          <View style={[styles.img, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }]}>
+            <Ionicons name="image-outline" size={40} color="#ccc" />
+            <Text style={{ color: '#999', marginTop: 8 }}>無藥單照片</Text>
           </View>
-        ))}
+        )}
+
+        <Text style={styles.sectionTitle}>藥品內容</Text>
+        
+        {p.items?.map((it: any, idx: number) => {
+          // 💡 邏輯：將 usage_zh 以逗號拆分為「用法」與「時段」
+          const usageString = it.usage_zh || "";
+          const parts = usageString.includes(",") ? usageString.split(",") : [usageString, ""];
+          const method = parts[0] || "未設定";
+          const timeDetail = parts.slice(1).join(",") || "依醫囑服用";
+
+          return (
+            <View key={idx} style={styles.itemCard}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.itemName} numberOfLines={2}>{it.name}</Text>
+              </View>
+              
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>藥物劑量：</Text>
+                <Text style={styles.infoValue}>{it.dosage}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>使用方式：</Text>
+                <Text style={styles.infoValue}>{method}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>服用時段：</Text>
+                <Text style={styles.infoValue}>{timeDetail}</Text>
+              </View>
+
+              {it.memo ? (
+                <View style={styles.noteBox}>
+                  <Text style={styles.noteText}>備註：{it.memo}</Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -91,20 +155,45 @@ export default function FamilyDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#FFE043", height: 115, paddingTop: 60, paddingHorizontal: 15, flexDirection: "row", alignItems: "center" },
-  backButton: { flexDirection: "row", alignItems: "center" },
-  backText: { fontSize: 20, fontWeight: 'bold', color: '#000', marginLeft: 2 },
-  scrollContent: { padding: 20, gap: 16 },
-  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  mainTitle: { fontSize: 26, fontWeight: "bold", color: "#333" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  header: { 
+    backgroundColor: "#FFE043", 
+    height: 100, 
+    paddingTop: 50, 
+    paddingHorizontal: 15, 
+    flexDirection: "row", 
+    alignItems: "center" 
+  },
+  backButton: { flexDirection: "row", alignItems: "center", minWidth: 100 },
+  backText: { fontSize: 20, fontWeight: 'bold', color: '#333', marginLeft: 2 },
+  scrollContent: { padding: 20 },
+  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
+  mainTitle: { fontSize: 28, fontWeight: "900", color: "#333" },
   subInfo: { fontSize: 14, color: "#999", marginTop: 4 },
-  editBtn: { backgroundColor: "#7BA9FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 10 },
-  editBtnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-  img: { width: "100%", height: 250, borderRadius: 15, backgroundColor: "#f0f0f0" },
-  sectionTitle: { fontSize: 22, fontWeight: "bold", marginTop: 10, color: "#333" },
-  itemCard: { padding: 18, borderRadius: 15, borderWidth: 1, borderColor: "#E0E0E0", backgroundColor: "#fff", gap: 6 },
-  itemName: { fontSize: 18, fontWeight: "bold", color: "#007AFF", marginBottom: 4 },
-  itemInfo: { fontSize: 15, color: "#333" },
-  itemNote: { fontSize: 14, color: "#999", marginTop: 4 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" }
+  editBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
+  editBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
+  img: { 
+    width: "100%", 
+    height: 300,
+    borderRadius: 15, 
+    backgroundColor: "#f0f0f0", 
+    marginBottom: 25,
+    display: 'flex',
+  },
+  sectionTitle: { fontSize: 22, fontWeight: "800", color: "#333", marginBottom: 15 },
+  itemCard: { 
+    padding: 18, 
+    borderRadius: 16, 
+    backgroundColor: "#F9F9F9", 
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: "#EEE"
+  },
+  cardHeader: { marginBottom: 10 },
+  itemName: { fontSize: 19, fontWeight: "800", color: "#007AFF" },
+  infoRow: { flexDirection: "row", marginBottom: 8, alignItems: 'flex-start' },
+  infoLabel: { fontSize: 15, color: "#666", width: 85 },
+  infoValue: { fontSize: 15, color: "#333", fontWeight: "600", flex: 1 },
+  noteBox: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#EEE" },
+  noteText: { fontSize: 14, color: "#888", fontStyle: "italic" }
 });

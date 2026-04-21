@@ -12,30 +12,80 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
+import { doc, collection, getDocs, query, writeBatch, serverTimestamp } from "firebase/firestore";
+import { db } from "@/firebase/firebaseConfig";
 
-// 💡 修正 1：解析傳入的 JSON，並明確兼容最新的 Firebase 欄位名稱
+// 解析傳入的 JSON 資料並相容新舊欄位
 function safeParseItems(itemsJson?: string) {
-  if (!itemsJson) return [{ name: "", dose: "", usage: "", note: "" }];
+  if (!itemsJson) return [{ name: "", dosage: "", usage_type: "", usage_time: "", memo: "" }];
   try {
     const data = JSON.parse(itemsJson);
-    return data.map((it: any) => ({
-      // ✅ 對齊最新欄位：優先讀取 drug_name / dosage / usage_zh / memo
-      name: it.drug_name ?? it.name ?? it.drug_name_zh ?? "",
-      dose: it.dosage ?? it.dose ?? "",
-      usage: it.usage_zh ?? it.usage ?? "",
-      note: it.memo ?? it.note ?? it.note_zh ?? "",
-    }));
+    return data.map((it: any) => {
+      const usage = it.usage_zh ?? it.usage ?? "";
+      // 💡 支援用逗號拆分用法與時間
+      const parts = usage.includes(",") ? usage.split(",") : [usage, ""];
+      return {
+        name: it.drug_name ?? it.name ?? "",
+        dosage: it.dosage ?? it.dose ?? "",
+        usage_type: parts[0] || "",        
+        usage_time: parts.slice(1).join(",") || "", 
+        memo: it.memo ?? it.note ?? "",
+      };
+    });
   } catch (e) {
-    return [{ name: "", dose: "", usage: "", note: "" }];
+    return [{ name: "", dosage: "", usage_type: "", usage_time: "", memo: "" }];
   }
 }
 
-export default function EditScreen() {
+export default function FamilyEditScreen() {
   const { id, itemsJson } = useLocalSearchParams<{ id?: string; itemsJson?: string }>();
   const { ready } = useAuthContext();
   
-  // 💡 修正 2：初始化狀態
-  const [items, setItems] = useState(() => safeParseItems(itemsJson));
+  // 初始化資料狀態
+  const initialItems = useMemo(() => safeParseItems(itemsJson), [itemsJson]);
+  const [items, setItems] = useState(initialItems);
+
+  // ✅ 核心修正：加入更新特定索引項目的函數
+  const updateItem = (index: number, field: string, value: string) => {
+    const newItems = [...items];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setItems(newItems);
+  };
+
+  const handleSave = async () => {
+    if (!id) return;
+    try {
+      const batch = writeBatch(db);
+      const presRef = doc(db, "prescriptions", id);
+      batch.update(presRef, { updatedAt: serverTimestamp() });
+
+      const itemsQuery = query(collection(db, "prescriptions", id, "items"));
+      const itemsSnap = await getDocs(itemsQuery);
+      
+      itemsSnap.docs.forEach((docSnap, index) => {
+        const itemRef = doc(db, "prescriptions", id, "items", docSnap.id);
+        const it = items[index];
+        if (it) {
+          // ✅ 組合用法與時間存回 usage_zh
+          const combinedUsage = `${it.usage_type}${it.usage_time ? "," + it.usage_time : ""}`;
+          
+          batch.update(itemRef, {
+            drug_name: it.name,
+            dosage: it.dosage,
+            usage_zh: combinedUsage, 
+            memo: it.memo,
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
+
+      await batch.commit();
+      Alert.alert("儲存成功", "雲端資料已同步更新", [{ text: "確定", onPress: () => router.back() }]);
+    } catch (e) {
+      console.error("更新失敗:", e);
+      Alert.alert("儲存失敗", "無法連線至資料庫");
+    }
+  };
 
   if (!ready) return <View style={styles.center}><Text>載入中…</Text></View>;
 
@@ -43,82 +93,74 @@ export default function EditScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       
-      {/* Header 部分 */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={28} color="#333" />
+          <Text style={styles.backText}>返回</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>修正藥單資訊</Text>
-        <Pressable style={styles.saveBtn}>
+      </View>
+
+      <View style={styles.titleRow}>
+        <Text style={styles.pageTitle}>修正藥單資訊</Text>
+        <Pressable onPress={handleSave} style={styles.saveBtn}>
           <Text style={styles.saveBtnText}>儲存</Text>
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20, gap: 20 }}>
-        {/* 💡 修正 3：明確標註 (it: any, idx: number) 解決紅字警告 */}
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         {items.map((it: any, idx: number) => (
           <View key={idx} style={styles.editCard}>
             <View style={styles.cardHeader}>
-              <Text style={styles.itemTag}>項目 {idx + 1}</Text>
-              <Pressable>
-                <Text style={styles.delBtnText}>刪除</Text>
-              </Pressable>
+              <Text style={styles.itemTag}>藥品項目 {idx + 1}</Text>
             </View>
-            
-            {/* 藥名輸入框 */}
+
+            {/* 藥品名稱 (唯讀或可編輯) */}
             <View style={styles.inputBox}>
-              <Text style={styles.label}>藥名</Text>
+              <Text style={styles.label}>藥品名稱</Text>
               <TextInput 
                 style={styles.input} 
                 value={it.name} 
-                onChangeText={(text) => {
-                  const newItems = [...items];
-                  newItems[idx].name = text;
-                  setItems(newItems);
-                }}
+                onChangeText={(t) => updateItem(idx, 'name', t)} 
               />
             </View>
 
-            {/* 劑量輸入框 */}
             <View style={styles.inputBox}>
-              <Text style={styles.label}>用法劑量</Text>
+              <Text style={styles.label}>藥物劑量 (例如: 10mg)</Text>
               <TextInput 
                 style={styles.input} 
-                value={it.dose} 
-                onChangeText={(text) => {
-                  const newItems = [...items];
-                  newItems[idx].dose = text;
-                  setItems(newItems);
-                }}
+                value={it.dosage} 
+                onChangeText={(t) => updateItem(idx, 'dosage', t)} 
               />
             </View>
 
-            {/* 服用時段輸入框 */}
             <View style={styles.inputBox}>
-              <Text style={styles.label}>服用時段</Text>
+              <Text style={styles.label}>用法 (例如: 口服、外用)</Text>
               <TextInput 
                 style={styles.input} 
-                value={it.usage} 
-                onChangeText={(text) => {
-                  const newItems = [...items];
-                  newItems[idx].usage = text;
-                  setItems(newItems);
-                }}
+                value={it.usage_type} 
+                onChangeText={(t) => updateItem(idx, 'usage_type', t)} 
               />
             </View>
 
-            {/* 備註輸入框 */}
-            <TextInput 
-              style={styles.memo} 
-              placeholder="備註" 
-              value={it.note} 
-              multiline 
-              onChangeText={(text) => {
-                const newItems = [...items];
-                newItems[idx].note = text;
-                setItems(newItems);
-              }}
-            />
+            <View style={styles.inputBox}>
+              <Text style={styles.label}>服用時間 (例如: 每日三次、飯後)</Text>
+              <TextInput 
+                style={styles.input} 
+                value={it.usage_time} 
+                onChangeText={(t) => updateItem(idx, 'usage_time', t)} 
+              />
+            </View>
+
+            <View style={styles.inputBox}>
+              <Text style={styles.label}>備註說明</Text>
+              <TextInput 
+                style={[styles.input, styles.memoInput]} 
+                value={it.memo} 
+                multiline
+                placeholder="請輸入備註"
+                onChangeText={(t) => updateItem(idx, 'memo', t)}
+              />
+            </View>
           </View>
         ))}
       </ScrollView>
@@ -128,23 +170,29 @@ export default function EditScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: { 
     backgroundColor: "#FFE043", 
-    height: 110, 
+    height: 100, 
     paddingTop: 50, 
     paddingHorizontal: 15, 
-    flexDirection: "row", 
-    alignItems: "center" 
+    flexDirection: "row",
+    alignItems: "center",
   },
-  backBtn: { marginRight: 10 },
-  headerTitle: { flex: 1, fontSize: 22, fontWeight: "bold", color: "#333" },
-  saveBtn: { 
-    backgroundColor: "#7BA9FF", 
-    paddingHorizontal: 15, 
-    paddingVertical: 8, 
-    borderRadius: 10 
+  backBtn: { flexDirection: "row", alignItems: "center" },
+  backText: { fontSize: 20, fontWeight: 'bold', color: '#333', marginLeft: 2 },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#fff',
   },
-  saveBtnText: { color: "#fff", fontWeight: "bold" },
+  pageTitle: { fontSize: 26, fontWeight: "900", color: "#000" },
+  saveBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
+  saveBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
+  scrollContent: { padding: 20, gap: 20 },
   editCard: { 
     padding: 20, 
     borderRadius: 20, 
@@ -153,23 +201,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff", 
     gap: 15 
   },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between" },
+  cardHeader: { marginBottom: 5 },
   itemTag: { color: "#007AFF", fontWeight: "bold", fontSize: 16 },
-  delBtnText: { color: "#FF3B30", fontWeight: "bold" },
-  inputBox: { gap: 5 },
-  label: { fontSize: 16, fontWeight: "bold", color: "#333" },
-  input: { 
-    backgroundColor: "#F5F5F5", 
-    borderRadius: 10, 
-    padding: 12, 
-    fontSize: 16 
-  },
-  memo: { 
-    backgroundColor: "#F5F5F5", 
-    borderRadius: 10, 
-    padding: 12, 
-    height: 80, 
-    textAlignVertical: "top" 
-  },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" }
+  inputBox: { gap: 8 },
+  label: { fontSize: 15, color: "#666", fontWeight: "600" },
+  input: { backgroundColor: "#F5F5F5", padding: 12, borderRadius: 10, fontSize: 16, color: "#333" },
+  memoInput: { height: 80, textAlignVertical: 'top' }
 });

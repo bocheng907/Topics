@@ -26,11 +26,11 @@ export default function FamilyListScreen() {
         return {
           prescriptionId: d.id,
           title: data.title || "未命名藥單",
-          createdAt: data.createdAt, 
+          createdAt: data.createdAt,
         };
       }));
     });
-    return () => unsub();
+    return unsub;
   }, [activePatientId]);
 
   const handleDelete = (id: string) => {
@@ -70,7 +70,13 @@ export default function FamilyListScreen() {
               <View style={{ gap: 4 }}>
                 <Text style={styles.cardTitle}>{p.title || "藥單名稱"}</Text>
                 <Text style={styles.cardDate}>
-                  日期：{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "未知"}
+                  日期：{
+                    typeof p.createdAt === 'string' 
+                      ? p.createdAt 
+                      : (p.createdAt?.seconds 
+                          ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() 
+                          : "未知")
+                  }
                 </Text>
               </View>
               {/* 💡 底部按鈕排版 */}
@@ -94,8 +100,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   header: { 
     backgroundColor: "#FFE043", 
-    height: 115, 
-    paddingTop: 60, 
+    height: 100, 
+    paddingTop: 50, 
     paddingHorizontal: 15,
     flexDirection: "row",
     alignItems: "center",
