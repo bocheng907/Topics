@@ -1,13 +1,27 @@
+import Constants from "expo-constants";
+
 export interface AnalyzeResult {
   medicines: any[];
   raw_text?: string;
+}
+
+function getPrescriptionAnalyzeUrl() {
+  const baseUrl = Constants.expoConfig?.extra?.prescriptionApiBaseUrl;
+
+  if (typeof baseUrl !== "string" || !baseUrl.trim()) {
+    throw new Error(
+      "Missing Expo config: expo.extra.prescriptionApiBaseUrl is not set"
+    );
+  }
+
+  return `${baseUrl.replace(/\/+$/, "")}/analyze/url`;
 }
 
 export async function analyzePrescriptionByUrl(imageUrl: string): Promise<AnalyzeResult> {
   let response: Response;
 
   try {
-    response = await fetch("http://172.20.10.10:8000/analyze/url", {
+    response = await fetch(getPrescriptionAnalyzeUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image_url: imageUrl }),
