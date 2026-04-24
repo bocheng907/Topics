@@ -23,15 +23,18 @@ export default function CaregiverDetailScreen() {
       setP({ prescriptionId: presSnap.id, ...data });
 
       const itemsSnap = await getDocs(query(collection(db, "prescriptions", id, "items")));
-      const list = itemsSnap.docs.map((d) => {
-        const it = d.data() as any;
-        return {
-          drug_name: it.drug_name ?? it.drug_name_zh ?? "",
-          dosage: it.dosage ?? it.dose ?? "",
-          usage_zh: it.usage_zh ?? it.usage ?? "",
-          memo: it.memo ?? it.note_zh ?? "",
-        };
-      });
+        const list = itemsSnap.docs.map((d) => {
+          const it = d.data() as any;
+          const drug_name = it.drug_name_zh ?? it.drug_name ?? "";
+          const dosage = it.dose ?? it.dosage ?? "";
+          const memo = it.note_zh ?? it.memo ?? "";
+          return {
+            drug_name,
+            dosage,
+            usage_zh: it.usage_zh ?? it.usage ?? "",
+            memo,
+          };
+        });
       setItems(list);
       setLoaded(true);
     } catch (e) {

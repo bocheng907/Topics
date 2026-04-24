@@ -23,7 +23,14 @@ export default function FamilyDetailScreen() {
         // 1. 抓取子集合資料
         const itemsSnap = await getDocs(query(collection(db, "prescriptions", id, "items")));
         const mappedItems = itemsSnap.docs.map(d => {
-          const it = d.data() as any;
+          const raw = d.data() as any;
+          const it = {
+            ...raw,
+            drug_name: raw.drug_name_zh ?? raw.drug_name ?? raw.name ?? "",
+            dosage: raw.dose ?? raw.dosage ?? "",
+            usage_zh: raw.usage_zh ?? raw.usage ?? "",
+            memo: raw.note_zh ?? raw.memo ?? raw.note ?? "",
+          };
           return {
             name: it.drug_name ?? it.name ?? "未命名藥品",
             dosage: it.dosage ?? it.dose ?? "",

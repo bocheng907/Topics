@@ -1,28 +1,39 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, ScrollView, Pressable, Alert, StyleSheet, StatusBar } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
-import { doc, collection, getDocs, query, writeBatch, serverTimestamp } from "firebase/firestore";
+import { doc, collection, getDoc, getDocs, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
+import { createMedicationReminders } from "@/src/reminders/createMedicationReminders";
+
+type EditItem = {
+  itemId?: string;
+  name: string;
+  dosage: string;
+  usage_type: string;
+  usage_time: string;
+  memo: string;
+};
 
 function safeParseItems(itemsJson?: string) {
-  if (!itemsJson) return [{ name: "", dosage: "", usage_type: "", usage_time: "", memo: "" }];
+  if (!itemsJson) return [{ itemId: undefined, name: "", dosage: "", usage_type: "", usage_time: "", memo: "" }];
   try {
     const data = JSON.parse(itemsJson);
     return data.map((it: any) => {
       const usage = it.usage_zh ?? it.usage ?? "";
       const parts = usage.includes(",") ? usage.split(",") : [usage, ""];
       return {
-        name: it.drug_name ?? it.name ?? "",
-        dosage: it.dosage ?? it.dose ?? "",
+        itemId: it.itemId ?? it.id ?? undefined,
+        name: it.drug_name_zh ?? it.drug_name ?? it.name ?? "",
+        dosage: it.dose ?? it.dosage ?? "",
         usage_type: parts[0] || "",
         usage_time: parts.slice(1).join(",") || "",
-        memo: it.memo ?? it.note ?? "",
+        memo: it.note_zh ?? it.memo ?? it.note ?? "",
       };
     });
   } catch (e) {
-    return [{ name: "", dosage: "", usage_type: "", usage_time: "", memo: "" }];
+    return [{ itemId: undefined, name: "", dosage: "", usage_type: "", usage_time: "", memo: "" }];
   }
 }
 
@@ -30,7 +41,37 @@ export default function CaregiverEditScreen() {
   const { id, itemsJson } = useLocalSearchParams<{ id?: string; itemsJson?: string }>();
   const { ready } = useAuthContext();
   const initialItems = useMemo(() => safeParseItems(itemsJson), [itemsJson]);
-  const [items, setItems] = useState(initialItems);
+  const [items, setItems] = useState<EditItem[]>(initialItems);
+
+  useEffect(() => {
+    if (!id) return;
+
+    (async () => {
+      try {
+        const itemsSnap = await getDocs(query(collection(db, "prescriptions", id, "items")));
+        const fetchedItems: EditItem[] = itemsSnap.docs.map((docSnap) => {
+          const it = docSnap.data() as any;
+          const usage = it.usage_zh ?? it.usage ?? "";
+          const parts = usage.includes(",") ? usage.split(",") : [usage, ""];
+
+          return {
+            itemId: docSnap.id,
+            name: it.drug_name_zh ?? it.drug_name ?? it.name ?? "",
+            dosage: it.dose ?? it.dosage ?? "",
+            usage_type: parts[0] || "",
+            usage_time: parts.slice(1).join(",") || "",
+            memo: it.note_zh ?? it.memo ?? it.note ?? "",
+          };
+        });
+
+        if (fetchedItems.length > 0) {
+          setItems(fetchedItems);
+        }
+      } catch (e) {
+        console.log("caregiver edit load items error:", e);
+      }
+    })();
+  }, [id]);
 
   const updateItem = (index: number, field: string, value: string) => {
     const newItems = [...items];
@@ -45,25 +86,43 @@ export default function CaregiverEditScreen() {
       const presRef = doc(db, "prescriptions", id);
       batch.update(presRef, { updatedAt: serverTimestamp() });
 
-      const itemsQuery = query(collection(db, "prescriptions", id, "items"));
-      const itemsSnap = await getDocs(itemsQuery);
-      
-      itemsSnap.docs.forEach((docSnap, index) => {
-        const itemRef = doc(db, "prescriptions", id, "items", docSnap.id);
-        const it = items[index];
-        if (it) {
-          const combinedUsage = `${it.usage_type}${it.usage_time ? "," + it.usage_time : ""}`;
-          batch.update(itemRef, {
-            drug_name: it.name,
-            dosage: it.dosage,
-            usage_zh: combinedUsage,
-            memo: it.memo,
-            updatedAt: serverTimestamp()
-          });
-        }
+      items.forEach((it) => {
+        if (!it.itemId) return;
+
+        const itemRef = doc(db, "prescriptions", id, "items", it.itemId);
+        const combinedUsage = `${it.usage_type}${it.usage_time ? "," + it.usage_time : ""}`;
+
+        batch.update(itemRef, {
+          drug_name_zh: it.name,
+          dose: it.dosage,
+          usage_zh: combinedUsage,
+          note_zh: it.memo,
+          updatedAt: serverTimestamp()
+        });
       });
 
       await batch.commit();
+      const presSnap = await getDoc(presRef);
+      const patientId = String(presSnap.data()?.patientId ?? "");
+
+      const remindersBatch = writeBatch(db);
+      const remindersSnap = await getDocs(
+        query(collection(db, "medication_reminders"), where("prescriptionId", "==", id))
+      );
+      remindersSnap.docs.forEach((docSnap) => {
+        remindersBatch.delete(docSnap.ref);
+      });
+      await remindersBatch.commit();
+
+      await createMedicationReminders({
+        patientId,
+        prescriptionId: id,
+        items: items.map((it) => ({
+          drug_name_zh: it.name,
+          dose: it.dosage,
+          time_of_day: `${it.usage_type}${it.usage_time ? "," + it.usage_time : ""}`,
+        })),
+      });
       Alert.alert("更新成功", "雲端資料已同步", [{ text: "確定", onPress: () => router.back() }]);
     } catch (e) {
       Alert.alert("錯誤", "無法連線至雲端資料庫");

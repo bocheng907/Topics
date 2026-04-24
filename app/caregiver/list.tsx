@@ -2,11 +2,37 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet, StatusBar, Alert } from "react-native";
 import { router } from "expo-router";
-import { collection, onSnapshot, orderBy, query, where, deleteDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, where, doc, getDocs, writeBatch } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useAuth } from "@/src/auth/useAuth";
 import { Ionicons } from "@expo/vector-icons";
+
+async function deletePrescriptionCascade(prescriptionId: string) {
+  const batch = writeBatch(db);
+
+  const itemsSnap = await getDocs(collection(db, "prescriptions", prescriptionId, "items"));
+  itemsSnap.docs.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+
+  const remindersSnap = await getDocs(
+    query(collection(db, "medication_reminders"), where("prescriptionId", "==", prescriptionId))
+  );
+  remindersSnap.docs.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+
+  const logsSnap = await getDocs(
+    query(collection(db, "medication_logs"), where("prescriptionId", "==", prescriptionId))
+  );
+  logsSnap.docs.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+
+  batch.delete(doc(db, "prescriptions", prescriptionId));
+  await batch.commit();
+}
 
 export default function CaregiverListScreen() {
   const { activePatientId } = useActiveCareTarget();
@@ -49,7 +75,7 @@ export default function CaregiverListScreen() {
       { text: "取消", style: "cancel" },
       { text: "確定刪除", style: "destructive", onPress: async () => {
           try {
-            await deleteDoc(doc(db, "prescriptions", id));
+            await deletePrescriptionCascade(id);
           } catch (e) { Alert.alert("錯誤", "刪除失敗"); }
       }}
     ]);
