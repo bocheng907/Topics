@@ -112,7 +112,14 @@ export default function ResultScreen() {
         const itemsSnap = await getDocs(itemsQ);
 
         const rows: Item[] = itemsSnap.docs.map((d) => {
-          const it = d.data() as any;
+          const raw = d.data() as any;
+          const it = {
+            ...raw,
+            drug_name_zh: raw.drug_name_zh ?? raw.drug_name ?? "",
+            dose: raw.dose ?? raw.dosage ?? "",
+            usage: raw.usage_zh ?? raw.usage ?? "",
+            note_zh: raw.note_zh ?? raw.memo ?? raw.note ?? "",
+          };
 
           // 你現在正規欄位是 usage（文字），time 這裡保持 UI 需要的 string[]
           // 若 usage 是 "morning/noon/night" 這種 key，TIME_LABELS 會轉中文
@@ -189,7 +196,7 @@ export default function ResultScreen() {
           dose: it.dose ?? "",
           quantity: it.quantity ?? "",
           // ✅ 你目前正規是 usage（文字），這裡把 UI 的 time[] 合成字串存
-          usage: (it.time ?? []).join(", "),
+          usage_zh: (it.time ?? []).join(", "),
           note_zh: it.note ?? "",
         });
       }

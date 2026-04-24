@@ -40,6 +40,22 @@ function toArray(v: any): string[] {
   return [];
 }
 
+function pickItemName(it: any): string {
+  return String(it?.drug_name_zh ?? it?.drug_name ?? it?.name ?? "");
+}
+
+function pickItemDose(it: any): string {
+  return String(it?.dose ?? it?.dosage ?? "");
+}
+
+function pickItemTime(it: any): string[] {
+  return toArray(it?.usage_zh ?? it?.usage ?? it?.time);
+}
+
+function pickItemNote(it: any): string {
+  return String(it?.note_zh ?? it?.memo ?? it?.note ?? "");
+}
+
 function mapItemFromFirestore(it: any): Item {
   return {
     name: it.drug_name_zh ?? it.drug_name ?? it.name ?? "（未辨識藥品名稱）",
@@ -130,7 +146,15 @@ export default function ResultScreen() {
       setImageUri(safeImageUrl);
       setTitle(draftTitle ?? "未命名藥單");
       setGlobalMemo(safe.memo ?? "");
-      setItems(medicines.map((it) => mapItemFromAnalyze(it)));
+      setItems(
+        medicines.map((it) => ({
+          ...mapItemFromAnalyze(it),
+          name: pickItemName(it),
+          dose: pickItemDose(it),
+          time: pickItemTime(it),
+          note: pickItemNote(it),
+        }))
+      );
       setStatus("done");
       return;
     }
@@ -164,7 +188,16 @@ export default function ResultScreen() {
         );
         const itemsSnap = await getDocs(itemsQ);
 
-        const mapped = itemsSnap.docs.map((d) => mapItemFromFirestore(d.data()));
+        const mapped = itemsSnap.docs.map((d) => {
+          const it = d.data();
+          return {
+            ...mapItemFromFirestore(it),
+            name: pickItemName(it),
+            dose: pickItemDose(it),
+            time: pickItemTime(it),
+            note: pickItemNote(it),
+          };
+        });
         setItems(mapped);
 
         setStatus("done");
@@ -245,7 +278,7 @@ export default function ResultScreen() {
             quantity: it.quantity ?? "",
             usage_zh: it.usage_zh ?? "",
             drug_name_translated: "",
-            note_zh: "",
+            note_zh: it.note_zh ?? it.note ?? "",
             note_translated: "",
           });
         }
