@@ -107,6 +107,40 @@ async function sendExpoPush(tokens, title, body, data) {
   };
 }
 
+async function writeNotifications({
+  recipientUids,
+  type,
+  title,
+  body,
+  patientId = "",
+  sourceCollection,
+  sourceId,
+  extra = {},
+}) {
+  const uniqueRecipientUids = [...new Set((recipientUids || []).map(String).filter(Boolean))];
+
+  if (!uniqueRecipientUids.length) {
+    return;
+  }
+
+  const writes = uniqueRecipientUids.map((recipientUid) =>
+    db.collection("notifications").add({
+      recipientUid,
+      type,
+      title,
+      body,
+      createdAt: FieldValue.serverTimestamp(),
+      isRead: false,
+      patientId: patientId || "",
+      sourceCollection: sourceCollection || "",
+      sourceId: sourceId || "",
+      ...extra,
+    })
+  );
+
+  await Promise.all(writes);
+}
+
 // 測試用：.../sendTestPush?uid=你的uid
 exports.sendTestPush = onRequest(async (req, res) => {
   try {
@@ -199,6 +233,24 @@ exports.sendMedicationReminders = onSchedule(
           }
         );
 
+        try {
+          await writeNotifications({
+            recipientUids: notifyUserIds,
+            type: "medication_reminder",
+            title,
+            body,
+            patientId: data.patientId || "",
+            sourceCollection: "medication_reminders",
+            sourceId: docSnap.id,
+            extra: {
+              prescriptionId: data.prescriptionId || "",
+              reminderId: docSnap.id,
+            },
+          });
+        } catch (notificationError) {
+          console.error("[medication] notification write failed:", notificationError);
+        }
+
         console.log("[medication] sent:", docSnap.id, result);
 
         await docSnap.ref.update({
@@ -290,6 +342,23 @@ exports.onHealthRecordCreated = onDocumentCreated(
         }
       );
 
+      try {
+        await writeNotifications({
+          recipientUids: notifyUserIds,
+          type: "abnormal_health",
+          title: abnormalTitle,
+          body: abnormalBody,
+          patientId,
+          sourceCollection: "health_records",
+          sourceId: recordId,
+          extra: {
+            recordId,
+          },
+        });
+      } catch (notificationError) {
+        console.error("[health] notification write failed:", notificationError);
+      }
+
       console.log("[health] abnormal push sent:", {
         recordId,
         patientId,
@@ -299,6 +368,59 @@ exports.onHealthRecordCreated = onDocumentCreated(
       });
     } catch (error) {
       console.error("[onHealthRecordCreated] error =", error);
+    }
+  }
+);
+
+// medication_logs 新增時，同步通知對應家屬
+exports.onMedicationLogCreated = onDocumentCreated(
+  {
+    document: "medication_logs/{logId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    try {
+      const snap = event.data;
+      if (!snap) return;
+
+      const data = snap.data() || {};
+      const logId = event.params.logId;
+      const patientId = String(data.patientId || "");
+
+      if (!patientId) {
+        console.log("[medication_done] missing patientId:", logId);
+        return;
+      }
+
+      const patientSnap = await db.collection("patients").doc(patientId).get();
+      if (!patientSnap.exists) {
+        console.log("[medication_done] patient not found:", patientId);
+        return;
+      }
+
+      const patient = patientSnap.data() || {};
+      const families = Array.isArray(patient.families) ? patient.families : [];
+
+      if (!families.length) {
+        console.log("[medication_done] no family recipients:", patientId);
+        return;
+      }
+
+      await writeNotifications({
+        recipientUids: families,
+        type: "medication_done",
+        title: "已完成用藥",
+        body: "看護已完成用藥紀錄",
+        patientId,
+        sourceCollection: "medication_logs",
+        sourceId: logId,
+        extra: {
+          reminderId: String(data.reminderId || ""),
+          prescriptionId: String(data.prescriptionId || ""),
+        },
+      });
+    } catch (error) {
+      console.error("[onMedicationLogCreated] error =", error);
     }
   }
 );

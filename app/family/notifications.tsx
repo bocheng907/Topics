@@ -1,25 +1,60 @@
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 
-type NotificationItem = {
-  title: string;
-  content: string;
-  time: string;
-};
+import { db } from "@/firebase/firebaseConfig";
+import { useAuth } from "@/src/auth/useAuth";
+import {
+  NOTIFICATIONS_COLLECTION,
+  type NotificationDocument,
+} from "@/src/notifications/notificationSchema";
 
-const notifications: NotificationItem[] = [
-  {
-    title: "眼科回診",
-    content: "10：00 眼科回診...",
-    time: "上午8：00",
-  },
-  {
-    title: "吃藥",
-    content: "吃高血壓藥",
-    time: "上午6：00",
-  },
-];
+type NotificationRow = NotificationDocument & { id: string };
 
 export default function FamilyNotificationsScreen() {
+  const { user: currentUser } = useAuth();
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setNotifications([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, NOTIFICATIONS_COLLECTION),
+      where("recipientUid", "==", currentUser.uid),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setNotifications(
+          snap.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as NotificationDocument),
+          }))
+        );
+      },
+      (error) => {
+        console.log("family notifications snapshot failed:", error);
+        setNotifications([]);
+      }
+    );
+
+    return () => unsub();
+  }, [currentUser?.uid]);
+
+  const formatTime = (createdAt: NotificationDocument["createdAt"]) => {
+    if (!createdAt) return "";
+    return createdAt.toDate().toLocaleTimeString("zh-TW", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -36,15 +71,15 @@ export default function FamilyNotificationsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {notifications.map((item, index) => (
-          <View key={`${item.title}-${index}`} style={styles.row}>
+          <View key={item.id || `${item.title}-${index}`} style={styles.row}>
             <View style={styles.avatar} />
 
             <View style={styles.body}>
               <View style={styles.topLine}>
                 <Text style={styles.title}>{item.title}</Text>
-                <Text style={styles.time}>{item.time}</Text>
+                <Text style={styles.time}>{formatTime(item.createdAt)}</Text>
               </View>
-              <Text style={styles.content}>{item.content}</Text>
+              <Text style={styles.content}>{item.body}</Text>
             </View>
           </View>
         ))}
