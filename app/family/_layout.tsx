@@ -1,4 +1,3 @@
-// app/family/_layout.tsx
 import { Stack, router, useSegments } from "expo-router";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -8,12 +7,10 @@ export default function FamilyLayout() {
 
   return (
     <View style={styles.container}>
-      {/* 1. 上方的畫面區域 (會自動切換 index, list, dashboard 等畫面) */}
       <View style={styles.content}>
         <Stack screenOptions={{ headerShown: false, gestureEnabled: false }} />
       </View>
 
-      {/* 2. 下方的全域共用導覽列 */}
       {!isChatRoom && (
         <View style={styles.bottomNav}>
           <Pressable onPress={() => router.navigate("/family")}>
@@ -24,7 +21,7 @@ export default function FamilyLayout() {
             <Text style={styles.navIcon}>📅</Text>
           </Pressable>
 
-          <Pressable onPress={() => Alert.alert("提示", "通知功能建置中")}>
+          <Pressable onPress={() => router.push("/family/notifications")}>
             <Text style={styles.navIcon}>🔔</Text>
           </Pressable>
 
@@ -46,7 +43,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     alignItems: "center",
     paddingVertical: 16,
-    paddingBottom: 32, // 適應 iPhone 底部海苔條
+    paddingBottom: 32,
     borderTopWidth: 1,
     borderColor: "#E5E7EB",
   },

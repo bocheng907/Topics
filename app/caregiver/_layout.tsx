@@ -2,7 +2,14 @@ import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { Stack, router, useSegments } from "expo-router";
 import { doc, getDoc } from "firebase/firestore";
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 export default function CaregiverLayout() {
   const segments = useSegments() as string[];
@@ -63,13 +70,13 @@ export default function CaregiverLayout() {
 
       Alert.alert("選擇要撥打的電話", "請選擇緊急聯絡人", [
         {
-          text: `聯絡電話 1：${phones[0]}`,
+          text: `聯絡人 1：${phones[0]}`,
           onPress: () => {
             void makePhoneCall(phones[0]);
           },
         },
         {
-          text: `聯絡電話 2：${phones[1]}`,
+          text: `聯絡人 2：${phones[1]}`,
           onPress: () => {
             void makePhoneCall(phones[1]);
           },
@@ -105,7 +112,9 @@ export default function CaregiverLayout() {
               <Text style={[styles.navIcon, { paddingRight: 48 }]}>📅</Text>
             </Pressable>
 
-            <Pressable onPress={() => Alert.alert("提示", "通知功能建置中")}>
+            <Pressable
+              onPress={() => router.push("/caregiver/notifications" as any)}
+            >
               <Text style={[styles.navIcon, { paddingLeft: 48 }]}>🔔</Text>
             </Pressable>
 
