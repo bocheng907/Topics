@@ -1,5 +1,5 @@
 import { Stack, router, useSegments } from "expo-router";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function FamilyLayout() {
   const segments = useSegments() as string[];
@@ -17,7 +17,7 @@ export default function FamilyLayout() {
             <Text style={styles.navIcon}>🏠</Text>
           </Pressable>
 
-          <Pressable onPress={() => Alert.alert("提示", "行事曆功能建置中")}>
+          <Pressable onPress={() => router.push("/family/calendar")}>
             <Text style={styles.navIcon}>📅</Text>
           </Pressable>
 

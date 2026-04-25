@@ -108,7 +108,7 @@ export default function CaregiverLayout() {
               <Text style={styles.navIcon}>🏠</Text>
             </Pressable>
 
-            <Pressable onPress={() => Alert.alert("提示", "行事曆功能建置中")}>
+            <Pressable onPress={() => router.push("/caregiver/calendar" as any)}>
               <Text style={[styles.navIcon, { paddingRight: 48 }]}>📅</Text>
             </Pressable>
 
