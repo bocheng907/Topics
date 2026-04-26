@@ -7,9 +7,13 @@ import {
   ScrollView,
   Pressable,
   StyleSheet,
+  Linking,
+  StatusBar,
+  InteractionManager,
 } from "react-native";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { uploadPrescriptionImage } from "@/firebase/uploadPrescriptionImage";
 import { useAuth } from "@/src/auth/useAuth";
@@ -18,9 +22,13 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 
 export default function CameraScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const { user } = useAuth();
+  const [qrMode, setQrMode] = useState(false);
+  const [scanned, setScanned] = useState(false);
 
-  // ✅ 改這裡（核心）
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const { user } = useAuth();
   const { activePatientId } = useActiveCareTarget();
 
   async function pickImage() {
@@ -56,6 +64,49 @@ export default function CameraScreen() {
     setImageUri(result.assets?.[0]?.uri ?? null);
   }
 
+  async function openQrScanner() {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+
+      if (!result.granted) {
+        Alert.alert("需要相機權限", "請允許使用相機，才能掃描 QR Code。");
+        return;
+      }
+    }
+
+    setScanned(false);
+    setQrMode(true);
+  }
+
+  async function handleQrScanned(result: { data: string }) {
+    if (scanned) return;
+
+    setScanned(true);
+
+    const url = result.data.trim();
+
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      setQrMode(false);
+      Alert.alert("無法開啟", "這個 QR Code 不是有效網址。");
+      return;
+    }
+
+    // 先讓 CameraView 卸載
+    setQrMode(false);
+
+    setRefreshKey(prev => prev + 1);
+
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(async () => {
+        try {
+          await Linking.openURL(url);
+        } catch (e) {
+          Alert.alert("開啟失敗");
+        }
+      }, 300);
+    });
+  }
+
   async function goNext() {
     if (!imageUri) {
       Alert.alert("還沒選照片", "請先拍攝或選取一張藥單照片。");
@@ -67,7 +118,6 @@ export default function CameraScreen() {
       return;
     }
 
-    // ✅ 改這裡（核心）
     if (!activePatientId) {
       Alert.alert("尚未選擇長輩", "請先選擇長輩再上傳藥單。");
       return;
@@ -76,10 +126,7 @@ export default function CameraScreen() {
     try {
       console.log("[1] uploading image...");
       console.log("[1] auth user.uid =", user.uid);
-
-      // ✅ log 也改
       console.log("[1] activePatientId =", activePatientId);
-
       console.log("[1] local imageUri =", imageUri);
 
       const downloadURL = await uploadPrescriptionImage(imageUri, user.uid);
@@ -90,7 +137,6 @@ export default function CameraScreen() {
       console.log("[2] analyzeResult:", analyzeResult);
 
       const safe = JSON.parse(JSON.stringify(analyzeResult ?? {}));
-
       const draftTitle = safe.clinic_name ?? "未命名藥單";
 
       console.log("[3] navigate to result draft...");
@@ -122,8 +168,33 @@ export default function CameraScreen() {
     }
   }
 
+  if (qrMode) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#000" }}>
+        <StatusBar barStyle="light-content" backgroundColor="#000" />
+
+       <CameraView
+        style={{ flex: 1 }}
+        facing="back"
+        onBarcodeScanned={scanned ? undefined : handleQrScanned}
+        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+        />
+
+        <View style={styles.qrOverlay}>
+          <Text style={styles.qrTitle}>掃描 QR Code</Text>
+          <Text style={styles.qrHint}>請將 QR Code 對準畫面中央</Text>
+        </View>
+
+        <Pressable onPress={() => setQrMode(false)} style={styles.cancelQrBtn}>
+          <Text style={styles.cancelQrText}>取消掃描</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView key={refreshKey} contentContainerStyle={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F4E770" />
       <View style={styles.header}>
         <Text style={styles.title}>上傳藥單</Text>
         <Text style={styles.subtitle}>
@@ -138,6 +209,10 @@ export default function CameraScreen() {
 
         <Pressable onPress={pickImage} style={styles.outlineBtn}>
           <Text style={styles.outlineBtnText}>🖼️ 從相簿選取</Text>
+        </Pressable>
+
+        <Pressable onPress={openQrScanner} style={styles.qrBtn}>
+          <Text style={styles.qrBtnText}>🔳 掃描 QR Code</Text>
         </Pressable>
       </View>
 
@@ -198,8 +273,18 @@ const styles = StyleSheet.create({
     borderColor: "#007AFF",
     borderRadius: 14,
     alignItems: "center",
+    marginBottom: 12,
   },
   outlineBtnText: { fontSize: 18, fontWeight: "900", color: "#007AFF" },
+
+  qrBtn: {
+    paddingVertical: 18,
+    backgroundColor: "#333",
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qrBtnText: { fontSize: 18, fontWeight: "900", color: "#fff" },
 
   previewWrap: { marginTop: 10 },
   previewCard: {
@@ -235,5 +320,46 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "700",
     fontSize: 16,
+  },
+
+  qrContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  qrCamera: {
+    flex: 1,
+  },
+  qrOverlay: {
+    position: "absolute",
+    top: 80,
+    left: 24,
+    right: 24,
+    alignItems: "center",
+  },
+  qrTitle: {
+    color: "#fff",
+    fontSize: 26,
+    fontWeight: "900",
+  },
+  qrHint: {
+    color: "#fff",
+    fontSize: 16,
+    marginTop: 8,
+    opacity: 0.8,
+  },
+  cancelQrBtn: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    bottom: 50,
+    backgroundColor: "#fff",
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  cancelQrText: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#333",
   },
 });

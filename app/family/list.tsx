@@ -17,7 +17,8 @@ export default function FamilyListScreen() {
 
     const q = query(
       collection(db, "prescriptions"),
-      where("patientId", "==", activePatientId)
+      where("patientId", "==", activePatientId),
+      orderBy("createdAt", "desc")
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -99,7 +100,7 @@ export default function FamilyListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   header: { 
-    backgroundColor: "#FFE043", 
+    backgroundColor: "#F4E770", 
     height: 100, 
     paddingTop: 50, 
     paddingHorizontal: 15,

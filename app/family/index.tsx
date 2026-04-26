@@ -257,7 +257,7 @@ export default function FamilyHomeScreen() {
 
         {/* 底部三大功能按鈕 */}
         <View style={styles.actionsRow}>
-          <Pressable onPress={() => router.push("/family/list")} style={[styles.actionBtn, { backgroundColor: '#FCE671' }]}>
+          <Pressable onPress={() => router.push("/family/list")} style={[styles.actionBtn, { backgroundColor: '#F4E770' }]}>
             <Text style={styles.actionEmoji}>📋</Text><Text style={styles.actionText}>藥單紀錄</Text>
           </Pressable>
           <Pressable onPress={() => router.push("/family/condition")} style={[styles.actionBtn, { backgroundColor: '#85C6F9' }]}>

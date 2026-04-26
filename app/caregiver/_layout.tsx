@@ -6,7 +6,13 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native"
 
 export default function CaregiverLayout() {
   const segments = useSegments() as string[];
-  const isChatRoom = segments[segments.length - 1] === "chat-room";
+  const currentPage = segments[segments.length - 1];
+
+  const hideBottomNav =
+    currentPage === "chat-room" ||
+    currentPage === "detail" ||
+    currentPage === "edit"||
+    currentPage === "camera";
 
   const activeCareTarget = useActiveCareTarget();
   const activePatientId =
@@ -88,7 +94,7 @@ export default function CaregiverLayout() {
         <Stack screenOptions={{ headerShown: false, gestureEnabled: false }} />
       </View>
 
-      {!isChatRoom && (
+      {!hideBottomNav && (
         <View style={styles.footerWrapper}>
           <View style={styles.fabContainer}>
             <Pressable style={styles.fabButton} onPress={onEmergencyCall}>

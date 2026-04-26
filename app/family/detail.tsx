@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { View, Text, Pressable, ScrollView, Image, StyleSheet, StatusBar } from "react-native";
-import { router, useLocalSearchParams, useFocusEffect } from "expo-router"; 
+import { router, useLocalSearchParams, useFocusEffect, Tabs } from "expo-router"; 
 import { doc, getDoc, collection, getDocs, query } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { useAuthContext } from "@/src/auth/AuthProvider";
@@ -28,29 +28,14 @@ export default function FamilyDetailScreen() {
             name: it.drug_name ?? it.name ?? "未命名藥品",
             dosage: it.dosage ?? it.dose ?? "",
             usage_zh: it.usage_zh ?? it.usage ?? "",
-            memo: it.memo ?? it.note ?? "",
+            memo: it.memo ?? it.note_zh ?? it.note ?? "",
           };
         });
-
-        // 2. 處理圖片網址：僅進行去空白，不做其他過濾，確保與資料庫原始資料一致
-        const rawUrl = data.sourceImageUrl;
-        const cleanImageUrl =
-          typeof rawUrl === "string" && rawUrl.trim().length > 0
-            ? rawUrl.trim()
-            : null;
-
         setP({ 
           ...data, 
           prescriptionId: presSnap.id, 
-          sourceImageUrl: cleanImageUrl, 
           items: mappedItems 
         });
-
-        // 💡 除錯專用：這行非常重要，請查看 Terminal
-        console.log("----------------------------");
-        console.log("【資料庫原始網址】:", rawUrl);
-        console.log("【清理後最終網址】:", cleanImageUrl);
-        console.log("----------------------------");
       }
     } catch (error) {
       console.error("讀取詳情失敗:", error);
@@ -91,7 +76,7 @@ export default function FamilyDetailScreen() {
             })} 
             style={styles.editBtn}
           >
-            <Text style={styles.editBtnText}>修正</Text>
+            <Text style={styles.editBtnText}>編輯</Text>
           </Pressable>
         </View>
 
@@ -100,8 +85,6 @@ export default function FamilyDetailScreen() {
             source={{ uri: p.sourceImageUrl }}
             style={styles.img}
             resizeMode="contain"
-            onLoad={() => console.log("圖片載入成功:", p.sourceImageUrl)}
-            onError={(e) => console.log("圖片載入失敗:", e.nativeEvent, p.sourceImageUrl)}
           />
         ) : (
           <View style={[styles.img, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }]}>
@@ -157,7 +140,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: { 
-    backgroundColor: "#FFE043", 
+    backgroundColor: "#F4E770", 
     height: 100, 
     paddingTop: 50, 
     paddingHorizontal: 15, 
@@ -178,7 +161,6 @@ const styles = StyleSheet.create({
     borderRadius: 15, 
     backgroundColor: "#f0f0f0", 
     marginBottom: 25,
-    display: 'flex',
   },
   sectionTitle: { fontSize: 22, fontWeight: "800", color: "#333", marginBottom: 15 },
   itemCard: { 

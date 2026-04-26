@@ -9,7 +9,7 @@ import {
   StyleSheet, 
   StatusBar 
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, Tabs } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
 import { doc, collection, getDocs, query, writeBatch, serverTimestamp } from "firebase/firestore";
@@ -29,7 +29,7 @@ function safeParseItems(itemsJson?: string) {
         dosage: it.dosage ?? it.dose ?? "",
         usage_type: parts[0] || "",        
         usage_time: parts.slice(1).join(",") || "", 
-        memo: it.memo ?? it.note ?? "",
+        memo: it.memo ?? it.note_zh ?? it.note ?? "",
       };
     });
   } catch (e) {
@@ -74,6 +74,7 @@ export default function FamilyEditScreen() {
             dosage: it.dosage,
             usage_zh: combinedUsage, 
             memo: it.memo,
+            note_zh: it.memo,
             updatedAt: serverTimestamp()
           });
         }
@@ -172,7 +173,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: { 
-    backgroundColor: "#FFE043", 
+    backgroundColor: "#F4E770", 
     height: 100, 
     paddingTop: 50, 
     paddingHorizontal: 15, 

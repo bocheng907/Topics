@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { View, Text, TextInput, ScrollView, Pressable, Alert, StyleSheet, StatusBar } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, Tabs } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
 import { doc, collection, getDocs, query, writeBatch, serverTimestamp } from "firebase/firestore";
@@ -18,7 +18,7 @@ function safeParseItems(itemsJson?: string) {
         dosage: it.dosage ?? it.dose ?? "",
         usage_type: parts[0] || "",
         usage_time: parts.slice(1).join(",") || "",
-        memo: it.memo ?? it.note ?? "",
+        memo: it.memo ?? it.note_zh ?? it.note ?? "",
       };
     });
   } catch (e) {
@@ -58,6 +58,7 @@ export default function CaregiverEditScreen() {
             dosage: it.dosage,
             usage_zh: combinedUsage,
             memo: it.memo,
+            note_zh: it.memo,
             updatedAt: serverTimestamp()
           });
         }
@@ -104,7 +105,7 @@ export default function CaregiverEditScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#FFE043", height: 100, paddingTop: 50, paddingHorizontal: 15, flexDirection: "row", alignItems: "center" },
+  header: { backgroundColor: "#F4E770", height: 100, paddingTop: 50, paddingHorizontal: 15, flexDirection: "row", alignItems: "center" },
   backBtn: { flexDirection: "row", alignItems: "center" },
   backText: { fontSize: 20, fontWeight: 'bold', color: '#000', marginLeft: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 15 },

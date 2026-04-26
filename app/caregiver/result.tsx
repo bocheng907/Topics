@@ -40,23 +40,23 @@ function toArray(v: any): string[] {
   return [];
 }
 
+function mapItemFromAnalyze(it: any): Item {
+  return {
+    name: it.drug_name ?? it.name ?? "（未辨識藥品名稱）",
+    dose: it.dosage ?? it.dose ?? "未提供",
+    quantity: it.quantity ?? "依醫囑",
+    time: toArray(it.usage_zh ?? it.usage ?? it.time),
+    note: it.note_zh ?? it.memo ?? "", // ⭐ 關鍵修正
+  };
+}
+
 function mapItemFromFirestore(it: any): Item {
   return {
     name: it.drug_name_zh ?? it.drug_name ?? it.name ?? "（未辨識藥品名稱）",
     dose: it.dose ?? it.dosage ?? "未提供",
     quantity: it.quantity ?? "依醫囑",
     time: toArray(it.usage_zh ?? it.usage ?? it.time),
-    note: it.note_zh ?? "",
-  };
-}
-
-function mapItemFromAnalyze(it: any): Item {
-  return {
-    name: it.drug_name ?? it.name ?? "（未辨識藥品名稱）",
-    dose: it.dosage ?? it.dose ?? "未提供",
-    quantity: it.quantity ?? "依醫囑",
-    time: it.usage_zh ? [it.usage_zh] : [],
-    note: it.note_zh ?? "",
+    note: it.note_zh ?? it.memo ?? "",
   };
 }
 
@@ -241,11 +241,14 @@ export default function ResultScreen() {
           batch.set(itemRef, {
             raw: it,
             drug_name_zh: it.drug_name ?? "",
+            drug_name: it.drug_name ?? "",
             dose: it.dosage ?? "",
+            dosage: it.dosage ?? "",
             quantity: it.quantity ?? "",
             usage_zh: it.usage_zh ?? "",
+            memo: it.memo ?? "",
+            note_zh: it.memo ?? "",
             drug_name_translated: "",
-            note_zh: "",
             note_translated: "",
           });
         }
@@ -363,11 +366,11 @@ export default function ResultScreen() {
                 <Text
                   style={{
                     fontSize: 15,
-                    color: globalMemo ? "#666" : "#CCC",
+                    color: it.note ? "#666" : "#CCC",
                     marginTop: 2,
                   }}
                 >
-                  備註：{globalMemo || "無"}
+                  備註：{it.note || "無"}
                 </Text>
               </View>
             </View>

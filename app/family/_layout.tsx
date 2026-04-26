@@ -4,7 +4,11 @@ import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function FamilyLayout() {
   const segments = useSegments() as string[];
-  const isChatRoom = segments[segments.length - 1] === "chat-room";
+  const currentPage = segments[segments.length - 1];
+  const hideBottomNav =
+    currentPage === "chat-room" ||
+    currentPage === "detail" ||
+    currentPage === "edit";
 
   return (
     <View style={styles.container}>
@@ -14,7 +18,7 @@ export default function FamilyLayout() {
       </View>
 
       {/* 2. 下方的全域共用導覽列 */}
-      {!isChatRoom && (
+      {!hideBottomNav && (
         <View style={styles.bottomNav}>
           <Pressable onPress={() => router.navigate("/family")}>
             <Text style={styles.navIcon}>🏠</Text>

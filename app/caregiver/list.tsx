@@ -1,7 +1,7 @@
 // app/caregiver/list.tsx
 import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet, StatusBar, Alert } from "react-native";
-import { router } from "expo-router";
+import { router} from "expo-router";
 import { collection, onSnapshot, orderBy, query, where, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
@@ -103,7 +103,7 @@ export default function CaregiverListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#FFE043", height: 110, paddingTop: 50, paddingHorizontal: 15, flexDirection: "row", alignItems: "center" },
+  header: { backgroundColor: "#F4E770", height: 110, paddingTop: 50, paddingHorizontal: 15, flexDirection: "row", alignItems: "center" },
   backButton: { flexDirection: "row", alignItems: "center" },
   backText: { fontSize: 18, fontWeight: "600", color: "#333", marginLeft: -5 },
   pageTitle: { fontSize: 28, fontWeight: "900", marginBottom: 10, color: "#333" },

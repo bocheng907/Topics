@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { View, Text, Pressable, ScrollView, Image, Alert, StyleSheet, StatusBar } from "react-native";
-import { router, useLocalSearchParams, useFocusEffect } from "expo-router"; // 💡 引入 useFocusEffect
+import { router, useLocalSearchParams, useFocusEffect, Tabs } from "expo-router"; // 💡 引入 useFocusEffect
 import { collection, doc, getDoc, getDocs, query } from "firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
 import { db } from "@/firebase/firebaseConfig";
@@ -29,7 +29,7 @@ export default function CaregiverDetailScreen() {
           drug_name: it.drug_name ?? it.drug_name_zh ?? "",
           dosage: it.dosage ?? it.dose ?? "",
           usage_zh: it.usage_zh ?? it.usage ?? "",
-          memo: it.memo ?? it.note_zh ?? "",
+          memo: it.memo ?? it.note_zh ?? it.note ?? "",
         };
       });
       setItems(list);
@@ -113,7 +113,7 @@ export default function CaregiverDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#FFE043", height: 100, paddingTop: 50, paddingHorizontal: 15, justifyContent: "center" },
+  header: { backgroundColor: "#F4E770", height: 100, paddingTop: 50, paddingHorizontal: 15, justifyContent: "center" },
   backButton: { flexDirection: "row", alignItems: "center" },
   backText: { fontSize: 20, fontWeight: 'bold', color: '#333', marginLeft: 2 },
   titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 15 },
