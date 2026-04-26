@@ -390,7 +390,7 @@ export default function CaregiverCalendarScreen() {
                 <Text style={styles.formHeaderIcon}>X</Text>
               </Pressable>
               <Pressable onPress={confirmNewEvent} hitSlop={12}>
-                <Text style={styles.formHeaderIcon}>OK</Text>
+                <Text style={styles.formHeaderIcon}>{"\u2713"}</Text>
               </Pressable>
             </View>
 
