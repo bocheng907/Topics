@@ -230,6 +230,28 @@ service cloud.firestore {
         && resource.data.familyId == request.auth.uid;
     }
 
+    match /calendar_events/{eventId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId)
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow update: if signedIn()
+        && resource.data.patientId is string
+        && isFamilyMember(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if signedIn()
+        && resource.data.patientId is string
+        && isFamilyMember(resource.data.patientId);
+    }
+
     match /chats/{patientId}/{document=**} {
       allow read, write: if signedIn() && isLinkedToPatient(patientId);
     }
