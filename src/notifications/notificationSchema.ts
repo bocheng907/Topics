@@ -26,6 +26,8 @@ export type NotificationType =
   | "medication_reminder"
   | "abnormal_health"
   | "medication_done"
+  | "chat_message"
+  | "health_report_missing"
   | "custom";
 
 export type NotificationDocument = {

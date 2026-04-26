@@ -1,83 +1,57 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  Timestamp,
+  where,
+} from "firebase/firestore";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-type CalendarEvent = {
+import { db } from "@/firebase/firebaseConfig";
+import { useAuth } from "@/src/auth/useAuth";
+import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+
+type CalendarEventRecord = {
   id: string;
-  year: number;
-  month: number;
-  day: number;
-  name: string;
-  time: string;
-  event: string;
+  patientId: string;
+  title: string;
+  personName: string;
   location: string;
+  eventDate: string;
+  hour: string;
+  minute: string;
+  period: "am" | "pm";
   color: string;
+  createdBy: string;
+  createdAt?: Timestamp | null;
+  updatedAt?: Timestamp | null;
 };
 
 type FormState = {
-  name: string;
-  time: string;
-  event: string;
+  personName: string;
+  title: string;
   location: string;
   color: string;
 };
 
-const YEAR = 2026;
-const MONTH_LABELS = Array.from({ length: 12 }, (_, index) => `${index + 1}月`);
-const EVENT_COLORS = ["#F25F5C", "#F4A261", "#2EC4B6", "#6C63FF", "#E56BDF"];
+type TimeState = {
+  hour: number;
+  minute: number;
+  period: "am" | "pm";
+};
 
-const INITIAL_EVENTS: CalendarEvent[] = [
-  {
-    id: "evt-1",
-    year: 2026,
-    month: 3,
-    day: 3,
-    name: "王小明",
-    time: "10:00",
-    event: "眼科回診",
-    location: "台北醫院",
-    color: "#F25F5C",
-  },
-  {
-    id: "evt-2",
-    year: 2026,
-    month: 3,
-    day: 8,
-    name: "王小明",
-    time: "06:00",
-    event: "吃藥",
-    location: "家中",
-    color: "#F4A261",
-  },
-  {
-    id: "evt-3",
-    year: 2026,
-    month: 3,
-    day: 15,
-    name: "王小明",
-    time: "14:30",
-    event: "復健",
-    location: "復健中心",
-    color: "#2EC4B6",
-  },
-  {
-    id: "evt-4",
-    year: 2026,
-    month: 3,
-    day: 21,
-    name: "王小明",
-    time: "09:00",
-    event: "量血壓",
-    location: "家中",
-    color: "#6C63FF",
-  },
-];
+const CALENDAR_EVENTS_COLLECTION = "calendar_events";
+const YEAR = 2026;
+const MONTH_LABELS = Array.from({ length: 12 }, (_, index) => `${index + 1}`);
+const WEEK_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const EVENT_COLORS = ["#F4A261", "#6C63FF", "#2F80ED", "#E56BDF", "#2EC4B6"];
+const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
+const MINUTES = Array.from({ length: 60 }, (_, index) => index);
+const PERIODS: Array<TimeState["period"]> = ["am", "pm"];
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
@@ -103,27 +77,104 @@ function buildCalendarCells(year: number, month: number) {
   return cells;
 }
 
+function pad2(value: number | string) {
+  return String(value).padStart(2, "0");
+}
+
+function getEventDate(year: number, month: number, day: number) {
+  return `${year}-${pad2(month + 1)}-${pad2(day)}`;
+}
+
+function toMonthKey(eventDate: string) {
+  return eventDate.slice(0, 7);
+}
+
+function toDayKey(eventDate: string) {
+  return eventDate.slice(8, 10);
+}
+
+function WheelColumn<T extends string | number>({
+  title,
+  values,
+  value,
+  onChange,
+  renderValue,
+}: {
+  title: string;
+  values: T[];
+  value: T;
+  onChange: (value: T) => void;
+  renderValue: (value: T) => string;
+}) {
+  const selectedIndex = values.findIndex((item) => item === value);
+  const visibleIndices = Array.from({ length: 5 }, (_, index) => selectedIndex - 2 + index);
+
+  return (
+    <View style={styles.wheelColumn}>
+      <Text style={styles.wheelTitle}>{title}</Text>
+      <View style={styles.wheelFrame}>
+        {visibleIndices.map((index, rowIndex) => {
+          const item = values[index];
+          const isSelected = rowIndex === 2;
+
+          if (item === undefined) {
+            return (
+              <View
+                key={`${title}-empty-${rowIndex}`}
+                style={[styles.wheelRow, styles.wheelRowGhost]}
+              />
+            );
+          }
+
+          return (
+            <Pressable
+              key={`${title}-${renderValue(item)}`}
+              onPress={() => onChange(item)}
+              style={[styles.wheelRow, isSelected && styles.wheelRowSelected]}
+            >
+              <Text style={[styles.wheelRowText, isSelected && styles.wheelRowTextSelected]}>
+                {renderValue(item)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export default function FamilyCalendarScreen() {
+  const { user } = useAuth();
+  const { activePatientId } = useActiveCareTarget();
+
   const [month, setMonth] = useState(3);
   const [selectedDay, setSelectedDay] = useState(8);
   const [monthMenuOpen, setMonthMenuOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
-  const [events, setEvents] = useState<CalendarEvent[]>(INITIAL_EVENTS);
+  const [events, setEvents] = useState<CalendarEventRecord[]>([]);
   const [form, setForm] = useState<FormState>({
-    name: "",
-    time: "",
-    event: "",
+    personName: "",
+    title: "",
     location: "",
     color: EVENT_COLORS[0],
+  });
+  const [time, setTime] = useState<TimeState>({
+    hour: 7,
+    minute: 0,
+    period: "pm",
   });
 
   const daysInMonth = useMemo(() => getDaysInMonth(YEAR, month), [month]);
   const calendarCells = useMemo(() => buildCalendarCells(YEAR, month), [month]);
+  const monthKey = useMemo(() => `${YEAR}-${pad2(month + 1)}`, [month]);
+
   const monthEvents = useMemo(
-    () => events.filter((event) => event.year === YEAR && event.month === month),
-    [events, month]
+    () => events.filter((event) => toMonthKey(event.eventDate) === monthKey),
+    [events, monthKey]
   );
-  const selectedDayEvents = monthEvents.filter((event) => event.day === selectedDay);
+  const selectedDayEvents = monthEvents.filter(
+    (event) => Number(toDayKey(event.eventDate)) === selectedDay
+  );
 
   useEffect(() => {
     if (selectedDay > daysInMonth) {
@@ -135,28 +186,76 @@ export default function FamilyCalendarScreen() {
     setMonthMenuOpen(false);
   }, [month]);
 
-  const confirmNewEvent = () => {
-    const nextEvent: CalendarEvent = {
-      id: `evt-${Date.now()}`,
-      year: YEAR,
-      month,
-      day: selectedDay,
-      name: form.name.trim() || "未填寫姓名",
-      time: form.time.trim() || "未填寫時間",
-      event: form.event.trim() || "未命名事件",
-      location: form.location.trim() || "未填寫地點",
-      color: form.color,
-    };
+  useEffect(() => {
+    if (!activePatientId) {
+      setEvents([]);
+      return;
+    }
 
-    setEvents((prev) => [nextEvent, ...prev]);
-    setFormOpen(false);
+    const q = query(
+      collection(db, CALENDAR_EVENTS_COLLECTION),
+      where("patientId", "==", activePatientId),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        setEvents(
+          snap.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<CalendarEventRecord, "id">),
+          }))
+        );
+      },
+      (error) => {
+        console.log("family calendar snapshot failed:", error);
+        setEvents([]);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [activePatientId]);
+
+  const resetForm = () => {
     setForm({
-      name: "",
-      time: "",
-      event: "",
+      personName: "",
+      title: "",
       location: "",
       color: EVENT_COLORS[0],
     });
+    setTime({
+      hour: 7,
+      minute: 0,
+      period: "pm",
+    });
+  };
+
+  const confirmNewEvent = async () => {
+    if (!activePatientId || !user?.uid) return;
+
+    const eventDate = getEventDate(YEAR, month, selectedDay);
+
+    try {
+      await addDoc(collection(db, CALENDAR_EVENTS_COLLECTION), {
+        patientId: activePatientId,
+        title: form.title.trim() || "Untitled event",
+        personName: form.personName.trim() || "Unnamed",
+        location: form.location.trim() || "Unknown location",
+        eventDate,
+        hour: String(time.hour),
+        minute: pad2(time.minute),
+        period: time.period,
+        color: form.color,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      setFormOpen(false);
+      resetForm();
+    } catch (error) {
+      console.log("create calendar event failed:", error);
+    }
   };
 
   const renderDayCell = (day: number | null, index: number) => {
@@ -164,7 +263,9 @@ export default function FamilyCalendarScreen() {
       return <View key={`empty-${index}`} style={styles.dayCell} />;
     }
 
-    const dayEvents = monthEvents.filter((event) => event.day === day).slice(0, 2);
+    const dayEvents = monthEvents
+      .filter((event) => Number(toDayKey(event.eventDate)) === day)
+      .slice(0, 2);
     const isSelected = day === selectedDay;
 
     return (
@@ -173,18 +274,13 @@ export default function FamilyCalendarScreen() {
         onPress={() => setSelectedDay(day)}
         style={[styles.dayCell, isSelected && styles.dayCellSelected]}
       >
-        <Text style={[styles.dayNumber, isSelected && styles.dayNumberSelected]}>
-          {day}
-        </Text>
+        <Text style={[styles.dayNumber, isSelected && styles.dayNumberSelected]}>{day}</Text>
 
         <View style={styles.eventStack}>
           {dayEvents.map((event) => (
-            <View
-              key={event.id}
-              style={[styles.eventChip, { backgroundColor: event.color }]}
-            >
+            <View key={event.id} style={[styles.eventChip, { backgroundColor: event.color }]}>
               <Text style={styles.eventChipText} numberOfLines={1}>
-                {event.event}
+                {event.title}
               </Text>
             </View>
           ))}
@@ -205,7 +301,7 @@ export default function FamilyCalendarScreen() {
                 style={styles.monthButton}
               >
                 <Text style={styles.monthButtonText}>{MONTH_LABELS[month]}</Text>
-                <Text style={styles.monthChevron}>▾</Text>
+                <Text style={styles.monthChevron}>v</Text>
               </Pressable>
 
               {monthMenuOpen && (
@@ -248,29 +344,31 @@ export default function FamilyCalendarScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.weekRow}>
-            {["日", "一", "二", "三", "四", "五", "六"].map((day) => (
+            {WEEK_LABELS.map((day) => (
               <Text key={day} style={styles.weekText}>
                 {day}
               </Text>
             ))}
           </View>
 
-          <View style={styles.grid}>{calendarCells.map((cell, index) => renderDayCell(cell, index))}</View>
+          <View style={styles.grid}>
+            {calendarCells.map((cell, index) => renderDayCell(cell, index))}
+          </View>
 
           <View style={styles.selectedSummary}>
-            <Text style={styles.selectedSummaryTitle}>{selectedDay} 日行程</Text>
+            <Text style={styles.selectedSummaryTitle}>{selectedDay} Events</Text>
             {selectedDayEvents.length === 0 ? (
-              <Text style={styles.emptySummaryText}>目前沒有事件</Text>
+              <Text style={styles.emptySummaryText}>No events today</Text>
             ) : (
               selectedDayEvents.map((event) => (
                 <View key={event.id} style={styles.summaryCard}>
                   <View style={[styles.summaryDot, { backgroundColor: event.color }]} />
                   <View style={styles.summaryBody}>
                     <Text style={styles.summaryTitle}>
-                      {event.time} {event.event}
+                      {event.hour}:{event.minute} {event.period} {event.title}
                     </Text>
                     <Text style={styles.summaryMeta}>
-                      {event.name} · {event.location}
+                      {event.personName} - {event.location}
                     </Text>
                   </View>
                 </View>
@@ -289,10 +387,10 @@ export default function FamilyCalendarScreen() {
           <View style={styles.formCard}>
             <View style={styles.formHeader}>
               <Pressable onPress={() => setFormOpen(false)} hitSlop={12}>
-                <Text style={styles.formHeaderIcon}>✕</Text>
+                <Text style={styles.formHeaderIcon}>X</Text>
               </Pressable>
               <Pressable onPress={confirmNewEvent} hitSlop={12}>
-                <Text style={styles.formHeaderIcon}>✓</Text>
+                <Text style={styles.formHeaderIcon}>OK</Text>
               </Pressable>
             </View>
 
@@ -301,51 +399,7 @@ export default function FamilyCalendarScreen() {
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>姓名</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={form.name}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, name: text }))}
-                  placeholder="請輸入姓名"
-                  placeholderTextColor="#B7B7B7"
-                />
-              </View>
-
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>時間</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={form.time}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, time: text }))}
-                  placeholder="08:00"
-                  placeholderTextColor="#B7B7B7"
-                />
-              </View>
-
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>事件</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={form.event}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, event: text }))}
-                  placeholder="請輸入事件"
-                  placeholderTextColor="#B7B7B7"
-                />
-              </View>
-
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>地點</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={form.location}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, location: text }))}
-                  placeholder="請輸入地點"
-                  placeholderTextColor="#B7B7B7"
-                />
-              </View>
-
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>色彩選擇</Text>
+                <Text style={styles.fieldLabel}>Color</Text>
                 <View style={styles.colorRow}>
                   {EVENT_COLORS.map((color) => {
                     const selected = form.color === color;
@@ -362,6 +416,66 @@ export default function FamilyCalendarScreen() {
                     );
                   })}
                 </View>
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Name</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={form.personName}
+                  onChangeText={(text) => setForm((prev) => ({ ...prev, personName: text }))}
+                  placeholder="Enter name"
+                  placeholderTextColor="#B7B7B7"
+                />
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Time</Text>
+                <View style={styles.timePicker}>
+                  <WheelColumn
+                    title="Hour"
+                    values={HOURS}
+                    value={time.hour}
+                    onChange={(hour) => setTime((prev) => ({ ...prev, hour }))}
+                    renderValue={(hour) => String(hour)}
+                  />
+                  <WheelColumn
+                    title="Min"
+                    values={MINUTES}
+                    value={time.minute}
+                    onChange={(minute) => setTime((prev) => ({ ...prev, minute }))}
+                    renderValue={(minute) => pad2(minute)}
+                  />
+                  <WheelColumn
+                    title="AM / PM"
+                    values={PERIODS}
+                    value={time.period}
+                    onChange={(period) => setTime((prev) => ({ ...prev, period }))}
+                    renderValue={(period) => period}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Event</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={form.title}
+                  onChangeText={(text) => setForm((prev) => ({ ...prev, title: text }))}
+                  placeholder="Enter event"
+                  placeholderTextColor="#B7B7B7"
+                />
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Location</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={form.location}
+                  onChangeText={(text) => setForm((prev) => ({ ...prev, location: text }))}
+                  placeholder="Enter location"
+                  placeholderTextColor="#B7B7B7"
+                />
               </View>
             </ScrollView>
           </View>
@@ -472,7 +586,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 18,
     paddingTop: 18,
-    paddingBottom: 170,
+    paddingBottom: 220,
   },
   weekRow: {
     flexDirection: "row",
@@ -566,7 +680,7 @@ const styles = StyleSheet.create({
   plusButton: {
     position: "absolute",
     right: 20,
-    bottom: 122,
+    bottom: 26,
     width: 62,
     height: 62,
     borderRadius: 31,
@@ -645,5 +759,47 @@ const styles = StyleSheet.create({
   },
   colorSwatchSelected: {
     borderColor: "#111",
+  },
+  timePicker: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  wheelColumn: {
+    flex: 1,
+  },
+  wheelTitle: {
+    fontSize: 12,
+    color: "#8B8B8B",
+    fontWeight: "700",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  wheelFrame: {
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#F7F7F8",
+    borderWidth: 1,
+    borderColor: "#E7E7E7",
+  },
+  wheelRow: {
+    height: 42,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 6,
+  },
+  wheelRowGhost: {
+    opacity: 0,
+  },
+  wheelRowSelected: {
+    backgroundColor: "#EDEFF2",
+  },
+  wheelRowText: {
+    fontSize: 16,
+    color: "#666",
+    fontWeight: "700",
+  },
+  wheelRowTextSelected: {
+    color: "#111",
+    fontSize: 18,
   },
 });
