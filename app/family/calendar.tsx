@@ -1,3 +1,4 @@
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import {
   addDoc,
@@ -44,34 +45,70 @@ type TimeState = {
   period: "am" | "pm";
 };
 
+type CalendarCell = {
+  day: number;
+  kind: "prev" | "current" | "next";
+  monthOffset: -1 | 0 | 1;
+};
+
 const CALENDAR_EVENTS_COLLECTION = "calendar_events";
 const YEAR = 2026;
-const MONTH_LABELS = Array.from({ length: 12 }, (_, index) => `${index + 1}`);
-const WEEK_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const EVENT_COLORS = ["#F4A261", "#6C63FF", "#2F80ED", "#E56BDF", "#2EC4B6"];
+const MONTH_LABELS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const WEEK_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const EVENT_COLORS = ["#F4A261", "#B9A0F3", "#73B8F2", "#F6BDC2", "#7EDB68"];
 const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
 const MINUTES = Array.from({ length: 60 }, (_, index) => index);
-const PERIODS: Array<TimeState["period"]> = ["am", "pm"];
+const PERIODS: TimeState["period"][] = ["am", "pm"];
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
 }
 
-function buildCalendarCells(year: number, month: number) {
-  const firstWeekday = new Date(year, month, 1).getDay();
+function getMonthMeta(year: number, month: number) {
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = getDaysInMonth(year, month);
-  const cells: Array<number | null> = [];
+  const prevMonthDays = getDaysInMonth(year, month - 1);
+  const cells: CalendarCell[] = [];
 
   for (let i = 0; i < firstWeekday; i += 1) {
-    cells.push(null);
+    cells.push({
+      day: prevMonthDays - firstWeekday + i + 1,
+      kind: "prev",
+      monthOffset: -1,
+    });
   }
 
   for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push(day);
+    cells.push({ day, kind: "current", monthOffset: 0 });
+  }
+
+  while (cells.length < 35) {
+    cells.push({
+      day: cells.length - (firstWeekday + daysInMonth) + 1,
+      kind: "next",
+      monthOffset: 1,
+    });
   }
 
   while (cells.length % 7 !== 0) {
-    cells.push(null);
+    cells.push({
+      day: cells.length - (firstWeekday + daysInMonth) + 1,
+      kind: "next",
+      monthOffset: 1,
+    });
   }
 
   return cells;
@@ -93,44 +130,41 @@ function toDayKey(eventDate: string) {
   return eventDate.slice(8, 10);
 }
 
+function formatEventTime(event: Pick<CalendarEventRecord, "hour" | "minute" | "period">) {
+  return `${event.hour}:${event.minute} ${event.period}`;
+}
+
 function WheelColumn<T extends string | number>({
-  title,
   values,
   value,
   onChange,
   renderValue,
 }: {
-  title: string;
   values: T[];
   value: T;
   onChange: (value: T) => void;
   renderValue: (value: T) => string;
 }) {
   const selectedIndex = values.findIndex((item) => item === value);
-  const visibleIndices = Array.from({ length: 5 }, (_, index) => selectedIndex - 2 + index);
+  const visibleIndices = Array.from({ length: 7 }, (_, index) => selectedIndex - 3 + index);
 
   return (
     <View style={styles.wheelColumn}>
-      <Text style={styles.wheelTitle}>{title}</Text>
       <View style={styles.wheelFrame}>
+        <View style={styles.wheelSelectedBand} />
         {visibleIndices.map((index, rowIndex) => {
           const item = values[index];
-          const isSelected = rowIndex === 2;
+          const isSelected = rowIndex === 3;
 
           if (item === undefined) {
-            return (
-              <View
-                key={`${title}-empty-${rowIndex}`}
-                style={[styles.wheelRow, styles.wheelRowGhost]}
-              />
-            );
+            return <View key={`empty-${rowIndex}`} style={[styles.wheelRow, styles.wheelRowGhost]} />;
           }
 
           return (
             <Pressable
-              key={`${title}-${renderValue(item)}`}
+              key={`${renderValue(item)}-${rowIndex}`}
               onPress={() => onChange(item)}
-              style={[styles.wheelRow, isSelected && styles.wheelRowSelected]}
+              style={styles.wheelRow}
             >
               <Text style={[styles.wheelRowText, isSelected && styles.wheelRowTextSelected]}>
                 {renderValue(item)}
@@ -147,8 +181,8 @@ export default function FamilyCalendarScreen() {
   const { user } = useAuth();
   const { activePatientId } = useActiveCareTarget();
 
-  const [month, setMonth] = useState(3);
-  const [selectedDay, setSelectedDay] = useState(8);
+  const [month, setMonth] = useState(8);
+  const [selectedDay, setSelectedDay] = useState(18);
   const [monthMenuOpen, setMonthMenuOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [events, setEvents] = useState<CalendarEventRecord[]>([]);
@@ -165,15 +199,16 @@ export default function FamilyCalendarScreen() {
   });
 
   const daysInMonth = useMemo(() => getDaysInMonth(YEAR, month), [month]);
-  const calendarCells = useMemo(() => buildCalendarCells(YEAR, month), [month]);
+  const calendarCells = useMemo(() => getMonthMeta(YEAR, month), [month]);
   const monthKey = useMemo(() => `${YEAR}-${pad2(month + 1)}`, [month]);
 
   const monthEvents = useMemo(
     () => events.filter((event) => toMonthKey(event.eventDate) === monthKey),
     [events, monthKey]
   );
-  const selectedDayEvents = monthEvents.filter(
-    (event) => Number(toDayKey(event.eventDate)) === selectedDay
+  const selectedDayEvents = useMemo(
+    () => monthEvents.filter((event) => Number(toDayKey(event.eventDate)) === selectedDay),
+    [monthEvents, selectedDay]
   );
 
   useEffect(() => {
@@ -258,31 +293,38 @@ export default function FamilyCalendarScreen() {
     }
   };
 
-  const renderDayCell = (day: number | null, index: number) => {
-    if (!day) {
-      return <View key={`empty-${index}`} style={styles.dayCell} />;
-    }
-
-    const dayEvents = monthEvents
-      .filter((event) => Number(toDayKey(event.eventDate)) === day)
-      .slice(0, 2);
-    const isSelected = day === selectedDay;
+  const renderDayCell = (cell: CalendarCell, index: number) => {
+    const isCurrentMonth = cell.kind === "current";
+    const dayEvents = isCurrentMonth
+      ? monthEvents.filter((event) => Number(toDayKey(event.eventDate)) === cell.day)
+      : [];
+    const isSelected = isCurrentMonth && cell.day === selectedDay;
 
     return (
       <Pressable
-        key={`day-${day}`}
-        onPress={() => setSelectedDay(day)}
-        style={[styles.dayCell, isSelected && styles.dayCellSelected]}
+        key={`${cell.kind}-${cell.day}-${index}`}
+        onPress={() => {
+          if (isCurrentMonth) setSelectedDay(cell.day);
+        }}
+        style={[
+          styles.dayCell,
+          cell.kind !== "current" && styles.dayCellMuted,
+          isSelected && styles.dayCellSelected,
+        ]}
       >
-        <Text style={[styles.dayNumber, isSelected && styles.dayNumberSelected]}>{day}</Text>
+        <Text
+          style={[
+            styles.dayNumber,
+            cell.kind !== "current" && styles.dayNumberMuted,
+            isSelected && styles.dayNumberSelected,
+          ]}
+        >
+          {cell.day}
+        </Text>
 
-        <View style={styles.eventStack}>
-          {dayEvents.map((event) => (
-            <View key={event.id} style={[styles.eventChip, { backgroundColor: event.color }]}>
-              <Text style={styles.eventChipText} numberOfLines={1}>
-                {event.title}
-              </Text>
-            </View>
+        <View style={styles.dayMarkers}>
+          {dayEvents.slice(0, 2).map((event) => (
+            <View key={event.id} style={[styles.dayMarker, { backgroundColor: event.color }]} />
           ))}
         </View>
       </Pressable>
@@ -292,16 +334,31 @@ export default function FamilyCalendarScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.yearText}>{YEAR}</Text>
+        <View style={styles.topBar}>
+          <View style={styles.topBarSpacer} />
+          <Pressable hitSlop={12} style={styles.menuButton} onPress={() => {}}>
+            <Feather name="menu" size={34} color="#111" />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.contentCard}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.controlsCard}>
+            <View style={styles.yearRow}>
+              <Pressable onPress={() => {}} hitSlop={10} style={styles.yearArrowButton}>
+                <Ionicons name="caret-back" size={16} color="#2B2B2B" />
+              </Pressable>
+              <Text style={styles.yearText}>{YEAR}</Text>
+              <Pressable onPress={() => {}} hitSlop={10} style={styles.yearArrowButton}>
+                <Ionicons name="caret-forward" size={16} color="#2B2B2B" />
+              </Pressable>
+            </View>
+
             <View style={styles.monthWrap}>
-              <Pressable
-                onPress={() => setMonthMenuOpen((prev) => !prev)}
-                style={styles.monthButton}
-              >
+              <Pressable onPress={() => setMonthMenuOpen((prev) => !prev)} style={styles.monthButton}>
                 <Text style={styles.monthButtonText}>{MONTH_LABELS[month]}</Text>
-                <Text style={styles.monthChevron}>v</Text>
+                <Ionicons name="chevron-down" size={16} color="#4A4A4A" />
               </Pressable>
 
               {monthMenuOpen && (
@@ -310,16 +367,10 @@ export default function FamilyCalendarScreen() {
                     <Pressable
                       key={label}
                       onPress={() => setMonth(index)}
-                      style={[
-                        styles.monthMenuItem,
-                        index === month && styles.monthMenuItemActive,
-                      ]}
+                      style={[styles.monthMenuItem, index === month && styles.monthMenuItemActive]}
                     >
                       <Text
-                        style={[
-                          styles.monthMenuText,
-                          index === month && styles.monthMenuTextActive,
-                        ]}
+                        style={[styles.monthMenuText, index === month && styles.monthMenuTextActive]}
                       >
                         {label}
                       </Text>
@@ -330,19 +381,6 @@ export default function FamilyCalendarScreen() {
             </View>
           </View>
 
-          <Pressable hitSlop={12} style={styles.menuButton} onPress={() => {}}>
-            <View style={styles.menuLine} />
-            <View style={styles.menuLine} />
-            <View style={styles.menuLine} />
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.contentCard}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
           <View style={styles.weekRow}>
             {WEEK_LABELS.map((day) => (
               <Text key={day} style={styles.weekText}>
@@ -351,103 +389,112 @@ export default function FamilyCalendarScreen() {
             ))}
           </View>
 
-          <View style={styles.grid}>
-            {calendarCells.map((cell, index) => renderDayCell(cell, index))}
-          </View>
+          <View style={styles.grid}>{calendarCells.map((cell, index) => renderDayCell(cell, index))}</View>
 
-          <View style={styles.selectedSummary}>
-            <Text style={styles.selectedSummaryTitle}>{selectedDay} Events</Text>
-            {selectedDayEvents.length === 0 ? (
-              <Text style={styles.emptySummaryText}>No events today</Text>
-            ) : (
-              selectedDayEvents.map((event) => (
-                <View key={event.id} style={styles.summaryCard}>
-                  <View style={[styles.summaryDot, { backgroundColor: event.color }]} />
-                  <View style={styles.summaryBody}>
-                    <Text style={styles.summaryTitle}>
-                      {event.hour}:{event.minute} {event.period} {event.title}
+          {selectedDayEvents.length > 0 && (
+            <View style={styles.eventList}>
+              {selectedDayEvents.map((event) => (
+                <View key={event.id} style={styles.eventCard}>
+                  <View style={styles.eventCardTop}>
+                    <Text style={styles.eventCardTime}>{formatEventTime(event)}</Text>
+                    <Text style={styles.eventCardText} numberOfLines={1}>
+                      {event.personName}
                     </Text>
-                    <Text style={styles.summaryMeta}>
-                      {event.personName} - {event.location}
+                    <Text style={styles.eventCardText} numberOfLines={1}>
+                      {event.title}
+                    </Text>
+                    <Text style={styles.eventCardText} numberOfLines={1}>
+                      {event.location}
                     </Text>
                   </View>
+
+                  <View style={styles.eventActions}>
+                    <Pressable hitSlop={8} style={styles.eventActionButton} onPress={() => {}}>
+                      <Feather name="edit-2" size={22} color="#1F2430" />
+                    </Pressable>
+                    <Pressable hitSlop={8} style={styles.eventActionButton} onPress={() => {}}>
+                      <Ionicons name="trash-outline" size={24} color="#1F2430" />
+                    </Pressable>
+                  </View>
                 </View>
-              ))
-            )}
-          </View>
+              ))}
+            </View>
+          )}
         </ScrollView>
       </View>
 
       <Pressable style={styles.plusButton} onPress={() => setFormOpen(true)}>
-        <Text style={styles.plusText}>+</Text>
+        <Ionicons name="add" size={38} color="#FFF" />
       </Pressable>
 
       {formOpen && (
         <View style={styles.formOverlay}>
-          <View style={styles.formCard}>
+          <View style={styles.formPeekCalendar}>
+            <View style={styles.formPeekGridRow}>
+              <View style={[styles.formPeekCell, styles.formPeekCellMuted]} />
+              <View style={styles.formPeekCell} />
+              <View style={styles.formPeekCell} />
+              <View style={styles.formPeekCell} />
+              <View style={[styles.formPeekCell, styles.formPeekCellSelected]} />
+              <View style={styles.formPeekCell} />
+            </View>
+          </View>
+
+          <View style={styles.formSheet}>
             <View style={styles.formHeader}>
-              <Pressable onPress={() => setFormOpen(false)} hitSlop={12}>
+              <Pressable onPress={() => setFormOpen(false)} hitSlop={12} style={styles.formIconButton}>
                 <Text style={styles.formHeaderIcon}>X</Text>
               </Pressable>
-              <Pressable onPress={confirmNewEvent} hitSlop={12}>
-                <Text style={styles.formHeaderIcon}>{"\u2713"}</Text>
+              <Pressable onPress={confirmNewEvent} hitSlop={12} style={styles.formConfirmButton}>
+                <Ionicons name="checkmark" size={34} color="#111" />
               </Pressable>
             </View>
 
-            <ScrollView
-              contentContainerStyle={styles.formContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Color</Text>
-                <View style={styles.colorRow}>
-                  {EVENT_COLORS.map((color) => {
-                    const selected = form.color === color;
-                    return (
-                      <Pressable
-                        key={color}
-                        onPress={() => setForm((prev) => ({ ...prev, color }))}
-                        style={[
-                          styles.colorSwatch,
-                          { backgroundColor: color },
-                          selected && styles.colorSwatchSelected,
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
+            <ScrollView contentContainerStyle={styles.formContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.colorRow}>
+                {EVENT_COLORS.map((color) => {
+                  const selected = form.color === color;
+                  return (
+                    <Pressable
+                      key={color}
+                      onPress={() => setForm((prev) => ({ ...prev, color }))}
+                      style={[
+                        styles.colorSwatch,
+                        { backgroundColor: color },
+                        selected && styles.colorSwatchSelected,
+                      ]}
+                    />
+                  );
+                })}
               </View>
 
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Name</Text>
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>姓名:</Text>
                 <TextInput
                   style={styles.fieldInput}
                   value={form.personName}
                   onChangeText={(text) => setForm((prev) => ({ ...prev, personName: text }))}
-                  placeholder="Enter name"
+                  placeholder=""
                   placeholderTextColor="#B7B7B7"
                 />
               </View>
 
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Time</Text>
-                <View style={styles.timePicker}>
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>時間:</Text>
+                <View style={styles.timeField}>
                   <WheelColumn
-                    title="Hour"
                     values={HOURS}
                     value={time.hour}
                     onChange={(hour) => setTime((prev) => ({ ...prev, hour }))}
                     renderValue={(hour) => String(hour)}
                   />
                   <WheelColumn
-                    title="Min"
                     values={MINUTES}
                     value={time.minute}
                     onChange={(minute) => setTime((prev) => ({ ...prev, minute }))}
                     renderValue={(minute) => pad2(minute)}
                   />
                   <WheelColumn
-                    title="AM / PM"
                     values={PERIODS}
                     value={time.period}
                     onChange={(period) => setTime((prev) => ({ ...prev, period }))}
@@ -456,24 +503,24 @@ export default function FamilyCalendarScreen() {
                 </View>
               </View>
 
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Event</Text>
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>事件:</Text>
                 <TextInput
                   style={styles.fieldInput}
                   value={form.title}
                   onChangeText={(text) => setForm((prev) => ({ ...prev, title: text }))}
-                  placeholder="Enter event"
+                  placeholder=""
                   placeholderTextColor="#B7B7B7"
                 />
               </View>
 
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Location</Text>
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>地點:</Text>
                 <TextInput
                   style={styles.fieldInput}
                   value={form.location}
                   onChangeText={(text) => setForm((prev) => ({ ...prev, location: text }))}
-                  placeholder="Enter location"
+                  placeholder=""
                   placeholderTextColor="#B7B7B7"
                 />
               </View>
@@ -488,231 +535,258 @@ export default function FamilyCalendarScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#F6F2F0",
+    backgroundColor: "#F4F2F0",
   },
   header: {
-    backgroundColor: "#F26C61",
+    backgroundColor: "#F67578",
     paddingTop: 58,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingHorizontal: 22,
+    paddingBottom: 22,
   },
-  headerTop: {
+  topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  yearText: {
-    fontSize: 34,
-    fontWeight: "900",
-    color: "#FFFFFF",
-    letterSpacing: 1,
-  },
-  monthWrap: {
-    marginTop: 10,
-    position: "relative",
-    alignSelf: "flex-start",
-  },
-  monthButton: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(255,255,255,0.24)",
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
   },
-  monthButtonText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#FFF",
-  },
-  monthChevron: {
-    fontSize: 14,
-    color: "#FFF",
-    marginTop: 2,
-  },
-  monthMenu: {
-    position: "absolute",
-    top: 48,
-    left: 0,
-    backgroundColor: "#FFF",
-    borderRadius: 16,
-    padding: 8,
-    width: 140,
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 12,
-    elevation: 6,
-    zIndex: 50,
-  },
-  monthMenuItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-  },
-  monthMenuItemActive: {
-    backgroundColor: "#FCE8E6",
-  },
-  monthMenuText: {
-    fontSize: 16,
-    color: "#374151",
-    fontWeight: "600",
-  },
-  monthMenuTextActive: {
-    color: "#F26C61",
-  },
-  menuButton: {
+  topBarSpacer: {
     width: 34,
     height: 34,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 6,
   },
-  menuLine: {
-    width: 18,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: "#FFF",
+  menuButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   contentCard: {
     flex: 1,
-    marginTop: -14,
-    backgroundColor: "#FFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    overflow: "hidden",
+    backgroundColor: "#FFFFFF",
   },
   content: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 220,
+    paddingBottom: 168,
+  },
+  controlsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 0.5,
+    borderColor: "#D8D8D8",
+    backgroundColor: "#FFF",
+  },
+  yearRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  yearArrowButton: {
+    width: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  yearText: {
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: "500",
+    color: "#111",
+  },
+  monthWrap: {
+    position: "relative",
+  },
+  monthButton: {
+    minWidth: 180,
+    height: 28,
+    borderWidth: 0.8,
+    borderColor: "#D4D4D4",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FAFAFA",
+  },
+  monthButtonText: {
+    fontSize: 12,
+    color: "#4A4A4A",
+  },
+  monthMenu: {
+    position: "absolute",
+    top: 34,
+    right: 0,
+    width: 180,
+    backgroundColor: "#FFF",
+    borderRadius: 10,
+    borderWidth: 0.8,
+    borderColor: "#E4E4E4",
+    zIndex: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  monthMenuItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  monthMenuItemActive: {
+    backgroundColor: "#FFF0F0",
+  },
+  monthMenuText: {
+    fontSize: 13,
+    color: "#444",
+  },
+  monthMenuTextActive: {
+    color: "#F67578",
+    fontWeight: "700",
   },
   weekRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 10,
+    borderBottomWidth: 0.5,
+    borderColor: "#E5E5E5",
+    backgroundColor: "#FFF",
   },
   weekText: {
     width: `${100 / 7}%`,
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#8A8A8A",
+    paddingVertical: 3,
+    textAlign: "left",
+    paddingLeft: 4,
+    fontSize: 6,
+    color: "#8E95A3",
   },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
+    borderLeftWidth: 0.5,
+    borderTopWidth: 0.5,
+    borderColor: "#E5E5E5",
+    backgroundColor: "#FFF",
   },
   dayCell: {
     width: `${100 / 7}%`,
-    minHeight: 90,
-    borderWidth: 0.5,
-    borderColor: "#F1F1F1",
-    padding: 6,
+    height: 88,
+    borderRightWidth: 0.5,
+    borderBottomWidth: 0.5,
+    borderColor: "#E5E5E5",
+    paddingTop: 4,
+    paddingHorizontal: 4,
+    backgroundColor: "#FFF",
+  },
+  dayCellMuted: {
+    backgroundColor: "#E7E7E7",
   },
   dayCellSelected: {
-    backgroundColor: "#FFF2EF",
-    borderColor: "#F26C61",
+    backgroundColor: "#F7C7CB",
   },
   dayNumber: {
-    alignSelf: "flex-end",
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#333",
+    fontSize: 10,
+    color: "#202020",
+  },
+  dayNumberMuted: {
+    color: "#A8A8A8",
   },
   dayNumberSelected: {
-    color: "#F26C61",
+    color: "#111",
   },
-  eventStack: {
-    marginTop: 6,
-    gap: 4,
+  dayMarkers: {
+    marginTop: 34,
+    gap: 2,
   },
-  eventChip: {
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+  dayMarker: {
+    height: 8,
+    borderRadius: 2,
+    width: "86%",
   },
-  eventChipText: {
-    color: "#FFF",
-    fontSize: 11,
-    fontWeight: "700",
+  eventList: {
+    paddingHorizontal: 26,
+    paddingTop: 32,
+    gap: 14,
   },
-  selectedSummary: {
-    marginTop: 20,
-    gap: 12,
+  eventCard: {
+    backgroundColor: "#FFAA59",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 8,
   },
-  selectedSummaryTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#222",
-  },
-  emptySummaryText: {
-    fontSize: 14,
-    color: "#999",
-  },
-  summaryCard: {
+  eventCardTop: {
     flexDirection: "row",
-    alignItems: "center",
-    padding: 14,
-    backgroundColor: "#F8F8F8",
-    borderRadius: 18,
-    gap: 12,
+    alignItems: "flex-start",
+    gap: 10,
+    paddingRight: 56,
   },
-  summaryDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+  eventCardTime: {
+    width: 50,
+    fontSize: 15,
+    lineHeight: 16,
+    color: "#111",
+    fontWeight: "500",
   },
-  summaryBody: {
+  eventCardText: {
     flex: 1,
-    gap: 4,
+    fontSize: 15,
+    lineHeight: 20,
+    color: "#111",
+    fontWeight: "600",
   },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#222",
+  eventActions: {
+    marginTop: 6,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 2,
   },
-  summaryMeta: {
-    fontSize: 13,
-    color: "#666",
+  eventActionButton: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   plusButton: {
     position: "absolute",
-    right: 20,
-    bottom: 26,
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    backgroundColor: "#F6A6C0",
-    justifyContent: "center",
+    right: 26,
+    bottom: 98,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#F8C5C7",
     alignItems: "center",
-    shadowColor: "#F6A6C0",
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  plusText: {
-    fontSize: 36,
-    fontWeight: "300",
-    color: "#FFF",
-    marginTop: -2,
+    justifyContent: "center",
   },
   formOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 18,
+    backgroundColor: "rgba(0,0,0,0.08)",
+    justifyContent: "flex-start",
   },
-  formCard: {
-    width: "100%",
-    maxWidth: 420,
+  formPeekCalendar: {
+    marginTop: 112,
+    height: 84,
     backgroundColor: "#FFF",
-    borderRadius: 28,
-    padding: 18,
-    maxHeight: "84%",
+  },
+  formPeekGridRow: {
+    flexDirection: "row",
+    height: "100%",
+  },
+  formPeekCell: {
+    flex: 1,
+    borderRightWidth: 0.5,
+    borderTopWidth: 0.5,
+    borderColor: "#E5E5E5",
+    backgroundColor: "#FFF",
+  },
+  formPeekCellMuted: {
+    backgroundColor: "#E7E7E7",
+  },
+  formPeekCellSelected: {
+    backgroundColor: "#F7C7CB",
+  },
+  formSheet: {
+    flex: 1,
+    backgroundColor: "#FFF",
+    paddingTop: 8,
+    paddingHorizontal: 20,
   },
   formHeader: {
     flexDirection: "row",
@@ -720,86 +794,105 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 14,
   },
+  formIconButton: {
+    width: 44,
+    height: 44,
+    justifyContent: "center",
+  },
+  formConfirmButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   formHeaderIcon: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#333",
+    fontSize: 28,
+    color: "#111",
+    fontWeight: "400",
   },
   formContent: {
-    gap: 14,
-    paddingBottom: 6,
-  },
-  field: {
-    gap: 8,
-  },
-  fieldLabel: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#333",
-  },
-  fieldInput: {
-    backgroundColor: "#F4F5F7",
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: "#111",
+    paddingBottom: 40,
+    gap: 16,
   },
   colorRow: {
     flexDirection: "row",
-    gap: 12,
-    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 18,
+    marginBottom: 4,
+    paddingLeft: 2,
   },
   colorSwatch: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2.5,
     borderColor: "transparent",
   },
   colorSwatchSelected: {
-    borderColor: "#111",
+    borderColor: "#7A7A7A",
   },
-  timePicker: {
+  fieldRow: {
+    gap: 8,
+  },
+  fieldLabel: {
+    fontSize: 22,
+    color: "#111",
+    fontWeight: "700",
+  },
+  fieldInput: {
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: "#DCDDDF",
+    paddingHorizontal: 14,
+    fontSize: 18,
+    color: "#111",
+    marginLeft: 74,
+    marginTop: -34,
+  },
+  timeField: {
+    minHeight: 170,
+    borderRadius: 12,
+    backgroundColor: "#FFF",
+    marginLeft: 74,
+    marginTop: -34,
     flexDirection: "row",
-    gap: 10,
+    paddingHorizontal: 6,
   },
   wheelColumn: {
     flex: 1,
-  },
-  wheelTitle: {
-    fontSize: 12,
-    color: "#8B8B8B",
-    fontWeight: "700",
-    marginBottom: 6,
-    textAlign: "center",
+    alignItems: "center",
   },
   wheelFrame: {
-    borderRadius: 18,
-    overflow: "hidden",
-    backgroundColor: "#F7F7F8",
-    borderWidth: 1,
-    borderColor: "#E7E7E7",
+    width: "100%",
+    height: 170,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  wheelSelectedBand: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 68,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: "#F2F2F2",
   },
   wheelRow: {
-    height: 42,
+    height: 24,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 6,
   },
   wheelRowGhost: {
     opacity: 0,
   },
-  wheelRowSelected: {
-    backgroundColor: "#EDEFF2",
-  },
   wheelRowText: {
-    fontSize: 16,
-    color: "#666",
-    fontWeight: "700",
+    fontSize: 13,
+    color: "#B9B9B9",
   },
   wheelRowTextSelected: {
+    fontSize: 17,
     color: "#111",
-    fontSize: 18,
+    fontWeight: "500",
   },
 });
