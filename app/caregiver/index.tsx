@@ -69,9 +69,8 @@ function hhmmToMinutes(hhmm?: string) {
 }
 
 export default function CaregiverHomeScreen() {
-  const { user, logout } = useAuth();
-  const { activePatient, activePatientId, ready, clearActivePatient } =
-    useActiveCareTarget();
+  const { user } = useAuth();
+  const { activePatient, activePatientId, ready } = useActiveCareTarget();
 
   const [target, setTarget] = useState<CareTarget | null>(null);
   const [loading, setLoading] = useState(true);
@@ -245,41 +244,6 @@ export default function CaregiverHomeScreen() {
     return todayLogs.some((log) => log.reminderId === currentReminder.id);
   }, [currentReminder, todayLogs]);
 
-  // ==========================================
-  // 邏輯：右上角設定/登出選單
-  // ==========================================
-  const onMenuPress = () => {
-    Alert.alert("系統選項", "請選擇您要執行的動作", [
-      { text: "取消", style: "cancel" },
-      {
-        text: "切換 / 解除綁定當前長輩",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await clearActivePatient();
-            router.replace("/care-target/join");
-          } catch (err) {
-            console.log("unlink error:", err);
-            Alert.alert("解除失敗", "請稍後再試一次");
-          }
-        },
-      },
-      {
-        text: "登出系統",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await logout();
-            router.replace("/(auth)/login");
-          } catch (err) {
-            console.log("logout error:", err);
-            Alert.alert("登出失敗", "請稍後再試一次");
-          }
-        },
-      },
-    ]);
-  };
-
   async function handleDonePress() {
     if (!user) {
       Alert.alert("尚未登入", "請先登入");
@@ -337,16 +301,7 @@ export default function CaregiverHomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Pressable onPress={onMenuPress} style={styles.menuIcon}>
-            <View style={styles.menuLine} />
-            <View style={styles.menuLine} />
-            <View style={styles.menuLine} />
-          </Pressable>
-        </View>
-
-        {/* 使用者姓名 */}
+        {/* 使用者姓名 (移除了原本的 Header) */}
         <View style={styles.userInfo}>
           <Text style={styles.userName}>{target?.name ?? "尚未選擇"}</Text>
         </View>
@@ -460,25 +415,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 80,
-    paddingTop: 60,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-  },
-  menuIcon: {
-    height: 28,
-    width: 40,
-    justifyContent: "space-around",
-  },
-  menuLine: {
-    height: 6,
-    width: "100%",
-    backgroundColor: "#000",
-    borderRadius: 3,
+    paddingTop: 80, // 稍微加大上方的 Padding，閃開共用導覽列的漢堡按鈕
   },
   userInfo: {
     paddingHorizontal: 24,

@@ -6,15 +6,13 @@ import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/f
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 
 // 定義生理數據狀態型別
 type VitalStatus = 'normal' | 'abnormal' | 'outdated' | 'nodata';
 
 export default function FamilyHomeScreen() {
-  const { logout } = useAuth();
-  const { ready, activePatient, activePatientId, linkedCareTargets, setActivePatientId, clearActivePatient } = useActiveCareTarget();
+  const { ready, activePatient, activePatientId, linkedCareTargets, setActivePatientId } = useActiveCareTarget();
 
   // 存放最新的生理數據
   const [vitals, setVitals] = useState<any>({
@@ -73,14 +71,6 @@ export default function FamilyHomeScreen() {
       await Clipboard.setStringAsync(activePatient.inviteCode);
       Alert.alert("已複製", "邀請碼已複製到剪貼簿");
     }
-  };
-
-  const onMenuPress = () => {
-    Alert.alert("系統選項", "請選擇您要執行的動作", [
-      { text: "取消", style: "cancel" },
-      { text: "解除綁定當前長輩", style: "destructive", onPress: async () => await clearActivePatient() },
-      { text: "登出系統", style: "destructive", onPress: async () => { await logout(); router.replace("/(auth)/login"); } }
-    ]);
   };
 
   if (!ready || linkedCareTargets.length === 0) {
@@ -188,7 +178,7 @@ export default function FamilyHomeScreen() {
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
-        {/* Header 區塊：長輩切換頭像列 */}
+        {/* Header 區塊：長輩切換頭像列 (已移除舊的漢堡選單) */}
         <View style={styles.header}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarList}>
             {linkedCareTargets.map((target) => {
@@ -207,10 +197,6 @@ export default function FamilyHomeScreen() {
               <View style={styles.avatarAdd}><Text style={styles.avatarAddText}>+</Text></View>
             </Pressable>
           </ScrollView>
-
-          <Pressable onPress={onMenuPress} style={styles.menuIcon}>
-            <View style={styles.menuLine} /><View style={styles.menuLine} /><View style={styles.menuLine} />
-          </Pressable>
         </View>
 
         {/* 使用者資訊區塊 */}
@@ -274,8 +260,8 @@ export default function FamilyHomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF" },
-  scrollContent: { paddingBottom: 40, paddingTop: 60 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8 },
+  scrollContent: { paddingBottom: 100, paddingTop: 80 }, // 🌟 調整了 padding，閃開全域漢堡選單
+  header: { flexDirection: "row", justifyContent: "flex-start", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8 },
   avatarList: { flexDirection: "row", alignItems: "center", gap: 8 },
   avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: "center", alignItems: "center" },
   avatarActive: { backgroundColor: "#000" },
@@ -285,8 +271,7 @@ const styles = StyleSheet.create({
   textGray: { color: "#666" },
   avatarAdd: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#E0E0E0", justifyContent: "center", alignItems: "center" },
   avatarAddText: { fontSize: 24, fontWeight: "bold", color: "#000", marginBottom: 4 },
-  menuIcon: { height: 28, width: 36, justifyContent: "space-around", marginLeft: 16 },
-  menuLine: { height: 4, width: "100%", backgroundColor: "#000", borderRadius: 2 },
+  
   userInfo: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginTop: 8, marginBottom: 16 },
   userName: { fontSize: 28, fontWeight: "bold", letterSpacing: 2, color: "#000", marginRight: 12 },
   inviteBadge: { backgroundColor: "#E5E5E5", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 12 },
@@ -310,20 +295,15 @@ const styles = StyleSheet.create({
   vitalTitle: { fontSize: 18, fontWeight: "bold", color: "#000", letterSpacing: 2, marginBottom: 8 },
   vitalCardWrap: { width: "100%", height: 130, borderRadius: 12, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
   
-  // 💡 修正這裡：拿掉過多的 padding，改用 justifyContent 均勻分佈
   vitalCardTop: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 2 },
   vitalCardBottom: { height: 46, justifyContent: "center", alignItems: "center" },
   
-  // 💡 修正這裡：把 lineHeight 拿掉，避免行高過大擠壓到後面的單位
   vitalValue: { color: "#000", fontWeight: "500" }, 
-  
-  // 💡 修正這裡：拿掉 marginTop 避免單位被往下推
   vitalUnit: { color: "#000", fontWeight: "400" },
   
   vitalTimeText: { color: "#FFF", fontSize: 15, fontWeight: "500" },
   vitalLabelText: { color: "#F3F4F6", fontSize: 13 },
   
-
   chartBtn: { backgroundColor: "#F5A623", borderRadius: 24, paddingVertical: 10, paddingHorizontal: 24, alignSelf: "center", marginTop: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
   chartBtnText: { color: "#FFF", fontSize: 17, fontWeight: "bold" },
   actionsRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, marginHorizontal: 20, marginTop: 20 },
