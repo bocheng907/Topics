@@ -3,11 +3,14 @@ import { useEffect, useMemo, useState } from "react";
 import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   Timestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
@@ -18,18 +21,25 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 
 type CalendarEventRecord = {
   id: string;
-  patientId: string;
-  title: string;
-  personName: string;
-  location: string;
-  eventDate: string;
-  hour: string;
-  minute: string;
-  period: "am" | "pm";
-  color: string;
-  createdBy: string;
+  patientId?: string;
+  createdBy?: string;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
+  startAt?: Timestamp | null;
+  eventDate?: string;
+  hour?: string;
+  minute?: string;
+  period?: "am" | "pm";
+  color?: string;
+  personName?: string;
+  name?: string;
+  patientName?: string;
+  title?: string;
+  eventTitle?: string;
+  event?: string;
+  description?: string;
+  location?: string;
+  place?: string;
 };
 
 type FormState = {
@@ -39,20 +49,23 @@ type FormState = {
   color: string;
 };
 
-type TimeState = {
-  hour: number;
-  minute: number;
-  period: "am" | "pm";
-};
+type TimePeriod = "am" | "pm";
 
 type CalendarCell = {
   day: number;
   kind: "prev" | "current" | "next";
-  monthOffset: -1 | 0 | 1;
+  date: Date;
+};
+
+type CalendarEventViewModel = CalendarEventRecord & {
+  resolvedPersonName: string;
+  resolvedTitle: string;
+  resolvedLocation: string;
+  resolvedColor: string;
+  resolvedDate: Date;
 };
 
 const CALENDAR_EVENTS_COLLECTION = "calendar_events";
-const YEAR = 2026;
 const MONTH_LABELS = [
   "January",
   "February",
@@ -70,68 +83,149 @@ const MONTH_LABELS = [
 const WEEK_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const EVENT_COLORS = ["#F4A261", "#B9A0F3", "#73B8F2", "#F6BDC2", "#7EDB68"];
 const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
-const MINUTES = Array.from({ length: 60 }, (_, index) => index);
-const PERIODS: TimeState["period"][] = ["am", "pm"];
+const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+const PERIODS: TimePeriod[] = ["am", "pm"];
+
+function pad2(value: number | string) {
+  return String(value).padStart(2, "0");
+}
+
+function sameDate(left: Date, right: Date) {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+function to24Hour(hour12: number, period: TimePeriod) {
+  if (period === "am") {
+    return hour12 === 12 ? 0 : hour12;
+  }
+
+  return hour12 === 12 ? 12 : hour12 + 12;
+}
+
+function buildEventDate(selectedDate: Date, hour: number, minute: number, period: TimePeriod) {
+  const next = new Date(selectedDate);
+  next.setHours(to24Hour(hour, period), minute, 0, 0);
+  return next;
+}
+
+function extractTimeParts(date: Date) {
+  const rawMinute = Math.round(date.getMinutes() / 5) * 5;
+  const minute = rawMinute >= 60 ? 55 : rawMinute;
+  const hour24 = date.getHours();
+  const period: TimePeriod = hour24 >= 12 ? "pm" : "am";
+  const hour = hour24 % 12 === 0 ? 12 : hour24 % 12;
+
+  return { hour, minute, period };
+}
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
 }
 
-function getMonthMeta(year: number, month: number) {
+function getMonthMeta(currentMonth: Date) {
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
   const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = getDaysInMonth(year, month);
   const prevMonthDays = getDaysInMonth(year, month - 1);
   const cells: CalendarCell[] = [];
 
   for (let i = 0; i < firstWeekday; i += 1) {
+    const day = prevMonthDays - firstWeekday + i + 1;
     cells.push({
-      day: prevMonthDays - firstWeekday + i + 1,
+      day,
       kind: "prev",
-      monthOffset: -1,
+      date: new Date(year, month - 1, day),
     });
   }
 
   for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push({ day, kind: "current", monthOffset: 0 });
+    cells.push({
+      day,
+      kind: "current",
+      date: new Date(year, month, day),
+    });
   }
 
   while (cells.length < 35) {
+    const day = cells.length - (firstWeekday + daysInMonth) + 1;
     cells.push({
-      day: cells.length - (firstWeekday + daysInMonth) + 1,
+      day,
       kind: "next",
-      monthOffset: 1,
+      date: new Date(year, month + 1, day),
     });
   }
 
   while (cells.length % 7 !== 0) {
+    const day = cells.length - (firstWeekday + daysInMonth) + 1;
     cells.push({
-      day: cells.length - (firstWeekday + daysInMonth) + 1,
+      day,
       kind: "next",
-      monthOffset: 1,
+      date: new Date(year, month + 1, day),
     });
   }
 
   return cells;
 }
 
-function pad2(value: number | string) {
-  return String(value).padStart(2, "0");
+function formatEventDateKey(date: Date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-function getEventDate(year: number, month: number, day: number) {
-  return `${year}-${pad2(month + 1)}-${pad2(day)}`;
+function resolveTitle(event: CalendarEventRecord) {
+  return event.title || event.eventTitle || event.event || event.description || "";
 }
 
-function toMonthKey(eventDate: string) {
-  return eventDate.slice(0, 7);
+function resolvePersonName(event: CalendarEventRecord) {
+  return event.name || event.personName || event.patientName || "";
 }
 
-function toDayKey(eventDate: string) {
-  return eventDate.slice(8, 10);
+function resolveLocation(event: CalendarEventRecord) {
+  return event.location || event.place || "";
 }
 
-function formatEventTime(event: Pick<CalendarEventRecord, "hour" | "minute" | "period">) {
-  return `${event.hour}:${event.minute} ${event.period}`;
+function resolveColor(event: CalendarEventRecord) {
+  return event.color || EVENT_COLORS[0];
+}
+
+function getEventDateObject(event: CalendarEventRecord) {
+  if (event.startAt instanceof Timestamp) {
+    return event.startAt.toDate();
+  }
+
+  if (event.eventDate) {
+    const [year, month, day] = event.eventDate.split("-").map(Number);
+    const hour = Number(event.hour) || 7;
+    const minute = Number(event.minute) || 0;
+    return buildEventDate(
+      new Date(year, (month || 1) - 1, day || 1),
+      hour,
+      minute,
+      event.period || "pm"
+    );
+  }
+
+  return buildEventDate(new Date(), 7, 0, "pm");
+}
+
+function toCalendarEventViewModel(event: CalendarEventRecord): CalendarEventViewModel {
+  return {
+    ...event,
+    resolvedPersonName: resolvePersonName(event),
+    resolvedTitle: resolveTitle(event),
+    resolvedLocation: resolveLocation(event),
+    resolvedColor: resolveColor(event),
+    resolvedDate: getEventDateObject(event),
+  };
+}
+
+function formatEventTime(event: CalendarEventViewModel) {
+  const { hour, minute, period } = extractTimeParts(event.resolvedDate);
+  return `${hour}:${pad2(minute)} ${period}`;
 }
 
 function WheelColumn<T extends string | number>({
@@ -181,10 +275,11 @@ export default function CaregiverCalendarScreen() {
   const { user } = useAuth();
   const { activePatientId } = useActiveCareTarget();
 
-  const [month, setMonth] = useState(8);
-  const [selectedDay, setSelectedDay] = useState(18);
+  const [currentMonth, setCurrentMonth] = useState(() => new Date(2026, 8, 1));
+  const [selectedDate, setSelectedDate] = useState(() => new Date(2026, 8, 18));
   const [monthMenuOpen, setMonthMenuOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEventRecord[]>([]);
   const [form, setForm] = useState<FormState>({
     personName: "",
@@ -192,34 +287,31 @@ export default function CaregiverCalendarScreen() {
     location: "",
     color: EVENT_COLORS[0],
   });
-  const [time, setTime] = useState<TimeState>({
-    hour: 7,
-    minute: 0,
-    period: "pm",
-  });
+  const [formHour, setFormHour] = useState(7);
+  const [formMinute, setFormMinute] = useState(0);
+  const [formPeriod, setFormPeriod] = useState<TimePeriod>("pm");
 
-  const daysInMonth = useMemo(() => getDaysInMonth(YEAR, month), [month]);
-  const calendarCells = useMemo(() => getMonthMeta(YEAR, month), [month]);
-  const monthKey = useMemo(() => `${YEAR}-${pad2(month + 1)}`, [month]);
+  const calendarCells = useMemo(() => getMonthMeta(currentMonth), [currentMonth]);
 
-  const monthEvents = useMemo(
-    () => events.filter((event) => toMonthKey(event.eventDate) === monthKey),
-    [events, monthKey]
-  );
+  const monthEvents = useMemo(() => {
+    return events
+      .map(toCalendarEventViewModel)
+      .filter(
+        (event) =>
+          event.resolvedDate.getFullYear() === currentMonth.getFullYear() &&
+          event.resolvedDate.getMonth() === currentMonth.getMonth()
+      )
+      .sort((left, right) => left.resolvedDate.getTime() - right.resolvedDate.getTime());
+  }, [events, currentMonth]);
+
   const selectedDayEvents = useMemo(
-    () => monthEvents.filter((event) => Number(toDayKey(event.eventDate)) === selectedDay),
-    [monthEvents, selectedDay]
+    () => monthEvents.filter((event) => sameDate(event.resolvedDate, selectedDate)),
+    [monthEvents, selectedDate]
   );
-
-  useEffect(() => {
-    if (selectedDay > daysInMonth) {
-      setSelectedDay(daysInMonth);
-    }
-  }, [daysInMonth, selectedDay]);
 
   useEffect(() => {
     setMonthMenuOpen(false);
-  }, [month]);
+  }, [currentMonth]);
 
   useEffect(() => {
     if (!activePatientId) {
@@ -259,52 +351,119 @@ export default function CaregiverCalendarScreen() {
       location: "",
       color: EVENT_COLORS[0],
     });
-    setTime({
-      hour: 7,
-      minute: 0,
-      period: "pm",
-    });
+    setFormHour(7);
+    setFormMinute(0);
+    setFormPeriod("pm");
+    setEditingEventId(null);
   };
 
-  const confirmNewEvent = async () => {
+  const openCreateForm = () => {
+    resetForm();
+    setFormOpen(true);
+  };
+
+  const openEditForm = (event: CalendarEventViewModel) => {
+    const timeParts = extractTimeParts(event.resolvedDate);
+    setSelectedDate(
+      new Date(
+        event.resolvedDate.getFullYear(),
+        event.resolvedDate.getMonth(),
+        event.resolvedDate.getDate()
+      )
+    );
+    setCurrentMonth(new Date(event.resolvedDate.getFullYear(), event.resolvedDate.getMonth(), 1));
+    setForm({
+      personName: event.resolvedPersonName,
+      title: event.resolvedTitle,
+      location: event.resolvedLocation,
+      color: event.resolvedColor,
+    });
+    setFormHour(timeParts.hour);
+    setFormMinute(timeParts.minute);
+    setFormPeriod(timeParts.period);
+    setEditingEventId(event.id);
+    setFormOpen(true);
+  };
+
+  const handleYearChange = (diff: number) => {
+    const nextMonth = new Date(currentMonth.getFullYear() + diff, currentMonth.getMonth(), 1);
+    const nextSelectedDate = new Date(
+      nextMonth.getFullYear(),
+      nextMonth.getMonth(),
+      Math.min(selectedDate.getDate(), getDaysInMonth(nextMonth.getFullYear(), nextMonth.getMonth()))
+    );
+    setCurrentMonth(nextMonth);
+    setSelectedDate(nextSelectedDate);
+  };
+
+  const handleMonthSelect = (nextMonthIndex: number) => {
+    const nextMonth = new Date(currentMonth.getFullYear(), nextMonthIndex, 1);
+    const nextSelectedDate = new Date(
+      nextMonth.getFullYear(),
+      nextMonth.getMonth(),
+      Math.min(selectedDate.getDate(), getDaysInMonth(nextMonth.getFullYear(), nextMonth.getMonth()))
+    );
+    setCurrentMonth(nextMonth);
+    setSelectedDate(nextSelectedDate);
+  };
+
+  const confirmEvent = async () => {
     if (!activePatientId || !user?.uid) return;
 
-    const eventDate = getEventDate(YEAR, month, selectedDay);
+    const startDate = buildEventDate(selectedDate, formHour, formMinute, formPeriod);
+    const eventDate = formatEventDateKey(startDate);
+    const payload = {
+      name: form.personName.trim(),
+      personName: form.personName.trim(),
+      title: form.title.trim(),
+      eventTitle: form.title.trim(),
+      location: form.location.trim(),
+      color: form.color,
+      startAt: Timestamp.fromDate(startDate),
+      eventDate,
+      hour: String(formHour),
+      minute: pad2(formMinute),
+      period: formPeriod,
+      updatedAt: serverTimestamp(),
+    };
 
     try {
-      await addDoc(collection(db, CALENDAR_EVENTS_COLLECTION), {
-        patientId: activePatientId,
-        title: form.title.trim() || "Untitled event",
-        personName: form.personName.trim() || "Unnamed",
-        location: form.location.trim() || "Unknown location",
-        eventDate,
-        hour: String(time.hour),
-        minute: pad2(time.minute),
-        period: time.period,
-        color: form.color,
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
-      });
+      if (editingEventId) {
+        await updateDoc(doc(db, CALENDAR_EVENTS_COLLECTION, editingEventId), payload);
+      } else {
+        await addDoc(collection(db, CALENDAR_EVENTS_COLLECTION), {
+          patientId: activePatientId,
+          createdBy: user.uid,
+          createdAt: serverTimestamp(),
+          ...payload,
+        });
+      }
 
       setFormOpen(false);
       resetForm();
     } catch (error) {
-      console.log("create calendar event failed:", error);
+      console.log("save calendar event failed:", error);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      await deleteDoc(doc(db, CALENDAR_EVENTS_COLLECTION, eventId));
+    } catch (error) {
+      console.log("delete calendar event failed:", error);
     }
   };
 
   const renderDayCell = (cell: CalendarCell, index: number) => {
-    const isCurrentMonth = cell.kind === "current";
-    const dayEvents = isCurrentMonth
-      ? monthEvents.filter((event) => Number(toDayKey(event.eventDate)) === cell.day)
-      : [];
-    const isSelected = isCurrentMonth && cell.day === selectedDay;
+    const dayEvents = monthEvents.filter((event) => sameDate(event.resolvedDate, cell.date));
+    const isSelected = sameDate(cell.date, selectedDate);
 
     return (
       <Pressable
         key={`${cell.kind}-${cell.day}-${index}`}
         onPress={() => {
-          if (isCurrentMonth) setSelectedDay(cell.day);
+          setSelectedDate(new Date(cell.date.getFullYear(), cell.date.getMonth(), cell.date.getDate()));
+          setCurrentMonth(new Date(cell.date.getFullYear(), cell.date.getMonth(), 1));
         }}
         style={[
           styles.dayCell,
@@ -324,7 +483,7 @@ export default function CaregiverCalendarScreen() {
 
         <View style={styles.dayMarkers}>
           {dayEvents.slice(0, 2).map((event) => (
-            <View key={event.id} style={[styles.dayMarker, { backgroundColor: event.color }]} />
+            <View key={event.id} style={[styles.dayMarker, { backgroundColor: event.resolvedColor }]} />
           ))}
         </View>
       </Pressable>
@@ -346,18 +505,18 @@ export default function CaregiverCalendarScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.controlsCard}>
             <View style={styles.yearRow}>
-              <Pressable onPress={() => {}} hitSlop={10} style={styles.yearArrowButton}>
+              <Pressable onPress={() => handleYearChange(-1)} hitSlop={10} style={styles.yearArrowButton}>
                 <Ionicons name="caret-back" size={16} color="#2B2B2B" />
               </Pressable>
-              <Text style={styles.yearText}>{YEAR}</Text>
-              <Pressable onPress={() => {}} hitSlop={10} style={styles.yearArrowButton}>
+              <Text style={styles.yearText}>{currentMonth.getFullYear()}</Text>
+              <Pressable onPress={() => handleYearChange(1)} hitSlop={10} style={styles.yearArrowButton}>
                 <Ionicons name="caret-forward" size={16} color="#2B2B2B" />
               </Pressable>
             </View>
 
             <View style={styles.monthWrap}>
               <Pressable onPress={() => setMonthMenuOpen((prev) => !prev)} style={styles.monthButton}>
-                <Text style={styles.monthButtonText}>{MONTH_LABELS[month]}</Text>
+                <Text style={styles.monthButtonText}>{MONTH_LABELS[currentMonth.getMonth()]}</Text>
                 <Ionicons name="chevron-down" size={16} color="#4A4A4A" />
               </Pressable>
 
@@ -366,11 +525,17 @@ export default function CaregiverCalendarScreen() {
                   {MONTH_LABELS.map((label, index) => (
                     <Pressable
                       key={label}
-                      onPress={() => setMonth(index)}
-                      style={[styles.monthMenuItem, index === month && styles.monthMenuItemActive]}
+                      onPress={() => handleMonthSelect(index)}
+                      style={[
+                        styles.monthMenuItem,
+                        index === currentMonth.getMonth() && styles.monthMenuItemActive,
+                      ]}
                     >
                       <Text
-                        style={[styles.monthMenuText, index === month && styles.monthMenuTextActive]}
+                        style={[
+                          styles.monthMenuText,
+                          index === currentMonth.getMonth() && styles.monthMenuTextActive,
+                        ]}
                       >
                         {label}
                       </Text>
@@ -398,21 +563,25 @@ export default function CaregiverCalendarScreen() {
                   <View style={styles.eventCardTop}>
                     <Text style={styles.eventCardTime}>{formatEventTime(event)}</Text>
                     <Text style={styles.eventCardText} numberOfLines={1}>
-                      {event.personName}
+                      {event.resolvedPersonName}
                     </Text>
                     <Text style={styles.eventCardText} numberOfLines={1}>
-                      {event.title}
+                      {event.resolvedTitle}
                     </Text>
                     <Text style={styles.eventCardText} numberOfLines={1}>
-                      {event.location}
+                      {event.resolvedLocation}
                     </Text>
                   </View>
 
                   <View style={styles.eventActions}>
-                    <Pressable hitSlop={8} style={styles.eventActionButton} onPress={() => {}}>
+                    <Pressable hitSlop={8} style={styles.eventActionButton} onPress={() => openEditForm(event)}>
                       <Feather name="edit-2" size={22} color="#1F2430" />
                     </Pressable>
-                    <Pressable hitSlop={8} style={styles.eventActionButton} onPress={() => {}}>
+                    <Pressable
+                      hitSlop={8}
+                      style={styles.eventActionButton}
+                      onPress={() => handleDeleteEvent(event.id)}
+                    >
                       <Ionicons name="trash-outline" size={24} color="#1F2430" />
                     </Pressable>
                   </View>
@@ -427,7 +596,7 @@ export default function CaregiverCalendarScreen() {
         <Ionicons name="call" size={26} color="#FFF" />
       </Pressable>
 
-      <Pressable style={styles.plusButton} onPress={() => setFormOpen(true)}>
+      <Pressable style={styles.plusButton} onPress={openCreateForm}>
         <Ionicons name="add" size={38} color="#FFF" />
       </Pressable>
 
@@ -446,10 +615,17 @@ export default function CaregiverCalendarScreen() {
 
           <View style={styles.formSheet}>
             <View style={styles.formHeader}>
-              <Pressable onPress={() => setFormOpen(false)} hitSlop={12} style={styles.formIconButton}>
+              <Pressable
+                onPress={() => {
+                  setFormOpen(false);
+                  resetForm();
+                }}
+                hitSlop={12}
+                style={styles.formIconButton}
+              >
                 <Text style={styles.formHeaderIcon}>X</Text>
               </Pressable>
-              <Pressable onPress={confirmNewEvent} hitSlop={12} style={styles.formConfirmButton}>
+              <Pressable onPress={confirmEvent} hitSlop={12} style={styles.formConfirmButton}>
                 <Ionicons name="checkmark" size={34} color="#111" />
               </Pressable>
             </View>
@@ -488,20 +664,20 @@ export default function CaregiverCalendarScreen() {
                 <View style={styles.timeField}>
                   <WheelColumn
                     values={HOURS}
-                    value={time.hour}
-                    onChange={(hour) => setTime((prev) => ({ ...prev, hour }))}
+                    value={formHour}
+                    onChange={setFormHour}
                     renderValue={(hour) => String(hour)}
                   />
                   <WheelColumn
                     values={MINUTES}
-                    value={time.minute}
-                    onChange={(minute) => setTime((prev) => ({ ...prev, minute }))}
+                    value={formMinute}
+                    onChange={setFormMinute}
                     renderValue={(minute) => pad2(minute)}
                   />
                   <WheelColumn
                     values={PERIODS}
-                    value={time.period}
-                    onChange={(period) => setTime((prev) => ({ ...prev, period }))}
+                    value={formPeriod}
+                    onChange={setFormPeriod}
                     renderValue={(period) => period}
                   />
                 </View>
