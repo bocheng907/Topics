@@ -20,6 +20,26 @@ function getTaipeiDateString() {
   }).format(new Date());
 }
 
+function getTaipeiDateBounds() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = Number(parts.find((p) => p.type === "year")?.value ?? "1970");
+  const month = Number(parts.find((p) => p.type === "month")?.value ?? "01");
+  const day = Number(parts.find((p) => p.type === "day")?.value ?? "01");
+  const taipeiOffsetMs = 8 * 60 * 60 * 1000;
+
+  return {
+    todayStart: new Date(Date.UTC(year, month - 1, day) - taipeiOffsetMs),
+    tomorrowStart: new Date(Date.UTC(year, month - 1, day + 1) - taipeiOffsetMs),
+    dateKey: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+  };
+}
+
 function getTaipeiHHMM() {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Taipei",
@@ -105,6 +125,40 @@ async function sendExpoPush(tokens, title, body, data) {
     success: true,
     response: text,
   };
+}
+
+async function writeNotifications({
+  recipientUids,
+  type,
+  title,
+  body,
+  patientId = "",
+  sourceCollection,
+  sourceId,
+  extra = {},
+}) {
+  const uniqueRecipientUids = [...new Set((recipientUids || []).map(String).filter(Boolean))];
+
+  if (!uniqueRecipientUids.length) {
+    return;
+  }
+
+  const writes = uniqueRecipientUids.map((recipientUid) =>
+    db.collection("notifications").add({
+      recipientUid,
+      type,
+      title,
+      body,
+      createdAt: FieldValue.serverTimestamp(),
+      isRead: false,
+      patientId: patientId || "",
+      sourceCollection: sourceCollection || "",
+      sourceId: sourceId || "",
+      ...extra,
+    })
+  );
+
+  await Promise.all(writes);
 }
 
 // 測試用：.../sendTestPush?uid=你的uid
@@ -199,6 +253,24 @@ exports.sendMedicationReminders = onSchedule(
           }
         );
 
+        try {
+          await writeNotifications({
+            recipientUids: notifyUserIds,
+            type: "medication_reminder",
+            title,
+            body,
+            patientId: data.patientId || "",
+            sourceCollection: "medication_reminders",
+            sourceId: docSnap.id,
+            extra: {
+              prescriptionId: data.prescriptionId || "",
+              reminderId: docSnap.id,
+            },
+          });
+        } catch (notificationError) {
+          console.error("[medication] notification write failed:", notificationError);
+        }
+
         console.log("[medication] sent:", docSnap.id, result);
 
         await docSnap.ref.update({
@@ -290,6 +362,23 @@ exports.onHealthRecordCreated = onDocumentCreated(
         }
       );
 
+      try {
+        await writeNotifications({
+          recipientUids: notifyUserIds,
+          type: "abnormal_health",
+          title: abnormalTitle,
+          body: abnormalBody,
+          patientId,
+          sourceCollection: "health_records",
+          sourceId: recordId,
+          extra: {
+            recordId,
+          },
+        });
+      } catch (notificationError) {
+        console.error("[health] notification write failed:", notificationError);
+      }
+
       console.log("[health] abnormal push sent:", {
         recordId,
         patientId,
@@ -299,6 +388,235 @@ exports.onHealthRecordCreated = onDocumentCreated(
       });
     } catch (error) {
       console.error("[onHealthRecordCreated] error =", error);
+    }
+  }
+);
+
+// 每日 20:00 檢查是否尚未填寫健康紀錄
+exports.sendMissingHealthRecordReminder = onSchedule(
+  {
+    schedule: "0 20 * * *",
+    region: "us-central1",
+    timeZone: "Asia/Taipei",
+  },
+  async () => {
+    try {
+      const {todayStart, tomorrowStart, dateKey} = getTaipeiDateBounds();
+
+      const patientsSnap = await db.collection("patients").get();
+      console.log("[health_reminder] patients =", patientsSnap.size, "dateKey =", dateKey);
+
+      for (const patientDoc of patientsSnap.docs) {
+        const patientId = patientDoc.id;
+        const patient = patientDoc.data() || {};
+
+        const recordSnap = await db
+          .collection("health_records")
+          .where("patientId", "==", patientId)
+          .where("createdAt", ">=", todayStart)
+          .where("createdAt", "<", tomorrowStart)
+          .get();
+
+        if (!recordSnap.empty) {
+          continue;
+        }
+
+        const families = Array.isArray(patient.families) ? patient.families : [];
+        const caregivers = Array.isArray(patient.caregivers) ? patient.caregivers : [];
+        const recipientUids = [...new Set([...families, ...caregivers].map(String).filter(Boolean))];
+
+        if (!recipientUids.length) {
+          console.log("[health_reminder] no recipients:", patientId);
+          continue;
+        }
+
+        const title = "今日健康紀錄未填寫";
+        const body = "今天尚未完成健康數據回報，請協助確認長輩狀況。";
+        const tokens = await getUserPushTokens(recipientUids);
+
+        if (tokens.length) {
+          try {
+            const result = await sendExpoPush(tokens, title, body, {
+              type: "health_report_missing",
+              patientId,
+              dateKey,
+            });
+
+            console.log("[health_reminder] push sent:", {
+              patientId,
+              dateKey,
+              recipientUids,
+              result,
+            });
+          } catch (pushError) {
+            console.error("[health_reminder] push failed:", pushError);
+          }
+        } else {
+          console.log("[health_reminder] no push tokens:", patientId);
+        }
+
+        try {
+          await writeNotifications({
+            recipientUids,
+            type: "health_report_missing",
+            title,
+            body,
+            patientId,
+            sourceCollection: "health_records",
+            sourceId: `${patientId}-${dateKey}`,
+            extra: {
+              dateKey,
+            },
+          });
+        } catch (notificationError) {
+          console.error("[health_reminder] notification write failed:", notificationError);
+        }
+      }
+    } catch (error) {
+      console.error("[sendMissingHealthRecordReminder] error =", error);
+    }
+  }
+);
+
+// medication_logs 新增時，同步通知對應家屬
+exports.onMedicationLogCreated = onDocumentCreated(
+  {
+    document: "medication_logs/{logId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    try {
+      const snap = event.data;
+      if (!snap) return;
+
+      const data = snap.data() || {};
+      const logId = event.params.logId;
+      const patientId = String(data.patientId || "");
+
+      if (!patientId) {
+        console.log("[medication_done] missing patientId:", logId);
+        return;
+      }
+
+      const patientSnap = await db.collection("patients").doc(patientId).get();
+      if (!patientSnap.exists) {
+        console.log("[medication_done] patient not found:", patientId);
+        return;
+      }
+
+      const patient = patientSnap.data() || {};
+      const families = Array.isArray(patient.families) ? patient.families : [];
+
+      if (!families.length) {
+        console.log("[medication_done] no family recipients:", patientId);
+        return;
+      }
+
+      await writeNotifications({
+        recipientUids: families,
+        type: "medication_done",
+        title: "已完成用藥",
+        body: "看護已完成用藥紀錄",
+        patientId,
+        sourceCollection: "medication_logs",
+        sourceId: logId,
+        extra: {
+          reminderId: String(data.reminderId || ""),
+          prescriptionId: String(data.prescriptionId || ""),
+        },
+      });
+    } catch (error) {
+      console.error("[onMedicationLogCreated] error =", error);
+    }
+  }
+);
+
+// chats 新增訊息時，同步通知對應家屬與看護
+exports.onChatMessageCreated = onDocumentCreated(
+  {
+    document: "chats/{chatId}/messages/{messageId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    try {
+      const snap = event.data;
+      if (!snap) return;
+
+      const data = snap.data() || {};
+      const chatId = String(event.params.chatId || "");
+      const messageId = String(event.params.messageId || "");
+      const senderId = String(data.senderId || "");
+
+      if (!chatId || !messageId) {
+        console.log("[chat_message] missing chatId/messageId:", {
+          chatId,
+          messageId,
+        });
+        return;
+      }
+
+      const patientSnap = await db.collection("patients").doc(chatId).get();
+      if (!patientSnap.exists) {
+        console.log("[chat_message] patient not found:", chatId);
+        return;
+      }
+
+      const patient = patientSnap.data() || {};
+      const families = Array.isArray(patient.families) ? patient.families : [];
+      const caregivers = Array.isArray(patient.caregivers) ? patient.caregivers : [];
+      const recipientUids = [...new Set([...families, ...caregivers].map(String).filter(Boolean))].filter(
+        (uid) => uid !== senderId
+      );
+
+      if (!recipientUids.length) {
+        console.log("[chat_message] no recipients after excluding sender:", {
+          chatId,
+          senderId,
+        });
+        return;
+      }
+
+      const title = "新訊息";
+      const body = String(data.text || "").trim() || "傳送了一張圖片";
+      const tokens = await getUserPushTokens(recipientUids);
+
+      if (tokens.length) {
+        const result = await sendExpoPush(tokens, title, body, {
+          type: "chat_message",
+          chatId,
+          messageId,
+          senderId,
+        });
+
+        console.log("[chat_message] push sent:", {
+          chatId,
+          messageId,
+          senderId,
+          recipientUids,
+          result,
+        });
+      } else {
+        console.log("[chat_message] no push tokens:", {
+          chatId,
+          messageId,
+          recipientUids,
+        });
+      }
+
+      await writeNotifications({
+        recipientUids,
+        type: "chat_message",
+        title,
+        body,
+        patientId: chatId,
+        sourceCollection: "chats",
+        sourceId: messageId,
+        extra: {
+          chatId,
+        },
+      });
+    } catch (error) {
+      console.error("[onChatMessageCreated] error =", error);
     }
   }
 );

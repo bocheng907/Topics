@@ -71,7 +71,7 @@ export default function CaregiverVoiceScreen() {
   // 2. 音波動畫控制
   // ==========================================
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (playingTaskId !== null) {
       interval = setInterval(() => {
         setWaveHeights([
@@ -84,7 +84,9 @@ export default function CaregiverVoiceScreen() {
     } else {
       setWaveHeights([6, 6, 6, 6]);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [playingTaskId]);
 
   // ==========================================

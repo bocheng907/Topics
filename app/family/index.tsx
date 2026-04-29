@@ -10,6 +10,9 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 
 // 定義生理數據狀態型別
 type VitalStatus = 'normal' | 'abnormal' | 'outdated' | 'nodata';
+type SingleVital = { val: number; ts: number } | null;
+type BloodPressureVital = { sys: number; dia: number; ts: number } | null;
+type SugarVital = { val: number; type: string; ts: number } | null;
 
 export default function FamilyHomeScreen() {
   const { ready, activePatient, activePatientId, linkedCareTargets, setActivePatientId } = useActiveCareTarget();
@@ -45,7 +48,10 @@ export default function FamilyHomeScreen() {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      let temp, hr, bp, sugar;
+      let temp: SingleVital = null;
+      let hr: SingleVital = null;
+      let bp: BloodPressureVital = null;
+      let sugar: SugarVital = null;
       let hasAnyData = false;
 
       snap.docs.forEach(doc => {
@@ -246,7 +252,7 @@ export default function FamilyHomeScreen() {
           <Pressable onPress={() => router.push("/family/list")} style={[styles.actionBtn, { backgroundColor: '#F4E770' }]}>
             <Text style={styles.actionEmoji}>📋</Text><Text style={styles.actionText}>藥單紀錄</Text>
           </Pressable>
-          <Pressable onPress={() => router.push("/family/condition")} style={[styles.actionBtn, { backgroundColor: '#85C6F9' }]}>
+          <Pressable onPress={() => router.push("/family/condition" as any)} style={[styles.actionBtn, { backgroundColor: '#85C6F9' }]}>
             <Text style={styles.actionEmoji}>📹</Text><Text style={styles.actionText}>狀況查看</Text>
           </Pressable>
           <Pressable onPress={() => router.push("/family/voice")} style={[styles.actionBtn, { backgroundColor: '#85E785' }]}>

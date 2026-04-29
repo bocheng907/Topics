@@ -46,7 +46,7 @@ export default function HealthReportScreen() {
   const timeRanges: ChartTimeRange[] = ['1周', '2周', '1個月', '全部'];
 
   const { loading, empty, lineData, bpSysData, bpDiaData } = useHealthChartData({
-    patientId: activePatientId,
+    patientId: activePatientId ?? undefined,
     chartDataType,
     chartTimeRange,
   });

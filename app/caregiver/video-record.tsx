@@ -109,6 +109,10 @@ export default function AbnormalRecordScreen() {
   };
 
   const uploadMediaFile = async (uri: string) => {
+    if (!activePatientId) {
+      throw new Error('Missing active patient id');
+    }
+
     const response = await fetch(uri);
     const blob = await response.blob();
     const extension = mediaType === 'video' ? 'mp4' : 'jpg';
@@ -132,6 +136,10 @@ export default function AbnormalRecordScreen() {
   // 3. 儲存/建立紀錄
   // ==========================================
   const getCustomDocId = () => {
+    if (!activePatientId) {
+      throw new Error('Missing active patient id');
+    }
+
     const now = new Date();
     const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
     const shortId = activePatientId.slice(-4);

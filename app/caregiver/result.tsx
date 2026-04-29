@@ -40,23 +40,29 @@ function toArray(v: any): string[] {
   return [];
 }
 
-function mapItemFromAnalyze(it: any): Item {
-  return {
-    name: it.drug_name ?? it.name ?? "（未辨識藥品名稱）",
-    dose: it.dosage ?? it.dose ?? "未提供",
-    quantity: it.quantity ?? "依醫囑",
-    time: toArray(it.usage_zh ?? it.usage ?? it.time),
-    note: it.note_zh ?? it.memo ?? "", // ⭐ 關鍵修正
-  };
+function pickItemName(it: any): string {
+  return String(it?.drug_name_zh ?? it?.drug_name ?? it?.name ?? "");
 }
 
-function mapItemFromFirestore(it: any): Item {
+function pickItemDose(it: any): string {
+  return String(it?.dose ?? it?.dosage ?? "");
+}
+
+function pickItemTime(it: any): string[] {
+  return toArray(it?.usage_zh ?? it?.usage ?? it?.time_of_day ?? it?.time);
+}
+
+function pickItemNote(it: any): string {
+  return String(it?.note_zh ?? it?.memo ?? it?.note ?? "");
+}
+
+function mapItem(it: any): Item {
   return {
-    name: it.drug_name_zh ?? it.drug_name ?? it.name ?? "（未辨識藥品名稱）",
-    dose: it.dose ?? it.dosage ?? "未提供",
+    name: pickItemName(it) || "（未辨識藥品名稱）",
+    dose: pickItemDose(it) || "未提供",
     quantity: it.quantity ?? "依醫囑",
-    time: toArray(it.usage_zh ?? it.usage ?? it.time),
-    note: it.note_zh ?? it.memo ?? "",
+    time: pickItemTime(it),
+    note: pickItemNote(it),
   };
 }
 
@@ -130,7 +136,7 @@ export default function ResultScreen() {
       setImageUri(safeImageUrl);
       setTitle(draftTitle ?? "未命名藥單");
       setGlobalMemo(safe.memo ?? "");
-      setItems(medicines.map((it) => mapItemFromAnalyze(it)));
+      setItems(medicines.map((it) => mapItem(it)));
       setStatus("done");
       return;
     }
@@ -164,7 +170,7 @@ export default function ResultScreen() {
         );
         const itemsSnap = await getDocs(itemsQ);
 
-        const mapped = itemsSnap.docs.map((d) => mapItemFromFirestore(d.data()));
+        const mapped = itemsSnap.docs.map((d) => mapItem(d.data()));
         setItems(mapped);
 
         setStatus("done");
@@ -174,7 +180,7 @@ export default function ResultScreen() {
         router.replace("/caregiver");
       }
     })();
-  }, [prescriptionId, isDraftMode, safeAnalyze, imageUrl, draftTitle]);
+  }, [prescriptionId, isDraftMode, safeAnalyze, safeImageUrl, draftTitle]);
 
   async function handlePrimaryAction() {
     if (isDraftMode) {
@@ -237,17 +243,21 @@ export default function ResultScreen() {
 
         for (const it of medicines) {
           const itemRef = doc(collection(db, "prescriptions", presRef.id, "items"));
+          const name = pickItemName(it);
+          const dose = pickItemDose(it);
+          const time = pickItemTime(it).join(",");
+          const note = pickItemNote(it);
 
           batch.set(itemRef, {
             raw: it,
-            drug_name_zh: it.drug_name ?? "",
-            drug_name: it.drug_name ?? "",
-            dose: it.dosage ?? "",
-            dosage: it.dosage ?? "",
+            drug_name_zh: name,
+            drug_name: name,
+            dose,
+            dosage: dose,
             quantity: it.quantity ?? "",
-            usage_zh: it.usage_zh ?? "",
-            memo: it.memo ?? "",
-            note_zh: it.memo ?? "",
+            usage_zh: time,
+            memo: note,
+            note_zh: note,
             drug_name_translated: "",
             note_translated: "",
           });
@@ -255,17 +265,13 @@ export default function ResultScreen() {
 
         await batch.commit();
 
-        console.log("[save] prescriptionId =", presRef.id);
-        console.log("[save] createdBy =", user.uid);
-        console.log("[save] patientId =", activePatientId);
-
         await createMedicationReminders({
           patientId: activePatientId,
           prescriptionId: presRef.id,
           items: medicines.map((it) => ({
-            drug_name_zh: it.drug_name ?? "",
-            dose: it.dosage ?? "",
-            time_of_day: it.usage_zh ?? "",
+            drug_name_zh: pickItemName(it),
+            dose: pickItemDose(it),
+            time_of_day: pickItemTime(it).join(","),
           })),
         });
 
@@ -366,11 +372,11 @@ export default function ResultScreen() {
                 <Text
                   style={{
                     fontSize: 15,
-                    color: it.note ? "#666" : "#CCC",
+                    color: it.note || globalMemo ? "#666" : "#CCC",
                     marginTop: 2,
                   }}
                 >
-                  備註：{it.note || "無"}
+                  備註：{it.note || globalMemo || "無"}
                 </Text>
               </View>
             </View>

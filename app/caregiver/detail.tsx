@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { View, Text, Pressable, ScrollView, Image, Alert, StyleSheet, StatusBar } from "react-native";
-import { router, useLocalSearchParams, useFocusEffect, Tabs } from "expo-router"; // 💡 引入 useFocusEffect
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { collection, doc, getDoc, getDocs, query } from "firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
 import { db } from "@/firebase/firebaseConfig";
@@ -11,13 +11,19 @@ export default function CaregiverDetailScreen() {
   const [items, setItems] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // 💡 封裝讀取邏輯
   const fetchData = useCallback(async () => {
-    if (!id) { setLoaded(true); return; }
+    if (!id) {
+      setLoaded(true);
+      return;
+    }
+
     try {
       const presRef = doc(db, "prescriptions", id);
       const presSnap = await getDoc(presRef);
-      if (!presSnap.exists()) { setLoaded(true); return; }
+      if (!presSnap.exists()) {
+        setLoaded(true);
+        return;
+      }
 
       const data = presSnap.data() as any;
       setP({ prescriptionId: presSnap.id, ...data });
@@ -26,10 +32,11 @@ export default function CaregiverDetailScreen() {
       const list = itemsSnap.docs.map((d) => {
         const it = d.data() as any;
         return {
-          drug_name: it.drug_name ?? it.drug_name_zh ?? "",
-          dosage: it.dosage ?? it.dose ?? "",
-          usage_zh: it.usage_zh ?? it.usage ?? "",
-          memo: it.memo ?? it.note_zh ?? it.note ?? "",
+          itemId: d.id,
+          drug_name: it.drug_name_zh ?? it.drug_name ?? "",
+          dosage: it.dose ?? it.dosage ?? "",
+          usage_zh: it.usage_zh ?? it.usage ?? it.time_of_day ?? it.time ?? "",
+          memo: it.note_zh ?? it.memo ?? it.note ?? "",
         };
       });
       setItems(list);
@@ -40,7 +47,6 @@ export default function CaregiverDetailScreen() {
     }
   }, [id]);
 
-  // ✅ 修正：回到此頁面時自動刷新
   useFocusEffect(
     useCallback(() => {
       fetchData();
@@ -66,19 +72,19 @@ export default function CaregiverDetailScreen() {
             <Text style={styles.mainTitle}>{p.title || "藥單詳情"}</Text>
             <Text style={styles.subInfo}>
               錄入日期：{
-                typeof p.createdAt === 'string' 
-                  ? p.createdAt 
-                  : (p.createdAt?.seconds 
-                      ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() 
+                typeof p.createdAt === "string"
+                  ? p.createdAt
+                  : (p.createdAt?.seconds
+                      ? new Date(p.createdAt.seconds * 1000).toLocaleDateString()
                       : "未知")
               }
             </Text>
           </View>
-          <Pressable 
+          <Pressable
             onPress={() => router.push({
               pathname: "/caregiver/edit",
-              params: { id: p.prescriptionId, itemsJson: JSON.stringify(items) }
-            })} 
+              params: { id: p.prescriptionId, itemsJson: JSON.stringify(items) },
+            })}
             style={styles.editBtn}
           >
             <Text style={styles.editBtnText}>編輯</Text>
@@ -91,13 +97,12 @@ export default function CaregiverDetailScreen() {
 
         <Text style={styles.sectionTitle}>藥品明細</Text>
         {items.map((it, idx) => {
-          // 💡 拆分用法與時間
           const usageParts = it.usage_zh?.split(",") || [it.usage_zh, ""];
           const method = usageParts[0] || "未設定";
           const timeDetail = usageParts.slice(1).join(",") || "依醫囑服用";
 
           return (
-            <View key={idx} style={styles.itemCard}>
+            <View key={it.itemId ?? idx} style={styles.itemCard}>
               <Text style={styles.itemName}>{it.drug_name}</Text>
               <View style={styles.infoRow}><Text style={styles.infoLabel}>藥物劑量：</Text><Text style={styles.infoValue}>{it.dosage}</Text></View>
               <View style={styles.infoRow}><Text style={styles.infoLabel}>使用方式：</Text><Text style={styles.infoValue}>{method}</Text></View>
@@ -113,9 +118,9 @@ export default function CaregiverDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#F4E770", height: 100, paddingTop: 50, paddingHorizontal: 15, justifyContent: "center" },
+  header: { backgroundColor: "#FFE043", height: 100, paddingTop: 50, paddingHorizontal: 15, justifyContent: "center" },
   backButton: { flexDirection: "row", alignItems: "center" },
-  backText: { fontSize: 20, fontWeight: 'bold', color: '#333', marginLeft: 2 },
+  backText: { fontSize: 20, fontWeight: "bold", color: "#333", marginLeft: 2 },
   titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 15 },
   mainTitle: { fontSize: 28, fontWeight: "900", color: "#333" },
   subInfo: { color: "#999", marginBottom: 10 },
@@ -129,6 +134,6 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: "row", marginBottom: 4 },
   infoLabel: { fontSize: 15, color: "#666", width: 85 },
   infoValue: { fontSize: 15, color: "#333", fontWeight: "600", flex: 1 },
-  itemNote: { fontSize: 14, color: "#999", marginTop: 8, fontStyle: 'italic' },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" }
+  itemNote: { fontSize: 14, color: "#999", marginTop: 8, fontStyle: "italic" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
 });

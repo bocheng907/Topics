@@ -1,12 +1,38 @@
 // app/caregiver/list.tsx
 import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet, StatusBar, Alert } from "react-native";
-import { router} from "expo-router";
-import { collection, onSnapshot, orderBy, query, where, deleteDoc, doc } from "firebase/firestore";
+import { router } from "expo-router";
+import { collection, onSnapshot, orderBy, query, where, doc, getDocs, writeBatch } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useAuth } from "@/src/auth/useAuth";
 import { Ionicons } from "@expo/vector-icons";
+
+async function deletePrescriptionCascade(prescriptionId: string) {
+  const batch = writeBatch(db);
+
+  const itemsSnap = await getDocs(collection(db, "prescriptions", prescriptionId, "items"));
+  itemsSnap.docs.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+
+  const remindersSnap = await getDocs(
+    query(collection(db, "medication_reminders"), where("prescriptionId", "==", prescriptionId))
+  );
+  remindersSnap.docs.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+
+  const logsSnap = await getDocs(
+    query(collection(db, "medication_logs"), where("prescriptionId", "==", prescriptionId))
+  );
+  logsSnap.docs.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+
+  batch.delete(doc(db, "prescriptions", prescriptionId));
+  await batch.commit();
+}
 
 export default function CaregiverListScreen() {
   const { activePatientId } = useActiveCareTarget();
@@ -19,21 +45,20 @@ export default function CaregiverListScreen() {
       setReady(true);
       return;
     }
-    // 💡 這裡先保留原本的 patientId，若之後組員改欄位名稱，只需改這行
+
     const q = query(
       collection(db, "prescriptions"),
       where("patientId", "==", activePatientId),
       orderBy("createdAt", "desc")
     );
 
-  const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map((d) => {
         const data = d.data() as any;
         return {
           prescriptionId: d.id,
           title: data.title ?? "未命名藥單",
-          // ✅ 修正：如果 createdAt 是字串格式，直接使用 data.createdAt
-          createdAt: data.createdAt, 
+          createdAt: data.createdAt,
           sourceImageUrl: data.sourceImageUrl ?? "",
         };
       });
@@ -47,11 +72,17 @@ export default function CaregiverListScreen() {
   const confirmDelete = (id: string) => {
     Alert.alert("確認刪除", "這筆藥單紀錄將會永久移除。", [
       { text: "取消", style: "cancel" },
-      { text: "確定刪除", style: "destructive", onPress: async () => {
+      {
+        text: "確定刪除",
+        style: "destructive",
+        onPress: async () => {
           try {
-            await deleteDoc(doc(db, "prescriptions", id));
-          } catch (e) { Alert.alert("錯誤", "刪除失敗"); }
-      }}
+            await deletePrescriptionCascade(id);
+          } catch (e) {
+            Alert.alert("錯誤", "刪除失敗");
+          }
+        },
+      },
     ]);
   };
 
@@ -66,10 +97,10 @@ export default function CaregiverListScreen() {
           <Text style={styles.backText}>返回</Text>
         </Pressable>
       </View>
-      
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.pageTitle}>藥單紀錄簿</Text>
-        
+
         {list.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="document-text-outline" size={60} color="#CCC" />
@@ -82,7 +113,13 @@ export default function CaregiverListScreen() {
               <View style={{ gap: 4 }}>
                 <Text style={styles.cardTitle}>{p.title || "未命名藥單"}</Text>
                 <Text style={styles.cardDate}>
-                  日期：{p.createdAt ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() : "未知"}
+                  日期：{
+                    typeof p.createdAt === "string"
+                      ? p.createdAt
+                      : p.createdAt?.seconds
+                      ? new Date(p.createdAt.seconds * 1000).toLocaleDateString()
+                      : "未知"
+                  }
                 </Text>
               </View>
               <View style={styles.cardFooter}>
@@ -103,7 +140,7 @@ export default function CaregiverListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#F4E770", height: 110, paddingTop: 50, paddingHorizontal: 15, flexDirection: "row", alignItems: "center" },
+  header: { backgroundColor: "#FFE043", height: 110, paddingTop: 50, paddingHorizontal: 15, flexDirection: "row", alignItems: "center" },
   backButton: { flexDirection: "row", alignItems: "center" },
   backText: { fontSize: 18, fontWeight: "600", color: "#333", marginLeft: -5 },
   pageTitle: { fontSize: 28, fontWeight: "900", marginBottom: 10, color: "#333" },
@@ -117,5 +154,5 @@ const styles = StyleSheet.create({
   cardFooter: { flexDirection: "row", borderTopWidth: 1, borderTopColor: "#EEE", paddingTop: 10, marginTop: 10, gap: 20 },
   detailText: { color: "#007AFF", fontWeight: "bold", fontSize: 16 },
   deleteText: { color: "#FF3B30", fontWeight: "bold", fontSize: 16 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" }
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
 });

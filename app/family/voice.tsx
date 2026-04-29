@@ -96,17 +96,19 @@ export default function FamilyVoiceScreen() {
   // 計時器邏輯
   // ==========================================
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (recordingTask !== null && isRecording) {
       interval = setInterval(() => {
         setRecordTime((prev) => (prev >= 30 ? 30 : prev + 1));
       }, 1000);
     } else if (recordingTask === null) setRecordTime(0);
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [recordingTask, isRecording]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (isPlayingModal) {
       interval = setInterval(() => {
         setPreviewTime((prev) => {
@@ -118,7 +120,9 @@ export default function FamilyVoiceScreen() {
         });
       }, 1000);
     } else setPreviewTime(0);
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [isPlayingModal, recordTime]);
 
   const formatTime = (seconds: number) => {
@@ -481,7 +485,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
   taskCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', paddingVertical: 14, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   taskLeft: { flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 },
-  //imageBox: { width: 90, height: 90, backgroundColor: '#F0F0F0', borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden' },
+  imageBox: { width: 90, height: 90, backgroundColor: '#F0F0F0', borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden' },
   taskImage: { width: 100, height: 100 },
   taskInfo: { justifyContent: 'center' },
   taskTitle: { fontSize: 24, fontWeight: 'bold', color: '#000', marginBottom: 6, letterSpacing: 1 },

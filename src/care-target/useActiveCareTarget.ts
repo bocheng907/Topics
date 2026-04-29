@@ -13,6 +13,7 @@ import { useAuth } from "@/src/auth/useAuth";
 
 export type CareTarget = {
   id: string;
+  patientsId?: string;
   name: string;
   notes?: string;
   inviteCode?: string;
@@ -92,6 +93,7 @@ export function useActiveCareTarget() {
 
           return {
             id: docSnap.id,
+            patientsId: data.patientsId ?? "",
             name: data.name ?? "",
             notes: data.notes ?? data.note ?? "",
             inviteCode: data.inviteCode ?? "",

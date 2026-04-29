@@ -1,0 +1,267 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function patientDoc(patientId) {
+      return get(/databases/$(database)/documents/patients/$(patientId));
+    }
+
+    function patientExists(patientId) {
+      return signedIn() && exists(/databases/$(database)/documents/patients/$(patientId));
+    }
+
+    function isFamilyMember(patientId) {
+      return patientExists(patientId)
+        && patientDoc(patientId).data.families is list
+        && request.auth.uid in patientDoc(patientId).data.families;
+    }
+
+    function isCaregiverMember(patientId) {
+      return patientExists(patientId)
+        && patientDoc(patientId).data.caregivers is list
+        && request.auth.uid in patientDoc(patientId).data.caregivers;
+    }
+
+    function isLinkedToPatient(patientId) {
+      return isFamilyMember(patientId) || isCaregiverMember(patientId);
+    }
+
+    function prescriptionPatientId(prescriptionId) {
+      return get(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId;
+    }
+
+    function isOwnUserDoc() {
+      return signedIn()
+        && resource.data.uid is string
+        && resource.data.uid == request.auth.uid;
+    }
+
+    function isOwnIncomingUserDoc() {
+      return signedIn()
+        && request.resource.data.uid is string
+        && request.resource.data.uid == request.auth.uid;
+    }
+
+    function parentUserUid(userDocId) {
+      return get(/databases/$(database)/documents/users/$(userDocId)).data.uid;
+    }
+
+    match /users/{userDocId} {
+      allow read: if isOwnUserDoc();
+
+      allow create: if isOwnIncomingUserDoc()
+        && request.resource.data.keys().hasOnly([
+          "uid", "email", "role", "createdAt", "activePatientId",
+          "emergencyPhone1", "emergencyPhone2"
+        ])
+        && request.resource.data.role in ["family", "caregiver"]
+        && request.resource.data.activePatientId is string
+        && request.resource.data.email is string
+        && request.resource.data.emergencyPhone1 is string
+        && request.resource.data.emergencyPhone2 is string;
+
+      allow update: if isOwnUserDoc()
+        && isOwnIncomingUserDoc()
+        && request.resource.data.keys().hasOnly([
+          "uid", "email", "role", "createdAt", "activePatientId",
+          "emergencyPhone1", "emergencyPhone2"
+        ])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.activePatientId is string
+        && request.resource.data.emergencyPhone1 is string
+        && request.resource.data.emergencyPhone2 is string
+        && (
+          request.resource.data.activePatientId == "" ||
+          isLinkedToPatient(request.resource.data.activePatientId)
+        );
+
+      allow delete: if false;
+    }
+
+    match /users/{userDocId}/devices/{deviceId} {
+      allow read: if signedIn() && parentUserUid(userDocId) == request.auth.uid;
+
+      allow create: if signedIn()
+        && parentUserUid(userDocId) == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          "expoPushToken", "platform", "enabled", "updatedAt"
+        ])
+        && request.resource.data.expoPushToken is string
+        && request.resource.data.platform is string
+        && request.resource.data.enabled is bool;
+
+      allow update: if signedIn()
+        && parentUserUid(userDocId) == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          "expoPushToken", "platform", "enabled", "updatedAt"
+        ])
+        && request.resource.data.expoPushToken is string
+        && request.resource.data.platform is string
+        && request.resource.data.enabled is bool;
+
+      allow delete: if false;
+    }
+
+    match /patients/{patientId} {
+  allow read: if signedIn();
+
+  allow create: if signedIn()
+    && request.resource.data.keys().hasOnly([
+      "patientsId",
+      "name", "notes", "inviteCode",
+      "caregivers", "families",
+      "createdAt", "createdBy",
+      "emergencyPhone1", "emergencyPhone2"
+    ])
+    && request.resource.data.patientsId is string
+    && request.resource.data.name is string
+    && request.resource.data.notes is string
+    && request.resource.data.inviteCode is string
+    && request.resource.data.createdBy == request.auth.uid
+    && request.resource.data.families is list
+    && request.resource.data.families.size() == 1
+    && request.auth.uid in request.resource.data.families
+    && request.resource.data.caregivers is list
+    && request.resource.data.caregivers.size() == 0
+    && request.resource.data.emergencyPhone1 is string
+    && request.resource.data.emergencyPhone2 is string;
+
+  allow update: if signedIn();
+
+  allow delete: if signedIn() && isFamilyMember(patientId);
+}
+
+    match /prescriptions/{prescriptionId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId);
+
+      allow update: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      match /items/{itemId} {
+        allow read: if signedIn()
+          && prescriptionPatientId(prescriptionId) is string
+          && isLinkedToPatient(prescriptionPatientId(prescriptionId));
+
+        allow create, update, delete: if signedIn()
+          && prescriptionPatientId(prescriptionId) is string
+          && isLinkedToPatient(prescriptionPatientId(prescriptionId));
+      }
+    }
+
+    match /medication_reminders/{reminderId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId);
+
+      allow update: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId;
+
+      allow delete: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+    }
+
+    match /medication_logs/{logId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId)
+        && request.resource.data.confirmedBy == request.auth.uid;
+
+      allow update, delete: if false;
+    }
+
+    match /health_records/{recordId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.caregiverId == request.auth.uid
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId);
+
+      allow update, delete: if signedIn()
+        && resource.data.caregiverId == request.auth.uid;
+    }
+
+    match /voice_records/{recordId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId)
+        && request.resource.data.familyId == request.auth.uid;
+
+      allow update, delete: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && resource.data.familyId == request.auth.uid;
+    }
+
+    match /calendar_events/{eventId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId)
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow update: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && (
+          isFamilyMember(resource.data.patientId)
+          || resource.data.createdBy == request.auth.uid
+        )
+        && request.resource.data.patientId == resource.data.patientId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && (
+          isFamilyMember(resource.data.patientId)
+          || resource.data.createdBy == request.auth.uid
+        );
+    }
+
+    match /chats/{patientId}/{document=**} {
+      allow read, write: if signedIn() && isLinkedToPatient(patientId);
+    }
+  }
+}
