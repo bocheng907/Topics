@@ -40,4 +40,11 @@ export type NotificationDocument = {
   isRead: boolean;
   patientId?: string;
   deepLink?: string;
+  metadata?: Record<string, string | undefined> & {
+    eventTitle?: string;
+    eventDate?: string;
+    eventTime?: string;
+    location?: string;
+    patientName?: string;
+  };
 };

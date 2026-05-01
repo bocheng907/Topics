@@ -122,9 +122,69 @@ async function sendExpoPush(tokens, title, body, data) {
 
   const text = await res.text();
   return {
-    success: true,
+    success: res.ok,
+    status: res.status,
     response: text,
   };
+}
+
+async function sendPushForNotification(notificationId, notificationData) {
+  const recipientUid = String(notificationData.recipientUid || "");
+
+  if (!recipientUid) {
+    console.warn("[push] notification missing recipientUid:", notificationId);
+    return;
+  }
+
+  let tokens = [];
+  try {
+    tokens = await getUserPushTokens([recipientUid]);
+  } catch (error) {
+    console.warn("[push] failed to load tokens:", {
+      notificationId,
+      recipientUid,
+      error,
+    });
+    return;
+  }
+
+  if (!tokens.length) {
+    console.warn("[push] no Expo push token:", {
+      notificationId,
+      recipientUid,
+      type: notificationData.type,
+    });
+    return;
+  }
+
+  try {
+    const result = await sendExpoPush(
+      tokens,
+      notificationData.title,
+      notificationData.body,
+      {
+        notificationId,
+        type: notificationData.type,
+        patientId: notificationData.patientId || "",
+        deepLink: notificationData.deepLink || "",
+        metadata: notificationData.metadata || {},
+      }
+    );
+
+    if (!result.success) {
+      console.warn("[push] Expo push returned failure:", {
+        notificationId,
+        recipientUid,
+        result,
+      });
+    }
+  } catch (error) {
+    console.warn("[push] Expo push failed:", {
+      notificationId,
+      recipientUid,
+      error,
+    });
+  }
 }
 
 async function writeNotifications({
@@ -143,8 +203,8 @@ async function writeNotifications({
     return;
   }
 
-  const writes = uniqueRecipientUids.map((recipientUid) =>
-    db.collection("notifications").add({
+  const writes = uniqueRecipientUids.map(async (recipientUid) => {
+    const notificationData = {
       recipientUid,
       type,
       title,
@@ -155,10 +215,62 @@ async function writeNotifications({
       sourceCollection: sourceCollection || "",
       sourceId: sourceId || "",
       ...extra,
-    })
-  );
+    };
+    const notificationRef = await db.collection("notifications").add(notificationData);
+    await sendPushForNotification(notificationRef.id, notificationData);
+  });
 
   await Promise.all(writes);
+}
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function resolveCalendarEventTime(data) {
+  const hour = data.hour ? String(data.hour) : "";
+  const minute = data.minute ? String(data.minute).padStart(2, "0") : "00";
+  const period = data.period ? String(data.period) : "";
+
+  if (hour) {
+    return [hour, minute].join(":") + (period ? ` ${period}` : "");
+  }
+
+  const startAtDate = data.startAt?.toDate?.();
+  if (!startAtDate) {
+    return "";
+  }
+
+  return `${pad2(startAtDate.getHours())}:${pad2(startAtDate.getMinutes())}`;
+}
+
+function resolveCalendarEventDate(data) {
+  if (data.eventDate) {
+    return String(data.eventDate);
+  }
+
+  const startAtDate = data.startAt?.toDate?.();
+  if (!startAtDate) {
+    return "";
+  }
+
+  return [
+    startAtDate.getFullYear(),
+    pad2(startAtDate.getMonth() + 1),
+    pad2(startAtDate.getDate()),
+  ].join("-");
+}
+
+function resolveCalendarEventTitle(data) {
+  return String(data.eventTitle || data.title || data.event || data.description || "行事曆事件");
+}
+
+function resolveCalendarEventLocation(data) {
+  return String(data.location || data.place || "");
+}
+
+function uniqueStrings(values) {
+  return [...new Set((values || []).map(String).filter(Boolean))];
 }
 
 // 測試用：.../sendTestPush?uid=你的uid
@@ -231,27 +343,9 @@ exports.sendMedicationReminders = onSchedule(
           data.notifyUserIds :
           [];
 
-        const tokens = await getUserPushTokens(notifyUserIds);
-
-        if (!tokens.length) {
-          console.log("[medication] no tokens for reminder:", docSnap.id);
-          continue;
-        }
-
         const title = "用藥提醒";
         const body =
           `${data.medicineName || "藥物"} ${data.doseText || ""}，現在該服用了`;
-
-        const result = await sendExpoPush(
-          tokens,
-          title,
-          body,
-          {
-            type: "medication_reminder",
-            reminderId: docSnap.id,
-            patientId: data.patientId || "",
-          }
-        );
 
         try {
           await writeNotifications({
@@ -271,7 +365,7 @@ exports.sendMedicationReminders = onSchedule(
           console.error("[medication] notification write failed:", notificationError);
         }
 
-        console.log("[medication] sent:", docSnap.id, result);
+        console.log("[medication] notification written:", docSnap.id);
 
         await docSnap.ref.update({
           lastSentDate: today,
@@ -280,6 +374,97 @@ exports.sendMedicationReminders = onSchedule(
       }
     } catch (error) {
       console.error("[sendMedicationReminders] error =", error);
+    }
+  }
+);
+
+// calendar_events 新增時，同步通知同一位照顧對象底下的另一個角色群組
+exports.onCalendarEventCreated = onDocumentCreated(
+  {
+    document: "calendar_events/{eventId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    try {
+      const snap = event.data;
+      if (!snap) return;
+
+      const data = snap.data() || {};
+      const eventId = event.params.eventId;
+      const patientId = String(data.patientId || "");
+      const createdBy = String(data.createdBy || "");
+
+      if (!patientId || !createdBy) {
+        console.log("[calendar_event] missing patientId/createdBy:", {
+          eventId,
+          patientId,
+          createdBy,
+        });
+        return;
+      }
+
+      const patientSnap = await db.collection("patients").doc(patientId).get();
+      if (!patientSnap.exists) {
+        console.log("[calendar_event] patient not found:", patientId);
+        return;
+      }
+
+      const patient = patientSnap.data() || {};
+      const families = Array.isArray(patient.families) ? patient.families : [];
+      const caregivers = Array.isArray(patient.caregivers) ? patient.caregivers : [];
+      const recipientUids = uniqueStrings(
+        caregivers.includes(createdBy) ? families :
+          families.includes(createdBy) ? caregivers :
+            []
+      ).filter((uid) => uid !== createdBy);
+
+      if (!recipientUids.length) {
+        console.log("[calendar_event] no recipients:", {
+          eventId,
+          patientId,
+          createdBy,
+        });
+        return;
+      }
+
+      const patientName = String(patient.name || data.patientName || data.name || "");
+      const eventTitle = resolveCalendarEventTitle(data);
+      const eventDate = resolveCalendarEventDate(data);
+      const eventTime = resolveCalendarEventTime(data);
+      const location = resolveCalendarEventLocation(data);
+      const title = "新增行事曆事件";
+      const body = [patientName, eventTitle, eventDate, eventTime, location]
+        .filter(Boolean)
+        .join(" ");
+
+      await writeNotifications({
+        recipientUids,
+        type: "calendar_event",
+        title,
+        body,
+        patientId,
+        sourceCollection: "calendar_events",
+        sourceId: eventId,
+        extra: {
+          eventId,
+          metadata: {
+            eventTitle,
+            eventDate,
+            eventTime,
+            location,
+            patientName,
+          },
+        },
+      });
+
+      console.log("[calendar_event] notifications written:", {
+        eventId,
+        patientId,
+        createdBy,
+        recipientUids,
+      });
+    } catch (error) {
+      console.error("[onCalendarEventCreated] error =", error);
     }
   }
 );
@@ -344,24 +529,6 @@ exports.onHealthRecordCreated = onDocumentCreated(
         return;
       }
 
-      const tokens = await getUserPushTokens(notifyUserIds);
-
-      if (!tokens.length) {
-        console.log("[health] no push tokens:", patientId);
-        return;
-      }
-
-      const result = await sendExpoPush(
-        tokens,
-        abnormalTitle,
-        abnormalBody,
-        {
-          type: "abnormal_health",
-          recordId,
-          patientId,
-        }
-      );
-
       try {
         await writeNotifications({
           recipientUids: notifyUserIds,
@@ -379,12 +546,11 @@ exports.onHealthRecordCreated = onDocumentCreated(
         console.error("[health] notification write failed:", notificationError);
       }
 
-      console.log("[health] abnormal push sent:", {
+      console.log("[health] abnormal notification written:", {
         recordId,
         patientId,
         abnormalBody,
         notifyUserIds,
-        result,
       });
     } catch (error) {
       console.error("[onHealthRecordCreated] error =", error);
@@ -432,29 +598,6 @@ exports.sendMissingHealthRecordReminder = onSchedule(
 
         const title = "今日健康紀錄未填寫";
         const body = "今天尚未完成健康數據回報，請協助確認長輩狀況。";
-        const tokens = await getUserPushTokens(recipientUids);
-
-        if (tokens.length) {
-          try {
-            const result = await sendExpoPush(tokens, title, body, {
-              type: "health_report_missing",
-              patientId,
-              dateKey,
-            });
-
-            console.log("[health_reminder] push sent:", {
-              patientId,
-              dateKey,
-              recipientUids,
-              result,
-            });
-          } catch (pushError) {
-            console.error("[health_reminder] push failed:", pushError);
-          }
-        } else {
-          console.log("[health_reminder] no push tokens:", patientId);
-        }
-
         try {
           await writeNotifications({
             recipientUids,
@@ -578,31 +721,6 @@ exports.onChatMessageCreated = onDocumentCreated(
 
       const title = "新訊息";
       const body = String(data.text || "").trim() || "傳送了一張圖片";
-      const tokens = await getUserPushTokens(recipientUids);
-
-      if (tokens.length) {
-        const result = await sendExpoPush(tokens, title, body, {
-          type: "chat_message",
-          chatId,
-          messageId,
-          senderId,
-        });
-
-        console.log("[chat_message] push sent:", {
-          chatId,
-          messageId,
-          senderId,
-          recipientUids,
-          result,
-        });
-      } else {
-        console.log("[chat_message] no push tokens:", {
-          chatId,
-          messageId,
-          recipientUids,
-        });
-      }
-
       await writeNotifications({
         recipientUids,
         type: "chat_message",

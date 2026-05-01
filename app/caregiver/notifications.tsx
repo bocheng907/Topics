@@ -16,18 +16,10 @@ import { useAuth } from "@/src/auth/useAuth";
 import {
   NOTIFICATIONS_COLLECTION,
   type NotificationDocument,
-  type NotificationType,
 } from "@/src/notifications/notificationSchema";
 
-type NotificationRow = Omit<NotificationDocument, "type"> & {
+type NotificationRow = NotificationDocument & {
   id: string;
-  type: NotificationType;
-  eventName?: string;
-  personName?: string;
-  location?: string;
-  hour?: string;
-  minute?: string;
-  period?: "am" | "pm";
 };
 
 export default function CaregiverNotificationsScreen() {
@@ -74,61 +66,16 @@ export default function CaregiverNotificationsScreen() {
     });
   };
 
-  const buildDetailParams = (item: NotificationRow) => ({
-    id: item.id,
-    title: item.title,
-    body: item.body,
-    createdAt: item.createdAt ? String(item.createdAt.toMillis()) : "",
-    eventName: item.eventName ?? "",
-    personName: item.personName ?? "",
-    location: item.location ?? "",
-    hour: item.hour ?? "",
-    minute: item.minute ?? "",
-    period: item.period ?? "",
-  });
-
-  const pushByTypeFallback = (item: NotificationRow) => {
-    switch (item.type) {
-      case "chat_message":
-        if (item.patientId) {
-          router.push({
-            pathname: "/caregiver/chat-room",
-            params: { patientId: item.patientId },
-          } as any);
-          return;
-        }
-        router.push("/caregiver/chat-room" as any);
-        return;
-      case "abnormal_health":
-      case "medication_reminder":
-        router.push("/caregiver" as any);
-        return;
-      case "medication_done":
-        router.push("/caregiver/list" as any);
-        return;
-      case "calendar_event":
-        router.push({
-          pathname: "/caregiver/notification-detail",
-          params: buildDetailParams(item),
-        } as any);
-        return;
-      default:
-        return;
-    }
-  };
-
   const handleNotificationPress = async (item: NotificationRow) => {
     try {
       await updateDoc(doc(db, NOTIFICATIONS_COLLECTION, item.id), {
         isRead: true,
       });
 
-      if (item.deepLink) {
-        router.push(item.deepLink as any);
-        return;
-      }
-
-      pushByTypeFallback(item);
+      router.push({
+        pathname: "/caregiver/notification-detail",
+        params: { id: item.id },
+      } as any);
     } catch (error) {
       console.log("caregiver notification press failed:", error);
     }
@@ -142,23 +89,50 @@ export default function CaregiverNotificationsScreen() {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
       >
-        {notifications.map((item, index) => (
-          <Pressable
-            key={item.id || `${item.title}-${index}`}
-            style={styles.row}
-            onPress={() => handleNotificationPress(item)}
-          >
-            <View style={styles.avatar} />
+        {notifications.map((item, index) => {
+          const isUnread = item.isRead !== true;
 
-            <View style={styles.body}>
-              <View style={styles.topLine}>
-                <Text style={styles.title}>{item.title}</Text>
-                <Text style={styles.time}>{formatTime(item.createdAt)}</Text>
+          return (
+            <Pressable
+              key={item.id || `${item.title}-${index}`}
+              style={[styles.row, isUnread ? styles.unreadRow : styles.readRow]}
+              onPress={() => handleNotificationPress(item)}
+            >
+              {isUnread ? <View style={styles.unreadDot} /> : null}
+
+              <View style={styles.avatar} />
+
+              <View style={styles.body}>
+                <View style={styles.topLine}>
+                  <Text
+                    style={[
+                      styles.title,
+                      isUnread ? styles.unreadTitle : styles.readTitle,
+                    ]}
+                  >
+                    {item.title}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.time,
+                      isUnread ? styles.unreadTime : styles.readTime,
+                    ]}
+                  >
+                    {formatTime(item.createdAt)}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.content,
+                    isUnread ? styles.unreadContent : styles.readContent,
+                  ]}
+                >
+                  {item.body}
+                </Text>
               </View>
-              <Text style={styles.content}>{item.body}</Text>
-            </View>
-          </Pressable>
-        ))}
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -183,9 +157,27 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "flex-start",
+    position: "relative",
     paddingVertical: 16,
+    paddingHorizontal: 10,
+    borderRadius: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
+  },
+  unreadRow: {
+    backgroundColor: "#F1EDFF",
+  },
+  readRow: {
+    backgroundColor: "#FFFFFF",
+  },
+  unreadDot: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#EF4444",
   },
   avatar: {
     width: 50,
@@ -208,18 +200,34 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     fontSize: 18,
+    lineHeight: 22,
+  },
+  unreadTitle: {
     fontWeight: "700",
     color: "#111827",
-    lineHeight: 22,
+  },
+  readTitle: {
+    fontWeight: "600",
+    color: "#6B7280",
   },
   time: {
     fontSize: 13,
-    color: "#6B7280",
     marginTop: 2,
+  },
+  unreadTime: {
+    color: "#6B7280",
+  },
+  readTime: {
+    color: "#9CA3AF",
   },
   content: {
     fontSize: 15,
-    color: "#4B5563",
     lineHeight: 21,
+  },
+  unreadContent: {
+    color: "#4B5563",
+  },
+  readContent: {
+    color: "#9CA3AF",
   },
 });

@@ -1,88 +1,156 @@
+import { db } from "@/firebase/firebaseConfig";
+import { useAuth } from "@/src/auth/useAuth";
+import {
+  NOTIFICATIONS_COLLECTION,
+  type NotificationDocument,
+} from "@/src/notifications/notificationSchema";
+import { doc, getDoc } from "firebase/firestore";
 import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+
+type NotificationDetail = NotificationDocument & Record<string, any>;
 
 function firstValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) return value[0] ?? "";
   return value ?? "";
 }
 
-function formatCreatedAt(value: string) {
-  if (!value) return "";
-  const ts = Number(value);
-  if (Number.isNaN(ts)) return "";
-  return new Date(ts).toLocaleString("en-US", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
+function textValue(value: unknown) {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") return String(value);
+  return "";
+}
+
+function pickText(data: NotificationDetail | null, keys: string[]) {
+  if (!data) return "";
+
+  for (const key of keys) {
+    const direct = textValue(data[key]);
+    if (direct) return direct;
+
+    const metadata = data.metadata;
+    if (metadata && typeof metadata === "object") {
+      const nested = textValue(metadata[key]);
+      if (nested) return nested;
+    }
+  }
+
+  return "";
+}
+
+function formatCreatedAt(createdAt: NotificationDocument["createdAt"] | undefined) {
+  if (!createdAt) return "";
+  return createdAt.toDate().toLocaleTimeString("zh-TW", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
   });
 }
 
-function formatEventTime(hour: string, minute: string, period: string) {
-  if (!hour || !minute || !period) return "";
-  return `${hour}:${minute} ${period}`;
+function buildDetailBody(data: NotificationDetail | null) {
+  if (!data) return "";
+
+  const eventTime = pickText(data, ["time", "scheduleTime", "eventTime"]);
+  const patientName = pickText(data, ["patientName", "name", "personName"]);
+  const eventTitle = pickText(data, ["eventTitle", "medicineName", "eventName"]);
+  const location = pickText(data, ["location", "place"]);
+  const summary = [patientName, eventTitle, location].filter(Boolean).join("  ");
+
+  if (eventTime || summary) {
+    return [eventTime, summary].filter(Boolean).join("\n");
+  }
+
+  return data.body ?? "";
 }
 
 export default function FamilyNotificationDetailScreen() {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
+  const { user: currentUser } = useAuth();
+  const notificationId = firstValue(params.id);
+  const [notification, setNotification] = useState<NotificationDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorText, setErrorText] = useState("");
 
-  const title = firstValue(params.title);
-  const body = firstValue(params.body);
-  const createdAt = firstValue(params.createdAt);
-  const eventName = firstValue(params.eventName);
-  const personName = firstValue(params.personName);
-  const location = firstValue(params.location);
-  const hour = firstValue(params.hour);
-  const minute = firstValue(params.minute);
-  const period = firstValue(params.period);
+  useEffect(() => {
+    let alive = true;
 
-  const displayTime = formatEventTime(hour, minute, period) || formatCreatedAt(createdAt);
+    async function loadNotification() {
+      if (!notificationId) {
+        setErrorText("找不到通知。");
+        setLoading(false);
+        return;
+      }
+
+      if (!currentUser?.uid) return;
+
+      try {
+        setLoading(true);
+        setErrorText("");
+
+        const snap = await getDoc(doc(db, NOTIFICATIONS_COLLECTION, notificationId));
+        if (!alive) return;
+
+        if (!snap.exists()) {
+          setNotification(null);
+          setErrorText("找不到通知。");
+          return;
+        }
+
+        const data = snap.data() as NotificationDetail;
+        if (data.recipientUid !== currentUser.uid) {
+          setNotification(null);
+          setErrorText("你沒有權限查看這則通知。");
+          return;
+        }
+
+        setNotification(data);
+      } catch (error) {
+        console.log("family notification detail load failed:", error);
+        if (alive) {
+          setNotification(null);
+          setErrorText("通知讀取失敗。");
+        }
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    loadNotification();
+
+    return () => {
+      alive = false;
+    };
+  }, [currentUser?.uid, notificationId]);
+
+  const displayBody = useMemo(() => buildDetailBody(notification), [notification]);
+  const displayTime =
+    pickText(notification, ["time", "scheduleTime", "eventTime"]) ||
+    formatCreatedAt(notification?.createdAt);
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backButton}>
-          <Text style={styles.backIcon}>{"<"}</Text>
+          <Text style={styles.backText}>‹ 返回</Text>
         </Pressable>
+        <Text style={styles.menuIcon}>☰</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.card}>
-          <Text style={styles.title}>{title || "Notification details"}</Text>
-          {!!body && <Text style={styles.body}>{body}</Text>}
-
-          <View style={styles.metaList}>
-            {!!displayTime && (
-              <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Time</Text>
-                <Text style={styles.metaValue}>{displayTime}</Text>
-              </View>
-            )}
-
-            {!!eventName && (
-              <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Event</Text>
-                <Text style={styles.metaValue}>{eventName}</Text>
-              </View>
-            )}
-
-            {!!personName && (
-              <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Name</Text>
-                <Text style={styles.metaValue}>{personName}</Text>
-              </View>
-            )}
-
-            {!!location && (
-              <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Location</Text>
-                <Text style={styles.metaValue}>{location}</Text>
-              </View>
-            )}
-          </View>
-        </View>
+        {loading ? (
+          <Text style={styles.messageText}>讀取中...</Text>
+        ) : errorText ? (
+          <Text style={styles.messageText}>{errorText}</Text>
+        ) : (
+          <>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>{notification?.title || "通知"}</Text>
+              {!!displayTime && <Text style={styles.time}>{displayTime}</Text>}
+            </View>
+            {!!displayBody && <Text style={styles.body}>{displayBody}</Text>}
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -91,64 +159,68 @@ export default function FamilyNotificationDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F6F2F0",
+    backgroundColor: "#FFFFFF",
   },
   header: {
-    backgroundColor: "#D9D4F3",
     height: 112,
+    backgroundColor: "#D9D4F3",
     paddingTop: 54,
     paddingHorizontal: 20,
-    justifyContent: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   backButton: {
-    width: 36,
-    height: 36,
-    justifyContent: "center",
-    alignItems: "center",
+    paddingVertical: 8,
+    paddingRight: 12,
   },
-  backIcon: {
-    fontSize: 24,
-    color: "#374151",
+  backText: {
+    fontSize: 18,
     fontWeight: "700",
+    color: "#111827",
+  },
+  menuIcon: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#111827",
   },
   content: {
-    padding: 20,
+    flexGrow: 1,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 24,
+    paddingTop: 26,
+    paddingBottom: 32,
   },
-  card: {
-    backgroundColor: "#FFF",
-    borderRadius: 24,
-    padding: 20,
-    gap: 14,
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+    marginBottom: 24,
   },
   title: {
-    fontSize: 24,
+    flex: 1,
+    fontSize: 26,
+    lineHeight: 32,
     fontWeight: "800",
     color: "#111827",
   },
+  time: {
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: "600",
+    color: "#374151",
+    marginTop: 4,
+  },
   body: {
+    fontSize: 22,
+    lineHeight: 34,
+    fontWeight: "500",
+    color: "#111827",
+  },
+  messageText: {
     fontSize: 16,
     lineHeight: 24,
     color: "#374151",
-  },
-  metaList: {
-    gap: 10,
-    marginTop: 6,
-  },
-  metaRow: {
-    backgroundColor: "#F8F8F8",
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 4,
-  },
-  metaLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#6B7280",
-  },
-  metaValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
   },
 });
