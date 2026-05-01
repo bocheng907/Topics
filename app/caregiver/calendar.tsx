@@ -1,5 +1,5 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addDoc,
   collection,
@@ -13,7 +13,16 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
@@ -85,6 +94,8 @@ const EVENT_COLORS = ["#F4A261", "#B9A0F3", "#73B8F2", "#F6BDC2", "#7EDB68"];
 const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
 const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 const PERIODS: TimePeriod[] = ["am", "pm"];
+const WHEEL_ROW_HEIGHT = 24;
+const WHEEL_HEIGHT = 170;
 
 function pad2(value: number | string) {
   return String(value).padStart(2, "0");
@@ -124,6 +135,16 @@ function extractTimeParts(date: Date) {
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
+}
+
+function getTodayDate() {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate());
+}
+
+function getCurrentMonthStart() {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), 1);
 }
 
 function getMonthMeta(currentMonth: Date) {
@@ -239,33 +260,61 @@ function WheelColumn<T extends string | number>({
   onChange: (value: T) => void;
   renderValue: (value: T) => string;
 }) {
-  const selectedIndex = values.findIndex((item) => item === value);
-  const visibleIndices = Array.from({ length: 7 }, (_, index) => selectedIndex - 3 + index);
+  const scrollRef = useRef<ScrollView>(null);
+  const selectedIndex = Math.max(values.findIndex((item) => item === value), 0);
+  const verticalPadding = (WHEEL_HEIGHT - WHEEL_ROW_HEIGHT) / 2;
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: selectedIndex * WHEEL_ROW_HEIGHT,
+        animated: false,
+      });
+    });
+  }, [selectedIndex]);
+
+  const updateValueFromOffset = (offsetY: number) => {
+    const nextIndex = Math.max(0, Math.min(values.length - 1, Math.round(offsetY / WHEEL_ROW_HEIGHT)));
+    const nextValue = values[nextIndex];
+
+    if (nextValue !== undefined && nextValue !== value) {
+      onChange(nextValue);
+    }
+  };
+
+  const handleScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    updateValueFromOffset(event.nativeEvent.contentOffset.y);
+  };
 
   return (
     <View style={styles.wheelColumn}>
       <View style={styles.wheelFrame}>
         <View style={styles.wheelSelectedBand} />
-        {visibleIndices.map((index, rowIndex) => {
-          const item = values[index];
-          const isSelected = rowIndex === 3;
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={{ paddingVertical: verticalPadding }}
+          decelerationRate="fast"
+          nestedScrollEnabled
+          onMomentumScrollEnd={handleScrollEnd}
+          onScrollEndDrag={handleScrollEnd}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          snapToAlignment="start"
+          snapToInterval={WHEEL_ROW_HEIGHT}
+          style={styles.wheelList}
+        >
+          {values.map((item) => {
+            const isSelected = item === value;
 
-          if (item === undefined) {
-            return <View key={`empty-${rowIndex}`} style={[styles.wheelRow, styles.wheelRowGhost]} />;
-          }
-
-          return (
-            <Pressable
-              key={`${renderValue(item)}-${rowIndex}`}
-              onPress={() => onChange(item)}
-              style={styles.wheelRow}
-            >
-              <Text style={[styles.wheelRowText, isSelected && styles.wheelRowTextSelected]}>
-                {renderValue(item)}
-              </Text>
-            </Pressable>
-          );
-        })}
+            return (
+              <Pressable key={renderValue(item)} onPress={() => onChange(item)} style={styles.wheelRow}>
+                <Text style={[styles.wheelRowText, isSelected && styles.wheelRowTextSelected]}>
+                  {renderValue(item)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
     </View>
   );
@@ -275,8 +324,8 @@ export default function CaregiverCalendarScreen() {
   const { user } = useAuth();
   const { activePatientId } = useActiveCareTarget();
 
-  const [currentMonth, setCurrentMonth] = useState(() => new Date(2026, 8, 1));
-  const [selectedDate, setSelectedDate] = useState(() => new Date(2026, 8, 18));
+  const [currentMonth, setCurrentMonth] = useState(getCurrentMonthStart);
+  const [selectedDate, setSelectedDate] = useState(getTodayDate);
   const [monthMenuOpen, setMonthMenuOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -495,9 +544,7 @@ export default function CaregiverCalendarScreen() {
       <View style={styles.header}>
         <View style={styles.topBar}>
           <View style={styles.topBarSpacer} />
-          <Pressable hitSlop={12} style={styles.menuButton} onPress={() => {}}>
-            <Feather name="menu" size={34} color="#111" />
-          </Pressable>
+          <View style={styles.topBarSpacer} />
         </View>
       </View>
 
@@ -591,10 +638,6 @@ export default function CaregiverCalendarScreen() {
           )}
         </ScrollView>
       </View>
-
-      <Pressable style={styles.phoneButton} onPress={() => {}}>
-        <Ionicons name="call" size={26} color="#FFF" />
-      </Pressable>
 
       <Pressable style={styles.plusButton} onPress={openCreateForm}>
         <Ionicons name="add" size={38} color="#FFF" />
@@ -731,12 +774,6 @@ const styles = StyleSheet.create({
   topBarSpacer: {
     width: 34,
     height: 34,
-  },
-  menuButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
   },
   contentCard: {
     flex: 1,
@@ -935,22 +972,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  phoneButton: {
-    position: "absolute",
-    left: "50%",
-    marginLeft: -28,
-    bottom: 102,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#EB5558",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#EB5558",
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 6,
-  },
   formOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.08)",
@@ -1062,10 +1083,14 @@ const styles = StyleSheet.create({
   },
   wheelFrame: {
     width: "100%",
-    height: 170,
+    height: WHEEL_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
+  },
+  wheelList: {
+    width: "100%",
+    height: WHEEL_HEIGHT,
   },
   wheelSelectedBand: {
     position: "absolute",
@@ -1077,12 +1102,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#F2F2F2",
   },
   wheelRow: {
-    height: 24,
+    height: WHEEL_ROW_HEIGHT,
     justifyContent: "center",
     alignItems: "center",
-  },
-  wheelRowGhost: {
-    opacity: 0,
   },
   wheelRowText: {
     fontSize: 13,

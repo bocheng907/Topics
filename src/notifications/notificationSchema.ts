@@ -27,6 +27,7 @@ export type NotificationType =
   | "abnormal_health"
   | "medication_done"
   | "chat_message"
+  | "calendar_event"
   | "health_report_missing"
   | "custom";
 

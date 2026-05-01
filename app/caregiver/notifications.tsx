@@ -16,11 +16,12 @@ import { useAuth } from "@/src/auth/useAuth";
 import {
   NOTIFICATIONS_COLLECTION,
   type NotificationDocument,
+  type NotificationType,
 } from "@/src/notifications/notificationSchema";
 
 type NotificationRow = Omit<NotificationDocument, "type"> & {
   id: string;
-  type: NotificationDocument["type"] | "calendar_event";
+  type: NotificationType;
   eventName?: string;
   personName?: string;
   location?: string;
@@ -135,14 +136,7 @@ export default function CaregiverNotificationsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerSpacer} />
-        <Pressable hitSlop={12} style={styles.menuButton} onPress={() => {}}>
-          <View style={styles.menuLine} />
-          <View style={styles.menuLine} />
-          <View style={styles.menuLine} />
-        </Pressable>
-      </View>
+      <View style={styles.header} />
 
       <ScrollView
         contentContainerStyle={styles.list}
@@ -178,28 +172,8 @@ const styles = StyleSheet.create({
   header: {
     height: 112,
     backgroundColor: "#D9D4F3",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
     paddingTop: 54,
     paddingHorizontal: 20,
-  },
-  headerSpacer: {
-    width: 32,
-    height: 32,
-  },
-  menuButton: {
-    width: 32,
-    height: 32,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 4,
-  },
-  menuLine: {
-    width: 18,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: "#374151",
   },
   list: {
     paddingHorizontal: 20,
