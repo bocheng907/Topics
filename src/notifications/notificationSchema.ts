@@ -28,6 +28,7 @@ export type NotificationType =
   | "medication_done"
   | "chat_message"
   | "calendar_event"
+  | "calendar_event_completed"
   | "health_report_missing"
   | "custom";
 
@@ -46,5 +47,11 @@ export type NotificationDocument = {
     eventTime?: string;
     location?: string;
     patientName?: string;
+    eventId?: string;
+    patientId?: string;
+    completedBy?: string;
+    completedAt?: string;
+    eventType?: string;
+    source?: string;
   };
 };

@@ -2,7 +2,10 @@
 const {setGlobalOptions} = require("firebase-functions");
 const {onRequest} = require("firebase-functions/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentUpdated,
+} = require("firebase-functions/v2/firestore");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
 
@@ -273,6 +276,17 @@ function uniqueStrings(values) {
   return [...new Set((values || []).map(String).filter(Boolean))];
 }
 
+function getOppositeCalendarRecipientUids(patient, actorUid) {
+  const families = uniqueStrings(patient.families);
+  const caregivers = uniqueStrings(patient.caregivers);
+
+  const recipientUids = caregivers.includes(actorUid) ? families :
+    families.includes(actorUid) ? caregivers :
+      [];
+
+  return uniqueStrings(recipientUids).filter((uid) => uid !== actorUid);
+}
+
 // 測試用：.../sendTestPush?uid=你的uid
 exports.sendTestPush = onRequest(async (req, res) => {
   try {
@@ -465,6 +479,97 @@ exports.onCalendarEventCreated = onDocumentCreated(
       });
     } catch (error) {
       console.error("[onCalendarEventCreated] error =", error);
+    }
+  }
+);
+
+exports.onCalendarEventCompleted = onDocumentUpdated(
+  {
+    document: "calendar_events/{eventId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    try {
+      const change = event.data;
+      if (!change) return;
+
+      const before = change.before.data() || {};
+      const after = change.after.data() || {};
+
+      if (before.isCompleted === true || after.isCompleted !== true) {
+        return;
+      }
+
+      const eventId = event.params.eventId;
+      const patientId = String(after.patientId || "");
+      const completedBy = String(after.completedBy || "");
+
+      if (!patientId || !completedBy) {
+        console.log("[calendar_event_completed] missing patientId/completedBy:", {
+          eventId,
+          patientId,
+          completedBy,
+        });
+        return;
+      }
+
+      const patientSnap = await db.collection("patients").doc(patientId).get();
+      if (!patientSnap.exists) {
+        console.log("[calendar_event_completed] patient not found:", patientId);
+        return;
+      }
+
+      const patient = patientSnap.data() || {};
+      const recipientUids = getOppositeCalendarRecipientUids(
+        patient,
+        completedBy
+      );
+
+      if (!recipientUids.length) {
+        console.log("[calendar_event_completed] no recipients:", {
+          eventId,
+          patientId,
+          completedBy,
+        });
+        return;
+      }
+
+      const eventTitle = resolveCalendarEventTitle(after);
+      const eventType = String(
+        after.eventType || after.event || after.title || after.eventTitle || ""
+      );
+      const completedAt = after.completedAt?.toDate?.()?.toISOString?.() || "";
+
+      await writeNotifications({
+        recipientUids,
+        type: "calendar_event_completed",
+        title: "行事曆事件已完成",
+        body: `「${eventTitle}」已標記為完成。`,
+        patientId,
+        sourceCollection: "calendar_events",
+        sourceId: eventId,
+        extra: {
+          eventId,
+          metadata: {
+            eventId,
+            patientId,
+            completedBy,
+            completedAt,
+            eventTitle,
+            eventType,
+            source: "calendar",
+          },
+        },
+      });
+
+      console.log("[calendar_event_completed] notifications written:", {
+        eventId,
+        patientId,
+        completedBy,
+        recipientUids,
+      });
+    } catch (error) {
+      console.error("[onCalendarEventCompleted] error =", error);
     }
   }
 );

@@ -34,12 +34,15 @@ type CalendarEventRecord = {
   createdBy?: string;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
+  completedAt?: Timestamp | null;
+  completedBy?: string;
   startAt?: Timestamp | null;
   eventDate?: string;
   hour?: string;
   minute?: string;
   period?: "am" | "pm";
   color?: string;
+  isCompleted?: boolean;
   personName?: string;
   name?: string;
   patientName?: string;
@@ -70,7 +73,9 @@ type CalendarEventViewModel = CalendarEventRecord & {
   resolvedPersonName: string;
   resolvedTitle: string;
   resolvedLocation: string;
+  resolvedDescription: string;
   resolvedColor: string;
+  resolvedIsCompleted: boolean;
   resolvedDate: Date;
 };
 
@@ -96,6 +101,7 @@ const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 const PERIODS: TimePeriod[] = ["am", "pm"];
 const WHEEL_ROW_HEIGHT = 24;
 const WHEEL_HEIGHT = 170;
+const MAX_DAY_MARKERS = 4;
 
 function pad2(value: number | string) {
   return String(value).padStart(2, "0");
@@ -209,8 +215,49 @@ function resolveLocation(event: CalendarEventRecord) {
   return event.location || event.place || "";
 }
 
+function resolveDescription(event: CalendarEventRecord) {
+  const titleSource = event.title || event.eventTitle || event.event || "";
+  const description = event.description || "";
+  return description && description !== titleSource ? description : "";
+}
+
 function resolveColor(event: CalendarEventRecord) {
   return event.color || EVENT_COLORS[0];
+}
+
+function resolveIsCompleted(event: CalendarEventRecord) {
+  return event.isCompleted === true;
+}
+
+function getHexRgb(hex: string) {
+  const normalized = hex.replace("#", "").trim();
+  const expanded =
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((value) => value + value)
+          .join("")
+      : normalized;
+
+  if (!/^[0-9a-fA-F]{6}$/.test(expanded)) {
+    return null;
+  }
+
+  return {
+    r: parseInt(expanded.slice(0, 2), 16),
+    g: parseInt(expanded.slice(2, 4), 16),
+    b: parseInt(expanded.slice(4, 6), 16),
+  };
+}
+
+function isDarkColor(hex: string) {
+  const rgb = getHexRgb(hex);
+
+  if (!rgb) {
+    return false;
+  }
+
+  return (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000 < 150;
 }
 
 function getEventDateObject(event: CalendarEventRecord) {
@@ -239,14 +286,19 @@ function toCalendarEventViewModel(event: CalendarEventRecord): CalendarEventView
     resolvedPersonName: resolvePersonName(event),
     resolvedTitle: resolveTitle(event),
     resolvedLocation: resolveLocation(event),
+    resolvedDescription: resolveDescription(event),
     resolvedColor: resolveColor(event),
+    resolvedIsCompleted: resolveIsCompleted(event),
     resolvedDate: getEventDateObject(event),
   };
 }
 
-function formatEventTime(event: CalendarEventViewModel) {
+function getEventTimeParts(event: CalendarEventViewModel) {
   const { hour, minute, period } = extractTimeParts(event.resolvedDate);
-  return `${hour}:${pad2(minute)} ${period}`;
+  return {
+    time: `${hour}:${pad2(minute)}`,
+    period,
+  };
 }
 
 function WheelColumn<T extends string | number>({
@@ -484,6 +536,7 @@ export default function FamilyCalendarScreen() {
           patientId: activePatientId,
           createdBy: user.uid,
           createdAt: serverTimestamp(),
+          isCompleted: false,
           ...payload,
         });
       }
@@ -503,8 +556,43 @@ export default function FamilyCalendarScreen() {
     }
   };
 
+  const handleToggleEventCompleted = async (event: CalendarEventViewModel) => {
+    if (!user?.uid) return;
+
+    const nextIsCompleted = !event.resolvedIsCompleted;
+
+    setEvents((prevEvents) =>
+      prevEvents.map((item) => (item.id === event.id ? { ...item, isCompleted: nextIsCompleted } : item))
+    );
+
+    try {
+      const completionPayload = nextIsCompleted
+        ? {
+            completedAt: serverTimestamp(),
+            completedBy: user.uid,
+          }
+        : {
+            completedAt: null,
+            completedBy: "",
+          };
+
+      await updateDoc(doc(db, CALENDAR_EVENTS_COLLECTION, event.id), {
+        isCompleted: nextIsCompleted,
+        ...completionPayload,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.log("toggle calendar event completed failed:", error);
+      setEvents((prevEvents) =>
+        prevEvents.map((item) => (item.id === event.id ? { ...item, isCompleted: event.resolvedIsCompleted } : item))
+      );
+    }
+  };
+
   const renderDayCell = (cell: CalendarCell, index: number) => {
     const dayEvents = monthEvents.filter((event) => sameDate(event.resolvedDate, cell.date));
+    const visibleDayEvents = dayEvents.slice(0, MAX_DAY_MARKERS);
+    const hiddenEventCount = Math.max(dayEvents.length - MAX_DAY_MARKERS, 0);
     const isSelected = sameDate(cell.date, selectedDate);
 
     return (
@@ -531,9 +619,14 @@ export default function FamilyCalendarScreen() {
         </Text>
 
         <View style={styles.dayMarkers}>
-          {dayEvents.slice(0, 2).map((event) => (
+          {visibleDayEvents.map((event) => (
             <View key={event.id} style={[styles.dayMarker, { backgroundColor: event.resolvedColor }]} />
           ))}
+          {hiddenEventCount > 0 && (
+            <Text style={styles.dayMoreText} numberOfLines={1}>
+              +{hiddenEventCount}
+            </Text>
+          )}
         </View>
       </Pressable>
     );
@@ -605,35 +698,94 @@ export default function FamilyCalendarScreen() {
 
           {selectedDayEvents.length > 0 && (
             <View style={styles.eventList}>
-              {selectedDayEvents.map((event) => (
-                <View key={event.id} style={styles.eventCard}>
-                  <View style={styles.eventCardTop}>
-                    <Text style={styles.eventCardTime}>{formatEventTime(event)}</Text>
-                    <Text style={styles.eventCardText} numberOfLines={1}>
-                      {event.resolvedPersonName}
-                    </Text>
-                    <Text style={styles.eventCardText} numberOfLines={1}>
-                      {event.resolvedTitle}
-                    </Text>
-                    <Text style={styles.eventCardText} numberOfLines={1}>
-                      {event.resolvedLocation}
-                    </Text>
-                  </View>
+              {selectedDayEvents.map((event) => {
+                const eventTime = getEventTimeParts(event);
+                const useLightText = isDarkColor(event.resolvedColor);
+                const primaryTextStyle = useLightText ? styles.eventTextLight : styles.eventTextDark;
+                const secondaryTextStyle = useLightText ? styles.eventSecondaryTextLight : styles.eventSecondaryTextDark;
+                const completedTextStyle = event.resolvedIsCompleted && styles.eventCompletedText;
+                const actionIconColor = useLightText ? "#FFFFFF" : "#1F2430";
 
-                  <View style={styles.eventActions}>
-                    <Pressable hitSlop={8} style={styles.eventActionButton} onPress={() => openEditForm(event)}>
-                      <Feather name="edit-2" size={22} color="#1F2430" />
-                    </Pressable>
-                    <Pressable
-                      hitSlop={8}
-                      style={styles.eventActionButton}
-                      onPress={() => handleDeleteEvent(event.id)}
-                    >
-                      <Ionicons name="trash-outline" size={24} color="#1F2430" />
-                    </Pressable>
+                return (
+                  <View key={event.id} style={[styles.eventCard, { backgroundColor: event.resolvedColor }]}>
+                    <View style={styles.eventCardBody}>
+                      <View style={styles.eventTimeBlock}>
+                        <Text style={[styles.eventTimeText, primaryTextStyle, completedTextStyle]}>
+                          {eventTime.time}
+                        </Text>
+                        <Text style={[styles.eventPeriodText, secondaryTextStyle, completedTextStyle]}>
+                          {eventTime.period}
+                        </Text>
+                      </View>
+
+                      <View style={styles.eventInfo}>
+                        <Text style={[styles.eventPersonText, primaryTextStyle, completedTextStyle]} numberOfLines={2}>
+                          {event.resolvedPersonName || event.resolvedTitle || "Untitled"}
+                        </Text>
+
+                        {event.resolvedTitle && event.resolvedTitle !== event.resolvedPersonName && (
+                          <Text style={[styles.eventTitleText, primaryTextStyle, completedTextStyle]} numberOfLines={2}>
+                            {event.resolvedTitle}
+                          </Text>
+                        )}
+
+                        <View style={styles.eventMetaWrap}>
+                          {event.resolvedTitle && (
+                            <View style={styles.eventMetaPill}>
+                              <Text style={[styles.eventMetaText, secondaryTextStyle, completedTextStyle]} numberOfLines={1}>
+                                類型：{event.resolvedTitle}
+                              </Text>
+                            </View>
+                          )}
+
+                          {event.resolvedLocation && (
+                            <View style={styles.eventMetaPill}>
+                              <Text style={[styles.eventMetaText, secondaryTextStyle, completedTextStyle]} numberOfLines={1}>
+                                地點：{event.resolvedLocation}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+
+                        {event.resolvedDescription && (
+                          <Text style={[styles.eventDescriptionText, secondaryTextStyle, completedTextStyle]}>
+                            {event.resolvedDescription}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    <View style={styles.eventActions}>
+                      <Pressable
+                        onPress={() => handleToggleEventCompleted(event)}
+                        style={[
+                          styles.eventStatusButton,
+                          event.resolvedIsCompleted ? styles.eventStatusButtonCompleted : styles.eventStatusButtonPending,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.eventStatusText,
+                            event.resolvedIsCompleted ? styles.eventStatusTextCompleted : styles.eventStatusTextPending,
+                          ]}
+                        >
+                          {event.resolvedIsCompleted ? "已完成" : "未完成"}
+                        </Text>
+                      </Pressable>
+                      <Pressable hitSlop={8} style={styles.eventActionButton} onPress={() => openEditForm(event)}>
+                        <Feather name="edit-2" size={22} color={actionIconColor} />
+                      </Pressable>
+                      <Pressable
+                        hitSlop={8}
+                        style={styles.eventActionButton}
+                        onPress={() => handleDeleteEvent(event.id)}
+                      >
+                        <Ionicons name="trash-outline" size={24} color={actionIconColor} />
+                      </Pressable>
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         </ScrollView>
@@ -908,13 +1060,21 @@ const styles = StyleSheet.create({
     color: "#111",
   },
   dayMarkers: {
-    marginTop: 34,
+    marginTop: 18,
     gap: 2,
   },
   dayMarker: {
-    height: 8,
+    height: 6,
     borderRadius: 2,
     width: "86%",
+  },
+  dayMoreText: {
+    width: "86%",
+    fontSize: 8,
+    lineHeight: 10,
+    color: "#4B5563",
+    fontWeight: "700",
+    textAlign: "right",
   },
   eventList: {
     paddingHorizontal: 26,
@@ -922,38 +1082,123 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   eventCard: {
-    backgroundColor: "#FFAA59",
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 8,
+    padding: 14,
+    maxWidth: "100%",
   },
-  eventCardTop: {
+  eventCardBody: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-    paddingRight: 56,
+    gap: 12,
   },
-  eventCardTime: {
-    width: 50,
-    fontSize: 15,
-    lineHeight: 16,
-    color: "#111",
-    fontWeight: "500",
+  eventTimeBlock: {
+    width: 58,
+    flexShrink: 0,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.38)",
+    paddingVertical: 8,
+    alignItems: "center",
   },
-  eventCardText: {
+  eventTimeText: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
+  eventPeriodText: {
+    marginTop: 1,
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  eventInfo: {
     flex: 1,
+    minWidth: 0,
+  },
+  eventPersonText: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "700",
+    flexShrink: 1,
+  },
+  eventTitleText: {
+    marginTop: 2,
     fontSize: 15,
     lineHeight: 20,
-    color: "#111",
+    fontWeight: "600",
+    flexShrink: 1,
+  },
+  eventMetaWrap: {
+    marginTop: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  eventMetaPill: {
+    maxWidth: "100%",
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.42)",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  eventMetaText: {
+    fontSize: 13,
+    lineHeight: 17,
     fontWeight: "600",
   },
+  eventDescriptionText: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "500",
+  },
+  eventTextDark: {
+    color: "#111",
+  },
+  eventTextLight: {
+    color: "#FFF",
+  },
+  eventSecondaryTextDark: {
+    color: "#2A2118",
+  },
+  eventSecondaryTextLight: {
+    color: "#F8F8F8",
+  },
+  eventCompletedText: {
+    opacity: 0.68,
+  },
   eventActions: {
-    marginTop: 6,
+    marginTop: 10,
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
     gap: 2,
+  },
+  eventStatusButton: {
+    minWidth: 70,
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
+  },
+  eventStatusButtonPending: {
+    backgroundColor: "rgba(255,255,255,0.66)",
+  },
+  eventStatusButtonCompleted: {
+    backgroundColor: "#2E7D32",
+  },
+  eventStatusText: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: "800",
+  },
+  eventStatusTextPending: {
+    color: "#5F4B32",
+  },
+  eventStatusTextCompleted: {
+    color: "#FFF",
   },
   eventActionButton: {
     width: 32,

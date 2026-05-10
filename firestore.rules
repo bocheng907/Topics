@@ -243,13 +243,36 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.patientId is string
         && isLinkedToPatient(resource.data.patientId)
-        && (
-          isFamilyMember(resource.data.patientId)
-          || resource.data.createdBy == request.auth.uid
-        )
         && request.resource.data.patientId == resource.data.patientId
         && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name",
+          "personName",
+          "title",
+          "eventTitle",
+          "event",
+          "description",
+          "location",
+          "place",
+          "color",
+          "startAt",
+          "eventDate",
+          "hour",
+          "minute",
+          "period",
+          "updatedAt",
+          "isCompleted",
+          "completedAt",
+          "completedBy"
+        ])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "completedBy"
+          ])
+          || request.resource.data.completedBy == request.auth.uid
+          || request.resource.data.completedBy == ""
+        );
 
       allow delete: if signedIn()
         && resource.data.patientId is string
