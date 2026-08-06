@@ -25,6 +25,7 @@ export default function FamilyLayout() {
     "edit",
     "dashboard",
     "list",
+    "medication-detail",
     "condition",
     "voice",
     "handbook",

@@ -12,6 +12,28 @@ import { pickLocalizedString, translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
 
+function formatPrescriptionMemo(value: any): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  return [
+    value.doctor_instructions,
+    value.precautions,
+    value.refill_info,
+    value.other,
+  ]
+    .filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0
+    )
+    .join("；");
+}
+
 export default function FamilyDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { ready } = useAuthContext();
@@ -78,6 +100,17 @@ export default function FamilyDetailScreen() {
 
   if (!ready || !p) return <View style={styles.center}><Text>{t.loading}</Text></View>;
 
+  const clinicName = String(
+    p.clinic_name ?? p.clinicName ?? ""
+  );
+
+  const department = String(
+    p.department ?? ""
+  );
+
+  const prescriptionMemo =
+    formatPrescriptionMemo(p.memo);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -93,8 +126,15 @@ export default function FamilyDetailScreen() {
         <View style={styles.titleRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.mainTitle}>{p.title || t.prescriptionDetail}</Text>
-            <Text style={styles.subInfo}>
+            <Text style={[styles.subInfo, { marginTop: 8 }]}>
               {t.recordDate}：{p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() : t.unknown}
+            </Text>
+            <Text style={styles.subInfo}>
+              診所：{clinicName || t.notSet}
+            </Text>
+
+            <Text style={styles.subInfo}>
+              科別：{department || t.notSet}
             </Text>
           </View>
           <Pressable 
@@ -126,9 +166,20 @@ export default function FamilyDetailScreen() {
         {p.items?.map((it: any, idx: number) => {
           // 💡 邏輯：將 usage_zh 以逗號拆分為「用法」與「時段」
           const usageString = it.usage_zh || "";
-          const parts = usageString.includes(",") ? usageString.split(",") : [usageString, ""];
+
+          const parts = usageString
+            .split(/[，,]/)
+            .map((part: string) => part.trim())
+            .filter(Boolean);
+
           const method = parts[0] || t.notSet;
-          const timeDetail = parts.slice(1).join(",") || t.asDirectedUsage;
+
+          const timeDetail =
+            parts.slice(1).join("，") ||
+            t.asDirectedUsage;
+
+          const note =
+            prescriptionMemo || it.memo;
 
           return (
             <View key={idx} style={styles.itemCard}>
@@ -151,9 +202,11 @@ export default function FamilyDetailScreen() {
                 <Text style={styles.infoValue}>{timeDetail}</Text>
               </View>
 
-              {it.memo ? (
+              {note ? (
                 <View style={styles.noteBox}>
-                  <Text style={styles.noteText}>{t.note}：{it.memo}</Text>
+                  <Text style={styles.noteText}>
+                    {t.note}：{note}
+                  </Text>
                 </View>
               ) : null}
             </View>

@@ -11,6 +11,28 @@ import {
 import { pickLocalizedString, translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 
+function formatPrescriptionMemo(value: any): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  return [
+    value.doctor_instructions,
+    value.precautions,
+    value.refill_info,
+    value.other,
+  ]
+    .filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0
+    )
+    .join("；");
+}
+
 export default function CaregiverDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { language } = useLanguage();
@@ -76,6 +98,10 @@ export default function CaregiverDetailScreen() {
   if (!loaded) return <View style={styles.center}><Text>{t.reading}</Text></View>;
   if (!id || !p) return <View style={styles.center}><Text>{t.resultNotFound}</Text></View>;
 
+  const clinicName = String(p.clinic_name ?? p.clinicName ?? "");
+  const department = String(p.department ?? "");
+  const prescriptionMemo = formatPrescriptionMemo(p.memo);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -89,16 +115,29 @@ export default function CaregiverDetailScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.titleRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.mainTitle}>{p.title || t.prescriptionDetail}</Text>
-            <Text style={styles.subInfo}>
-              {t.recordDate}：{
-                typeof p.createdAt === "string"
-                  ? p.createdAt
-                  : (p.createdAt?.seconds
-                      ? new Date(p.createdAt.seconds * 1000).toLocaleDateString()
-                      : t.unknown)
-              }
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.mainTitle}>
+                {p.title || t.prescriptionDetail}
+              </Text>
+
+              <Text style={[styles.subInfo, { marginTop: 8 }]}>
+                {t.recordDate}：{
+                  typeof p.createdAt === "string"
+                    ? p.createdAt
+                    : (p.createdAt?.seconds
+                        ? new Date(p.createdAt.seconds * 1000).toLocaleDateString()
+                        : t.unknown)
+                }
+              </Text>
+
+              <Text style={styles.subInfo}>
+                診所：{clinicName || t.notSet}
+              </Text>
+
+              <Text style={styles.subInfo}>
+                科別：{department || t.notSet}
+              </Text>
+            </View>
           </View>
           <Pressable
             onPress={() => router.push({
@@ -117,17 +156,40 @@ export default function CaregiverDetailScreen() {
 
         <Text style={styles.sectionTitle}>{t.medicineDetails}</Text>
         {items.map((it, idx) => {
-          const usageParts = it.usage_zh?.split(",") || [it.usage_zh, ""];
-          const method = usageParts[0] || t.notSet;
-          const timeDetail = usageParts.slice(1).join(",") || t.asDirectedUsage;
+          const usageParts = String(it.usage_zh ?? "")
+            .split(/[，,]/)
+            .map((part: string) => part.trim())
+            .filter(Boolean);
+
+          const method =
+            usageParts[0] || t.notSet;
+
+          const timeDetail =
+            usageParts.slice(1).join("，") ||
+            t.asDirectedUsage;
 
           return (
             <View key={it.itemId ?? idx} style={styles.itemCard}>
               <Text style={styles.itemName}>{it.drug_name}</Text>
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>{t.dosage}：</Text><Text style={styles.infoValue}>{it.dosage}</Text></View>
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>{t.method}：</Text><Text style={styles.infoValue}>{method}</Text></View>
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>{t.usageTime}：</Text><Text style={styles.infoValue}>{timeDetail}</Text></View>
-              {it.memo ? <Text style={styles.itemNote}>{t.note}：{it.memo}</Text> : null}
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>{t.dosage}：</Text>
+                <Text style={styles.infoValue}>{it.dosage}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>{t.method}：</Text>
+                <Text style={styles.infoValue}>{method}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>{t.usageTime}：</Text>
+                <Text style={styles.infoValue}>{timeDetail}</Text>
+              </View>
+
+              <Text style={styles.itemNote}>
+                {t.note}：{prescriptionMemo || it.memo || t.notSet}
+              </Text>
             </View>
           );
         })}
@@ -138,7 +200,7 @@ export default function CaregiverDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#FFE043", height: 100, paddingTop: 50, paddingHorizontal: 15, justifyContent: "center" },
+  header: { backgroundColor: "#F4E770", height: 100, paddingTop: 50, paddingHorizontal: 15, justifyContent: "center" },
   backButton: { flexDirection: "row", alignItems: "center" },
   backText: { fontSize: 20, fontWeight: "bold", color: "#333", marginLeft: 2 },
   titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 15 },

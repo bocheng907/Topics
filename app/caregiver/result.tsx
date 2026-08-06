@@ -42,9 +42,42 @@ type Item = {
 };
 
 function toArray(v: any): string[] {
-  if (Array.isArray(v)) return v.map((x) => String(x));
-  if (typeof v === "string" && v.trim()) return [v];
+  if (Array.isArray(v)) {
+    return v
+      .map((x) => String(x).trim())
+      .filter(Boolean);
+  }
+
+  if (typeof v === "string" && v.trim()) {
+    return v
+      .split(/[，,]/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
   return [];
+}
+
+function formatPrescriptionMemo(value: any): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  return [
+    value.doctor_instructions,
+    value.precautions,
+    value.refill_info,
+    value.other,
+  ]
+    .filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0
+    )
+    .join("；");
 }
 
 function pickItemName(it: any): string {
@@ -146,6 +179,8 @@ export default function ResultScreen() {
   const [items, setItems] = useState<Item[]>([]);
   const [title, setTitle] = useState("");
   const [imageUri, setImageUri] = useState<string | undefined>(undefined);
+  const [clinicName, setClinicName] = useState("");
+  const [department, setDepartment] = useState("");
   const [globalMemo, setGlobalMemo] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -184,8 +219,16 @@ export default function ResultScreen() {
         : [];
 
       setImageUri(safeImageUrl);
-      setTitle(draftTitle ?? t.cameraDefaultDraftTitle);
-      setGlobalMemo(safe.memo ?? "");
+
+      setTitle(
+        String(safe.department ?? "").trim() ||
+        draftTitle ||
+        t.cameraDefaultDraftTitle
+      );
+
+      setClinicName(String(safe.clinic_name ?? safe.clinicName ?? ""));
+      setDepartment(String(safe.department ?? ""));
+      setGlobalMemo(formatPrescriptionMemo(safe.memo));
       setItems(medicines.map((it) => mapItem(it)));
       setStatus("done");
       return;
@@ -211,8 +254,16 @@ export default function ResultScreen() {
         const data = snap.data() as any;
 
         setImageUri(data.sourceImageUrl);
-        setTitle(data.title ?? "");
-        setGlobalMemo(data.memo ?? "");
+
+        setTitle(
+          String(data.department ?? "").trim() ||
+          data.title ||
+          ""
+        );
+
+        setClinicName(String(data.clinic_name ?? data.clinicName ?? ""));
+        setDepartment(String(data.department ?? ""));
+        setGlobalMemo(formatPrescriptionMemo(data.memo));
 
         const itemsQ = query(
           collection(db, "prescriptions", prescriptionId, "items"),
@@ -295,6 +346,7 @@ export default function ResultScreen() {
           title: finalTitle,
           createdAt: serverTimestamp(),
           clinic_name: safe.clinic_name ?? "",
+          department: safe.department ?? "",
           visit_date: safe.visit_date ?? "",
           patient_name: safe.patient_name ?? "",
           memo: safe.memo ?? "",
@@ -352,7 +404,7 @@ export default function ResultScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 16 }}>
+    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, paddingBottom: 160, gap: 16 }}>
       <Text style={{ fontSize: 24, fontWeight: "900", color: "#333" }}>
         {status === "loading" ? t.resultLoadingTitle : t.resultDoneTitle}
       </Text>
@@ -396,13 +448,30 @@ export default function ResultScreen() {
             />
           </View>
 
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontSize: 15, color: "#666" }}>
+              診所：{clinicName || t.none}
+            </Text>
+
+            <Text style={{ fontSize: 15, color: "#666" }}>
+              科別：{department || t.none}
+            </Text>
+          </View>
+
           <Text style={{ fontSize: 18, fontWeight: "800", marginTop: 8 }}>
             {t.medicineDetails}
           </Text>
 
           {items.map((it, idx) => {
             const displayItem = getDisplayItem(it, language, t);
-            const note = displayItem.note || globalMemo;
+            const note = globalMemo || displayItem.note;
+
+            const method =
+              displayItem.time[0] || t.notSet;
+
+            const timeDetail =
+              displayItem.time.slice(1).join("，") ||
+              t.asDirectedUsage;
 
             return (
               <View
@@ -426,6 +495,7 @@ export default function ResultScreen() {
                   {displayItem.name}
                 </Text>
                 <View style={{ gap: 2 }}>
+
                   <Text style={{ fontSize: 15, color: "#444" }}>
                     {t.dosage}：{displayItem.dose}
                   </Text>
@@ -433,7 +503,10 @@ export default function ResultScreen() {
                     {t.quantity}：{displayItem.quantity}
                   </Text>
                   <Text style={{ fontSize: 15, color: "#444" }}>
-                    {t.usageTime}：{displayItem.time.join(", ") || t.dosageNotProvided}
+                    {t.method}：{method}
+                  </Text>
+                  <Text style={{ fontSize: 15, color: "#444" }}>
+                    {t.usageTime}：{timeDetail}
                   </Text>
                   <Text
                     style={{

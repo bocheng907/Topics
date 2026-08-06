@@ -25,12 +25,14 @@ export default function CaregiverLayout() {
     "edit",
     "camera",
     "list",
+    "medication-detail",
     "video-record",
     "health-report",
     "communication-cards",
     "notebook",
     "handbook",
     "notification-detail",
+    "result",
   ];
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
 

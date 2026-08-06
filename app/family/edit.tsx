@@ -8,6 +8,8 @@ import {
   Alert,
   StyleSheet,
   StatusBar,
+  KeyboardAvoidingView, 
+  Platform,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
@@ -31,19 +33,44 @@ type EditItem = {
   memo: string;
 };
 
+function formatPrescriptionMemo(value: any): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  return [
+    value.doctor_instructions,
+    value.precautions,
+    value.refill_info,
+    value.other,
+  ]
+    .filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0
+    )
+    .join("；");
+}
+
 function safeParseItems(itemsJson: string | undefined, language: Language): EditItem[] {
   if (!itemsJson) return [{ itemId: undefined, name: "", dosage: "", usage_type: "", usage_time: "", memo: "" }];
   try {
     const data = JSON.parse(itemsJson);
     return data.map((it: any) => {
       const usage = pickLocalizedString(it.raw ?? it, "usage", language, it.usage_zh ?? it.usage ?? it.time_of_day ?? it.time ?? "");
-      const parts = usage.includes(",") ? usage.split(",") : [usage, ""];
+      const parts = String(usage ?? "")
+        .split(/[，,]/)
+        .map((part) => part.trim())
+        .filter(Boolean);
       return {
         itemId: it.itemId ?? it.id ?? undefined,
         name: pickLocalizedString(it.raw ?? it, "drug_name", language, it.drug_name_zh ?? it.drug_name ?? it.name ?? ""),
         dosage: it.dose ?? it.dosage ?? "",
         usage_type: parts[0] || "",
-        usage_time: parts.slice(1).join(",") || "",
+        usage_time: parts.slice(1).join("，") || "",
         memo: pickLocalizedString(it.raw ?? it, "note", language, it.note_zh ?? it.memo ?? it.note ?? ""),
       };
     });
@@ -60,13 +87,44 @@ export default function FamilyEditScreen() {
 
   const initialItems = useMemo(() => safeParseItems(itemsJson, language), [itemsJson, language]);
   const [items, setItems] = useState<EditItem[]>(initialItems);
+  const [title, setTitle] = useState("");
+  const [clinicName, setClinicName] = useState("");
+  const [department, setDepartment] = useState("");
+  const [prescriptionMemo, setPrescriptionMemo] = useState("");
 
   useEffect(() => {
     if (!id) return;
 
     (async () => {
       try {
-        const itemsSnap = await getDocs(query(collection(db, "prescriptions", id, "items")));
+        const presRef = doc(db, "prescriptions", id);
+        const presSnap = await getDoc(presRef);
+
+        if (presSnap.exists()) {
+          const prescription = presSnap.data() as any;
+
+          setTitle(String(prescription.title ?? ""));
+
+          setClinicName(
+            String(
+              prescription.clinic_name ??
+              prescription.clinicName ??
+              ""
+            )
+          );
+
+          setDepartment(
+            String(prescription.department ?? "")
+          );
+
+          setPrescriptionMemo(
+            formatPrescriptionMemo(prescription.memo)
+          );
+        }
+
+        const itemsSnap = await getDocs(
+          query(collection(db, "prescriptions", id, "items"))
+        );
         const translatedItems = await Promise.all(
           itemsSnap.docs.map(async (docSnap) => {
             const raw = docSnap.data() as any;
@@ -82,14 +140,17 @@ export default function FamilyEditScreen() {
         const fetchedItems: EditItem[] = translatedItems.map((docSnap) => {
           const it = docSnap.data as any;
           const usage = pickLocalizedString(it, "usage", language, it.usage_zh ?? it.usage ?? it.time_of_day ?? it.time ?? "");
-          const parts = usage.includes(",") ? usage.split(",") : [usage, ""];
+          const parts = String(usage ?? "")
+            .split(/[，,]/)
+            .map((part) => part.trim())
+            .filter(Boolean);
 
           return {
             itemId: docSnap.id,
             name: pickLocalizedString(it, "drug_name", language, it.drug_name_zh ?? it.drug_name ?? it.name ?? ""),
             dosage: it.dose ?? it.dosage ?? "",
             usage_type: parts[0] || "",
-            usage_time: parts.slice(1).join(",") || "",
+            usage_time: parts.slice(1).join("，") || "",
             memo: pickLocalizedString(it, "note", language, it.note_zh ?? it.memo ?? it.note ?? ""),
           };
         });
@@ -114,7 +175,14 @@ export default function FamilyEditScreen() {
     try {
       const batch = writeBatch(db);
       const presRef = doc(db, "prescriptions", id);
-      batch.update(presRef, { updatedAt: serverTimestamp() });
+
+      batch.update(presRef, {
+        title: title.trim(),
+        clinic_name: clinicName.trim(),
+        department: department.trim(),
+        memo: prescriptionMemo.trim(),
+        updatedAt: serverTimestamp(),
+      });
 
       items.forEach((it) => {
         if (!it.itemId) return;
@@ -183,7 +251,52 @@ export default function FamilyEditScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={
+            Platform.OS === "ios" ? "interactive" : "on-drag"
+          }
+        >
+        <View style={styles.editCard}>
+          <Text style={styles.itemTag}>藥單基本資訊</Text>
+
+          <View style={styles.inputBox}>
+            <Text style={styles.label}>{t.recordTitle}</Text>
+            <TextInput
+              style={styles.input}
+              value={title}
+              onChangeText={setTitle}
+              placeholder={t.recordTitlePlaceholder}
+            />
+          </View>
+
+          <View style={styles.inputBox}>
+            <Text style={styles.label}>診所／醫療機構</Text>
+            <TextInput
+              style={styles.input}
+              value={clinicName}
+              onChangeText={setClinicName}
+              placeholder="請輸入診所或醫療機構名稱"
+            />
+          </View>
+
+          <View style={styles.inputBox}>
+            <Text style={styles.label}>科別</Text>
+            <TextInput
+              style={styles.input}
+              value={department}
+              onChangeText={setDepartment}
+              placeholder="請輸入科別"
+            />
+          </View>
+        </View>
+
         {items.map((it, idx) => (
           <View key={it.itemId ?? idx} style={styles.editCard}>
             <View style={styles.cardHeader}>
@@ -230,15 +343,16 @@ export default function FamilyEditScreen() {
               <Text style={styles.label}>{t.noteDescription}</Text>
               <TextInput
                 style={[styles.input, styles.memoInput]}
-                value={it.memo}
+                value={prescriptionMemo}
                 multiline
                 placeholder={t.notePlaceholder}
-                onChangeText={(t) => updateItem(idx, "memo", t)}
+                onChangeText={setPrescriptionMemo}
               />
             </View>
           </View>
         ))}
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -247,7 +361,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: {
-    backgroundColor: "#FFE043",
+    backgroundColor: "#F4E770",
     height: 100,
     paddingTop: 50,
     paddingHorizontal: 15,

@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import hashlib
 import json
 import sqlite3
@@ -8,14 +9,16 @@ import requests
 import PIL.Image
 import pandas as pd
 from rapidfuzz import process, fuzz
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from google import genai
 from google.genai import types
+from dotenv import load_dotenv
 
 # 設定與初始化
+load_dotenv()
 
 # --- 設定 ---
 app = FastAPI(title="Prescription OCR & Translation API")
@@ -87,10 +90,12 @@ init_translation_cache()
 # ===== 載入藥物外觀資料庫 =====
 
 def load_drug_database(csv_path: str = "data.csv") -> pd.DataFrame:
-    """載入藥物外觀 CSV，並建立搜尋用的合併名稱欄位。"""
+    """載入藥物外觀 CSV，並分別建立中文與混合搜尋專用的索引欄位。"""
     try:
         df = pd.read_csv(csv_path)
-        # 合併中英文品名，方便模糊比對
+        # 建立中文獨立索引（提升中文比對優先度與準確率）
+        df["_zh_search_key"] = df["中文品名"].fillna("").str.strip().str.upper()
+        # 建立中英混合索引
         df["_search_key"] = (
             df["中文品名"].fillna("") + " " + df["英文品名"].fillna("")
         ).str.strip().str.upper()
@@ -101,7 +106,7 @@ def load_drug_database(csv_path: str = "data.csv") -> pd.DataFrame:
 
 DRUG_DB = load_drug_database()
 
-# ===== 藥物外觀比對 =====
+# ===== 藥物外觀資料結構與優先中文比對 =====
 
 class DrugAppearance(BaseModel):
     shape: Optional[str] = Field(None, description="形狀")
@@ -110,32 +115,55 @@ class DrugAppearance(BaseModel):
     marking: Optional[str] = Field(None, description="錠面標註")
     special_form: Optional[str] = Field(None, description="特殊劑型")
     image_urls: List[str] = Field(default_factory=list, description="外觀圖檔網址清單")
-    matched_name_zh: Optional[str] = Field(None, description="比對到的中文品名")
-    matched_name_en: Optional[str] = Field(None, description="比對到的英文品名")
+    matched_name_zh: Optional[str] = Field(None, description="資料庫比對到的中文品名")
+    matched_name_en: Optional[str] = Field(None, description="資料庫比對到的英文品名")
     match_score: Optional[float] = Field(None, description="比對相似度 (0–100)")
 
 def lookup_drug_appearance(drug_name: str, score_cutoff: int = 60) -> Optional[DrugAppearance]:
     """
-    以藥品名稱（中文或英文）模糊比對 CSV 資料庫，回傳外觀資訊。
-    若比對分數低於 score_cutoff 則回傳 None。
+    僅用於向 CSV 資料庫查詢藥品外觀與圖片資訊。
+    策略：優先提取藥名中的中文部分進行中文特化比對，若無中文或比對分數過低則降級至中英混合比對。
     """
     if DRUG_DB.empty or not drug_name:
         return None
 
-    query = drug_name.strip().upper()
-    choices = DRUG_DB["_search_key"].tolist()
+    query_full = drug_name.strip().upper()
+    
+    # 嘗試提取藥名中的中文字元
+    chinese_parts = "".join(re.findall(r'[\u4e00-\u9fa5]+', drug_name)).strip().upper()
 
-    result = process.extractOne(
-        query,
-        choices,
-        scorer=fuzz.token_set_ratio,
-        score_cutoff=score_cutoff,
-    )
+    best_match = None
+    
+    # === 階段 1: 優先進行中文專用比對 ===
+    if chinese_parts:
+        zh_choices = DRUG_DB["_zh_search_key"].tolist()
+        zh_result = process.extractOne(
+            chinese_parts,
+            zh_choices,
+            scorer=fuzz.token_set_ratio,
+            score_cutoff=score_cutoff,
+        )
+        if zh_result:
+            matched_text, score, idx = zh_result
+            best_match = (idx, score)
 
-    if result is None:
+    # === 階段 2: 若無中文或中文比對未達門檻，改用全名稱混合比對 ===
+    if not best_match:
+        choices = DRUG_DB["_search_key"].tolist()
+        full_result = process.extractOne(
+            query_full,
+            choices,
+            scorer=fuzz.token_set_ratio,
+            score_cutoff=score_cutoff,
+        )
+        if full_result:
+            matched_text, score, idx = full_result
+            best_match = (idx, score)
+
+    if not best_match:
         return None
 
-    matched_text, score, idx = result
+    idx, score = best_match
     row = DRUG_DB.iloc[idx]
 
     # 處理多圖（以 ;;; 分隔）
@@ -172,22 +200,29 @@ def lookup_drug_appearance(drug_name: str, score_cutoff: int = 60) -> Optional[D
 
 # ===== 定義資料結構 =====
 
+class MemoDetails(BaseModel):
+    doctor_instructions: Optional[str] = Field(None, description="特定條件醫囑與用藥指示")
+    precautions: Optional[str] = Field(None, description="注意事項、副作用與警語")
+    refill_info: Optional[str] = Field(None, description="慢性病連續處方箋領藥相關資訊")
+    other: Optional[str] = Field(None, description="其他非結構化文字備註")
+
 class MedicineItem(BaseModel):
-    drug_name: str = Field(..., description="藥品名稱 (英文/中文)")
+    drug_name: str = Field(..., description="藥單上記錄之藥品名稱 (維持藥單原始辨識結果)")
     dosage: Optional[str] = Field(None, description="劑量 (例如 5mg, 0.1%)")
     quantity: str = Field(..., description="數量 (例如 1瓶, 28顆)")
     usage_zh: str = Field(..., description="中文服用說明 (例如：每日三次，飯後)")
-    common_uses: Optional[str] = Field(None, description="此藥品的常見臨床用途或適應症 (例如：降血壓、消炎止痛、抗生素)")
-    appearance: Optional[DrugAppearance] = Field(None, description="藥品外觀資訊（來自衛福部藥物資料庫比對）")
+    common_uses: Optional[str] = Field(None, description="此藥品的常見臨床用途或適應症")
+    appearance: Optional[DrugAppearance] = Field(None, description="藥品外觀與圖片資訊（來自衛福部藥物資料庫查詢）")
 
 class PrescriptionResponse(BaseModel):
-    clinic_name: str = Field(..., description="診所名稱")
+    clinic_name: str = Field(..., description="醫療機構/診所名稱（不含科別）")
+    department: Optional[str] = Field(None, description="獨立醫療科別（如：耳鼻喉科、眼科）")
     visit_date: Optional[str] = Field(None, description="就診日期")
     patient_name: Optional[str] = Field(None, description="病患姓名")
     medicines: List[MedicineItem] = Field(..., description="藥品清單")
-    memo: Optional[str] = Field(None, description="醫囑或備註")
+    memo: Optional[MemoDetails] = Field(None, description="結構化備註資訊")
 
-# Gemini 解析用的內部結構（不含 appearance，由後端補入）
+# Gemini 解析用的內部結構
 class _MedicineItemRaw(BaseModel):
     drug_name: str
     dosage: Optional[str] = None
@@ -197,12 +232,12 @@ class _MedicineItemRaw(BaseModel):
 
 class _PrescriptionRaw(BaseModel):
     clinic_name: str
+    department: Optional[str] = None
     visit_date: Optional[str] = None
     patient_name: Optional[str] = None
     medicines: List[_MedicineItemRaw]
-    memo: Optional[str] = None
+    memo: Optional[MemoDetails] = None
 
-# 接收圖片 URL
 class ImageUrlInput(BaseModel):
     image_url: str = Field(..., description="藥單圖片URL", example="https://example.jpg")
 
@@ -212,7 +247,7 @@ class TranslationRequest(BaseModel):
     text: str = Field(..., description="要翻譯的文字內容")
     target_language: Optional[str] = Field(
         None,
-        description="目標語言（僅在來源為中文時需要指定）。例如：'English'、'日本語'、'한국어'、'Español'。若來源為非中文，則自動翻成中文，此欄位忽略。"
+        description="目標語言（僅在來源為中文時需要指定）。"
     )
 
 class TranslationResponse(BaseModel):
@@ -251,22 +286,20 @@ class BatchTranslationResponse(BaseModel):
 # ===== 藥單 OCR 處理 =====
 
 def process_prescription_with_gemini(img: PIL.Image.Image) -> PrescriptionResponse:
-    """
-    將圖片傳送給 Gemini，要求進行 OCR、清理、結構化與翻譯。
-    解析完成後，對每個藥品進行外觀資料庫比對並補入 appearance 欄位。
-    """
-
     prompt = """
     你是一個專業的醫療輔助 AI。請分析這張台灣的藥單圖片。
     
-    任務目標：
-    1. **OCR與修正**：辨識藥名與用法，修正 OCR 造成的拼字錯誤 (例如 'OINTMEN' -> 'OINTMENT')。
-    2. **資訊提取**：提取診所名稱、日期、病患姓名、藥品詳情。
-    3. **common_uses**：根據藥品名稱與劑型，填寫該藥品在臨床上最常見的用途或適應症（繁體中文，簡短說明，例如「降血壓」、「消炎止痛」、「廣效抗生素」、「胃酸抑制劑」）。若無法判斷則填 null。
+    【任務目標】
+    1. **OCR與辨識**：精準辨識藥單上印製的藥品名稱（drug_name）與用法，修正明顯的拼字錯字。請務必完整保留藥單上的原始藥名（不論中文或英文）。
+    2. **資訊拆分與提取**：
+       - **clinic_name**：僅填寫診所或醫院機構全稱。
+       - **department**：明確拆分出醫療科別（如：「耳鼻喉科」、「胃腸肝膽科」、「眼科」）。若無則填 null。
+    3. **common_uses**：根據藥品名稱與劑型，填寫常見臨床用途（繁體中文簡短說明，如「降血壓」）。
+    4. **memo 結構化拆分**：將藥單上的備註、警語、慢籤等資訊，嚴格分類至對應欄位（doctor_instructions, precautions, refill_info, other）。
     
-    輸出限制：
+    【輸出限制】
     - 請直接回傳符合 JSON Schema 的資料。
-    - 若欄位無法辨識，請填 null。
+    - 若欄位無法辨識或未提及，請填 null。
     """
 
     try:
@@ -281,23 +314,25 @@ def process_prescription_with_gemini(img: PIL.Image.Image) -> PrescriptionRespon
 
         raw = _PrescriptionRaw.model_validate_json(response.text)
 
-        # 補入外觀資訊
         enriched_medicines = []
         for med in raw.medicines:
+            # 僅傳入藥單辨識藥名查詢外觀與圖片
             appearance = lookup_drug_appearance(med.drug_name)
+
             enriched_medicines.append(
                 MedicineItem(
-                    drug_name=med.drug_name,
+                    drug_name=med.drug_name,  # 嚴格輸出藥單上的藥名，不替換為資料庫名稱
                     dosage=med.dosage,
                     quantity=med.quantity,
                     usage_zh=med.usage_zh,
                     common_uses=med.common_uses,
-                    appearance=appearance,
+                    appearance=appearance,     # 資料庫資訊僅作為外觀物件附件
                 )
             )
 
         return PrescriptionResponse(
             clinic_name=raw.clinic_name,
+            department=raw.department,
             visit_date=raw.visit_date,
             patient_name=raw.patient_name,
             medicines=enriched_medicines,
@@ -311,12 +346,6 @@ def process_prescription_with_gemini(img: PIL.Image.Image) -> PrescriptionRespon
 # ===== 翻譯處理 =====
 
 def process_translation_with_gemini(text: str, target_language: Optional[str]) -> TranslationResult:
-    """
-    使用 Gemini 偵測語言並進行翻譯：
-    - 非中文 → 自動翻成繁體中文
-    - 中文 → 翻成使用者指定的目標語言
-    """
-
     if target_language:
         cached = get_cached_translation(text, target_language)
         if cached:
@@ -410,7 +439,6 @@ def process_batch_translation_with_gemini(
 def root():
     return {"message": "AI Prescription OCR & Translation Service is Running!"}
 
-# --- 藥單分析：URL ---
 @app.post("/analyze/url", response_model=PrescriptionResponse)
 def analyze_from_url(data: ImageUrlInput):
     try:
@@ -428,9 +456,6 @@ def analyze_from_url(data: ImageUrlInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"伺服器內部錯誤: {str(e)}")
 
-# --- 藥單分析：上傳檔案 ---
-from fastapi import UploadFile, File
-
 @app.post("/analyze/upload", response_model=PrescriptionResponse)
 async def analyze_upload_file(file: UploadFile = File(...)):
     try:
@@ -441,29 +466,12 @@ async def analyze_upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"檔案解析失敗: {str(e)}")
 
-# --- 翻譯 API ---
 @app.post(
     "/translate",
     response_model=TranslationResponse,
     summary="智慧翻譯",
-    description=(
-        "自動偵測語言並翻譯。\n\n"
-        "- **非中文輸入** → 自動翻譯成繁體中文，無需填寫 `target_language`。\n"
-        "- **中文輸入** → 需指定 `target_language`（例如 `'English'`、`'日本語'`、`'한국어'`），翻譯成對應語言。"
-    )
 )
 def translate_text(data: TranslationRequest):
-    """
-    Request body 範例（非中文 → 中文）：
-    ```json
-    { "text": "Take one tablet after each meal." }
-    ```
-
-    Request body 範例（中文 → 其他語言）：
-    ```json
-    { "text": "每日三次，飯後服用。", "target_language": "English" }
-    ```
-    """
     try:
         result = process_translation_with_gemini(data.text, data.target_language)
 
@@ -485,7 +493,6 @@ def translate_text(data: TranslationRequest):
     summary="批次翻譯",
 )
 def translate_texts(data: BatchTranslationRequest):
-    """一次翻譯多個已知為繁體中文的欄位，並重用持久快取。"""
     try:
         translations = process_batch_translation_with_gemini(
             data.items, data.target_language
