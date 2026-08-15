@@ -28,7 +28,7 @@ import {
   ensureFirestoreTranslations,
   PRESCRIPTION_ITEM_TRANSLATION_SPECS,
 } from "@/src/i18n/dynamicTranslation";
-import { createMedicationReminders } from "@/src/reminders/createMedicationReminders";
+import { createMedicationReminders, inferScheduleTimesFromText } from "@/src/reminders/createMedicationReminders";
 import { translations, type Language } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 
@@ -370,6 +370,7 @@ export default function ResultScreen() {
             dosage: dose,
             quantity: it.quantity ?? "",
             usage_zh: time,
+            feeding_times: inferScheduleTimesFromText(time),
             memo: note,
             note_zh: note,
             drug_name_translated: "",

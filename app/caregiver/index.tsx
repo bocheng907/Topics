@@ -2,12 +2,13 @@
 import { db } from "@/firebase/firebaseConfig";
 import { router } from "expo-router";
 import {
-  addDoc,
   collection,
+  doc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   where,
 } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
@@ -51,17 +52,41 @@ type Reminder = {
 type MedicationLog = {
   id: string;
   reminderId: string;
+  reminderIds?: string[];
   patientId: string;
   dateKey: string;
+  scheduleTime?: string;
 };
 
-function getTaipeiDateKey() {
+// DONE 只在預定餵藥時間附近開放。
+// 若未來要調整時段，只需修改這兩個常數。
+const DONE_WINDOW_BEFORE_MINUTES = 30;
+const DONE_WINDOW_AFTER_MINUTES = 60;
+
+function getTaipeiDateKey(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Taipei",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).format(date);
+}
+
+function getTaipeiMinutes(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Taipei",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+  return hour * 60 + minute;
+}
+
+function medicationLogId(patientId: string, dateKey: string, scheduleTime: string) {
+  return `${patientId}_${dateKey}_${scheduleTime.replace(":", "-")}`;
 }
 
 function hhmmToMinutes(hhmm?: string) {
@@ -86,8 +111,26 @@ export default function CaregiverHomeScreen() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [todayLogs, setTodayLogs] = useState<MedicationLog[]>([]);
   const [doneLoading, setDoneLoading] = useState(false);
+  const [clock, setClock] = useState(() => ({
+    dateKey: getTaipeiDateKey(),
+    minutes: getTaipeiMinutes(),
+  }));
 
-  const todayKey = useMemo(() => getTaipeiDateKey(), []);
+  const todayKey = clock.dateKey;
+
+  // 每分鐘更新一次，讓 DONE 能在餵藥時段到達時自動開啟，跨日也會自動切換。
+  useEffect(() => {
+    const refreshClock = () => {
+      setClock({
+        dateKey: getTaipeiDateKey(),
+        minutes: getTaipeiMinutes(),
+      });
+    };
+
+    refreshClock();
+    const timer = setInterval(refreshClock, 30 * 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // ==========================================
   // 邏輯：防呆與權限檢查 (沒有長輩則去加入)
@@ -219,6 +262,8 @@ export default function CaregiverHomeScreen() {
             reminderId: data.reminderId ?? "",
             patientId: data.patientId ?? "",
             dateKey: data.dateKey ?? "",
+            scheduleTime: data.scheduleTime ?? "",
+            reminderIds: Array.isArray(data.reminderIds) ? data.reminderIds : [],
           };
         });
         setTodayLogs(rows);
@@ -232,21 +277,62 @@ export default function CaregiverHomeScreen() {
     return unsub;
   }, [ready, user, activePatientId, todayKey]);
 
-  const currentReminder = useMemo(() => {
-    if (!reminders.length) return null;
+  const reminderSlots = useMemo(() => {
+    const grouped = new Map<string, Reminder[]>();
 
-    // 先挑今天還沒完成的第一筆
-    const unfinished = reminders.find(
-      (r) => !todayLogs.some((log) => log.reminderId === r.id)
+    for (const reminder of reminders) {
+      if (!reminder.scheduleTime || hhmmToMinutes(reminder.scheduleTime) === Number.MAX_SAFE_INTEGER) {
+        continue;
+      }
+
+      const list = grouped.get(reminder.scheduleTime) ?? [];
+      list.push(reminder);
+      grouped.set(reminder.scheduleTime, list);
+    }
+
+    return Array.from(grouped.entries())
+      .map(([scheduleTime, slotReminders]) => ({ scheduleTime, reminders: slotReminders }))
+      .sort((a, b) => hhmmToMinutes(a.scheduleTime) - hhmmToMinutes(b.scheduleTime));
+  }, [reminders]);
+
+  const activeSlot = useMemo(() => {
+    const now = clock.minutes;
+
+    return (
+      reminderSlots.find((slot) => {
+        const scheduled = hhmmToMinutes(slot.scheduleTime);
+        return (
+          now >= scheduled - DONE_WINDOW_BEFORE_MINUTES &&
+          now <= scheduled + DONE_WINDOW_AFTER_MINUTES
+        );
+      }) ?? null
+    );
+  }, [reminderSlots, clock.minutes]);
+
+  const displaySlot = useMemo(() => {
+    if (activeSlot) return activeSlot;
+    if (!reminderSlots.length) return null;
+
+    const upcoming = reminderSlots.find(
+      (slot) => hhmmToMinutes(slot.scheduleTime) > clock.minutes
     );
 
-    return unfinished ?? reminders[0] ?? null;
-  }, [reminders, todayLogs]);
+    return upcoming ?? reminderSlots[0];
+  }, [activeSlot, reminderSlots, clock.minutes]);
 
-  const currentReminderDone = useMemo(() => {
-    if (!currentReminder) return false;
-    return todayLogs.some((log) => log.reminderId === currentReminder.id);
-  }, [currentReminder, todayLogs]);
+  const currentReminder = displaySlot?.reminders[0] ?? null;
+
+  const activeSlotDone = useMemo(() => {
+    if (!activeSlot) return false;
+
+    const slotReminderIds = new Set(activeSlot.reminders.map((reminder) => reminder.id));
+
+    return todayLogs.some((log) =>
+      log.scheduleTime === activeSlot.scheduleTime ||
+      slotReminderIds.has(log.reminderId) ||
+      (Array.isArray(log.reminderIds) && log.reminderIds.some((id) => slotReminderIds.has(id)))
+    );
+  }, [activeSlot, todayLogs]);
 
   async function handleDonePress() {
     if (!user) {
@@ -259,12 +345,12 @@ export default function CaregiverHomeScreen() {
       return;
     }
 
-    if (!currentReminder) {
-      Alert.alert(t.noReminder, t.noReminderAvailable);
+    if (!currentReminder || !activeSlot) {
+      Alert.alert(t.noReminder, "目前尚未進入餵藥時間，請在預定時間前 30 分鐘至後 60 分鐘內操作。 ");
       return;
     }
 
-    if (currentReminderDone) {
+    if (activeSlotDone) {
       Alert.alert(t.alreadyDone, t.reminderAlreadyDone);
       return;
     }
@@ -272,13 +358,32 @@ export default function CaregiverHomeScreen() {
     try {
       setDoneLoading(true);
 
-      await addDoc(collection(db, "medication_logs"), {
-        reminderId: currentReminder.id,
-        prescriptionId: currentReminder.prescriptionId ?? "",
+      const slotReminders = activeSlot.reminders;
+      const primaryReminder = slotReminders[0];
+      const logRef = doc(
+        db,
+        "medication_logs",
+        medicationLogId(activePatientId, todayKey, activeSlot.scheduleTime)
+      );
+
+      // 固定文件 ID = 長輩 + 日期 + 餵藥時段。
+      // 即使網路延遲造成快速連點，也不會建立第二筆完成紀錄或第二次通知。
+      await setDoc(logRef, {
+        reminderId: primaryReminder.id,
+        reminderIds: slotReminders.map((reminder) => reminder.id),
+        prescriptionId: primaryReminder.prescriptionId ?? "",
+        prescriptionIds: [
+          ...new Set(
+            slotReminders
+              .map((reminder) => reminder.prescriptionId ?? "")
+              .filter(Boolean)
+          ),
+        ],
         patientId: activePatientId,
-        medicineName: currentReminder.medicineName,
-        doseText: currentReminder.doseText,
-        scheduleTime: currentReminder.scheduleTime,
+        medicineName: primaryReminder.medicineName,
+        medicineNames: slotReminders.map((reminder) => reminder.medicineName),
+        doseText: primaryReminder.doseText,
+        scheduleTime: activeSlot.scheduleTime,
         status: "taken",
         confirmedBy: user.uid,
         takenAt: serverTimestamp(),
@@ -333,17 +438,17 @@ export default function CaregiverHomeScreen() {
           <Pressable
             style={[
               styles.doneBtn,
-              (!currentReminder || currentReminderDone || doneLoading) && {
+              (!activeSlot || activeSlotDone || doneLoading) && {
                 opacity: 0.5,
               },
             ]}
             onPress={handleDonePress}
-            disabled={!currentReminder || currentReminderDone || doneLoading}
+            disabled={!activeSlot || activeSlotDone || doneLoading}
           >
             <Text style={styles.doneBtnText}>
               {doneLoading
                 ? "..."
-                : currentReminderDone
+                : activeSlotDone
                 ? "DONE ✓"
                 : "DONE"}
             </Text>

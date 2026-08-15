@@ -11,6 +11,7 @@ type PrescriptionItem = {
   drug_name_zh?: string;
   dose?: string;
   time_of_day?: string[] | string;
+  feeding_times?: string[] | string;
 };
 
 function normalizeTimeOfDay(value?: string[] | string): string[] {
@@ -19,7 +20,7 @@ function normalizeTimeOfDay(value?: string[] | string): string[] {
   return [String(value)];
 }
 
-function inferScheduleTimesFromText(text: string): string[] {
+export function inferScheduleTimesFromText(text: string): string[] {
   const s = String(text).trim().toLowerCase();
   const times = new Set<string>();
 
@@ -97,6 +98,29 @@ function inferScheduleTimesFromText(text: string): string[] {
   return [...times];
 }
 
+export function normalizeExplicitScheduleTimes(value?: string[] | string): string[] {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+    ? value.split(/[，,;；\s]+/)
+    : [];
+
+  const normalized = new Set<string>();
+
+  for (const raw of rawValues) {
+    const match = String(raw).trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) continue;
+
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) continue;
+
+    normalized.add(`${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`);
+  }
+
+  return [...normalized].sort();
+}
+
 async function getLinkedUserIds(patientId: string): Promise<string[]> {
   const patientRef = doc(db, "patients", patientId);
   const patientSnap = await getDoc(patientRef);
@@ -131,12 +155,17 @@ export async function createMedicationReminders(params: {
     const medicineName = item.drug_name_zh?.trim() || "未命名藥物";
     const doseText = item.dose?.trim() || "";
 
-    const rawTimeTexts = normalizeTimeOfDay(item.time_of_day);
+    const explicitScheduleTimes = normalizeExplicitScheduleTimes(item.feeding_times);
     const scheduleTimes = new Set<string>();
 
-    for (const raw of rawTimeTexts) {
-      const inferred = inferScheduleTimesFromText(raw);
-      inferred.forEach((t) => scheduleTimes.add(t));
+    if (explicitScheduleTimes.length > 0) {
+      explicitScheduleTimes.forEach((t) => scheduleTimes.add(t));
+    } else {
+      const rawTimeTexts = normalizeTimeOfDay(item.time_of_day);
+      for (const raw of rawTimeTexts) {
+        const inferred = inferScheduleTimesFromText(raw);
+        inferred.forEach((t) => scheduleTimes.add(t));
+      }
     }
 
     for (const scheduleTime of scheduleTimes) {

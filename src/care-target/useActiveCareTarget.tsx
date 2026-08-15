@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   query,
   updateDoc,
@@ -203,11 +204,64 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
   async function setActivePatientId(id: string) {
     if (!user) return;
 
-    const exists = targets.some((t) => t.id === id);
+    let exists = targets.some((t) => t.id === id);
+
+    // 剛用邀請碼加入時，Provider 內的 targets 還是加入前的舊快照。
+    // 此時只補抓「這一位」長輩並驗證目前帳號確實已在對應成員陣列中，
+    // 不重載或改動其他既有長輩資料。
     if (!exists) {
-      console.log("setActivePatientId failed: patient not found", id);
-      return;
+      try {
+        const patientSnap = await getDoc(doc(db, "patients", id));
+        if (!patientSnap.exists()) {
+          console.log("setActivePatientId failed: patient not found", id);
+          return;
+        }
+
+        const data = patientSnap.data() as any;
+        const roleField = user.role === "family" ? "families" : "caregivers";
+        const members = Array.isArray(data?.[roleField]) ? data[roleField] : [];
+
+        if (!members.includes(user.uid)) {
+          console.log("setActivePatientId failed: user is not linked", id);
+          return;
+        }
+
+        let createdAt = Date.now();
+        if (data.createdAt?.toMillis) {
+          createdAt = data.createdAt.toMillis();
+        } else if (typeof data.createdAt === "number") {
+          createdAt = data.createdAt;
+        }
+
+        let updatedAt = createdAt;
+        if (data.updatedAt?.toMillis) {
+          updatedAt = data.updatedAt.toMillis();
+        } else if (typeof data.updatedAt === "number") {
+          updatedAt = data.updatedAt;
+        }
+
+        const joinedTarget: CareTarget = {
+          id: patientSnap.id,
+          patientsId: data.patientsId ?? "",
+          name: data.name ?? "",
+          notes: data.notes ?? data.note ?? "",
+          inviteCode: data.inviteCode ?? "",
+          createdAt,
+          updatedAt,
+        };
+
+        setTargets((prev) =>
+          prev.some((target) => target.id === id) ? prev : [...prev, joinedTarget]
+        );
+        setLinkedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+        exists = true;
+      } catch (error) {
+        console.log("setActivePatientId refresh joined patient failed:", error);
+        return;
+      }
     }
+
+    if (!exists) return;
 
     await AsyncStorage.setItem(activeKey(user.uid), id);
     setActiveId(id);

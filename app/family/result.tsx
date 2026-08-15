@@ -31,7 +31,7 @@ import { pickLocalizedString, translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 
 // ✅ 1. 確保 time 是字串陣列（UI 需要）
-type Item = { name: string; dose: string; time: string[]; note: string; quantity?: string };
+type Item = { name: string; dose: string; time: string[]; note: string; quantity?: string; feeding_times?: string[] };
 
 const TIME_LABELS: Record<string, string> = {
   morning: "早上",
@@ -153,6 +153,7 @@ export default function ResultScreen() {
             quantity: it.quantity ?? "",
             time: timeArr,
             note: it.note_zh ?? "", // 目前你存的是空字串也沒關係
+            feeding_times: Array.isArray(raw.feeding_times) ? raw.feeding_times : [],
           };
         });
 
@@ -215,6 +216,7 @@ export default function ResultScreen() {
           quantity: it.quantity ?? "",
           // ✅ 你目前正規是 usage（文字），這裡把 UI 的 time[] 合成字串存
           usage_zh: (it.time ?? []).join(", "),
+          feeding_times: Array.isArray(it.feeding_times) ? it.feeding_times : [],
           note_zh: it.note ?? "",
         });
       }

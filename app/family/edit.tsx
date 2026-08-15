@@ -16,7 +16,7 @@ import { useAuthContext } from "@/src/auth/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
 import { doc, collection, getDoc, getDocs, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
-import { createMedicationReminders } from "@/src/reminders/createMedicationReminders";
+import { createMedicationReminders, inferScheduleTimesFromText, normalizeExplicitScheduleTimes } from "@/src/reminders/createMedicationReminders";
 import {
   ensureFirestoreTranslations,
   PRESCRIPTION_ITEM_TRANSLATION_SPECS,
@@ -30,6 +30,7 @@ type EditItem = {
   dosage: string;
   usage_type: string;
   usage_time: string;
+  feeding_times: string;
   memo: string;
 };
 
@@ -56,7 +57,7 @@ function formatPrescriptionMemo(value: any): string {
 }
 
 function safeParseItems(itemsJson: string | undefined, language: Language): EditItem[] {
-  if (!itemsJson) return [{ itemId: undefined, name: "", dosage: "", usage_type: "", usage_time: "", memo: "" }];
+  if (!itemsJson) return [{ itemId: undefined, name: "", dosage: "", usage_type: "", usage_time: "", feeding_times: "", memo: "" }];
   try {
     const data = JSON.parse(itemsJson);
     return data.map((it: any) => {
@@ -71,11 +72,12 @@ function safeParseItems(itemsJson: string | undefined, language: Language): Edit
         dosage: it.dose ?? it.dosage ?? "",
         usage_type: parts[0] || "",
         usage_time: parts.slice(1).join("，") || "",
+        feeding_times: (Array.isArray(it.feeding_times) ? it.feeding_times : inferScheduleTimesFromText(String(usage ?? ""))).join(", "),
         memo: pickLocalizedString(it.raw ?? it, "note", language, it.note_zh ?? it.memo ?? it.note ?? ""),
       };
     });
   } catch (e) {
-    return [{ itemId: undefined, name: "", dosage: "", usage_type: "", usage_time: "", memo: "" }];
+    return [{ itemId: undefined, name: "", dosage: "", usage_type: "", usage_time: "", feeding_times: "", memo: "" }];
   }
 }
 
@@ -151,6 +153,7 @@ export default function FamilyEditScreen() {
             dosage: it.dose ?? it.dosage ?? "",
             usage_type: parts[0] || "",
             usage_time: parts.slice(1).join("，") || "",
+            feeding_times: (Array.isArray(it.feeding_times) ? it.feeding_times : inferScheduleTimesFromText(String(usage ?? ""))).join(", "),
             memo: pickLocalizedString(it, "note", language, it.note_zh ?? it.memo ?? it.note ?? ""),
           };
         });
@@ -196,6 +199,7 @@ export default function FamilyEditScreen() {
           dose: it.dosage,
           dosage: it.dosage,
           usage_zh: combinedUsage,
+          feeding_times: normalizeExplicitScheduleTimes(it.feeding_times),
           note_zh: it.memo,
           memo: it.memo,
           updatedAt: serverTimestamp(),
@@ -222,6 +226,7 @@ export default function FamilyEditScreen() {
           drug_name_zh: it.name,
           dose: it.dosage,
           time_of_day: `${it.usage_type}${it.usage_time ? "," + it.usage_time : ""}`,
+          feeding_times: normalizeExplicitScheduleTimes(it.feeding_times),
         })),
       });
       Alert.alert(t.saveSuccessTitle, t.saveSuccessMessage, [{ text: t.confirm, onPress: () => router.back() }]);
@@ -340,6 +345,18 @@ export default function FamilyEditScreen() {
             </View>
 
             <View style={styles.inputBox}>
+              <Text style={styles.label}>自訂餵藥時間</Text>
+              <TextInput
+                style={styles.input}
+                value={it.feeding_times}
+                onChangeText={(text) => updateItem(idx, "feeding_times", text)}
+                placeholder="例如 08:30, 13:00, 19:30"
+                keyboardType="numbers-and-punctuation"
+              />
+              <Text style={styles.helperText}>可輸入多個時間，以逗號分隔；未設定時沿用藥單自動判斷的時間。</Text>
+            </View>
+
+            <View style={styles.inputBox}>
               <Text style={styles.label}>{t.noteDescription}</Text>
               <TextInput
                 style={[styles.input, styles.memoInput]}
@@ -396,4 +413,5 @@ const styles = StyleSheet.create({
   label: { fontSize: 15, color: "#666", fontWeight: "600" },
   input: { backgroundColor: "#F5F5F5", padding: 12, borderRadius: 10, fontSize: 16, color: "#333" },
   memoInput: { height: 80, textAlignVertical: "top" },
+  helperText: { fontSize: 12, color: "#888", lineHeight: 18 },
 });
