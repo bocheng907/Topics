@@ -29,9 +29,19 @@ import {
 } from "@/src/i18n/dynamicTranslation";
 import { pickLocalizedString, translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { createMedicationReminders } from "@/src/reminders/createMedicationReminders";
+import { makePrescriptionItemDocumentId } from "@/src/data/firestoreDocumentIds";
 
 // ✅ 1. 確保 time 是字串陣列（UI 需要）
-type Item = { name: string; dose: string; time: string[]; note: string; quantity?: string; feeding_times?: string[] };
+type Item = {
+  itemId?: string;
+  name: string;
+  dose: string;
+  time: string[];
+  note: string;
+  quantity?: string;
+  feeding_times?: string[];
+};
 
 const TIME_LABELS: Record<string, string> = {
   morning: "早上",
@@ -128,7 +138,7 @@ export default function ResultScreen() {
               language,
               PRESCRIPTION_ITEM_TRANSLATION_SPECS
             );
-            return { ...raw, ...translated };
+            return { ...raw, ...translated, itemId: d.id };
           })
         );
         const rows: Item[] = translatedItems.map((raw) => {
@@ -148,6 +158,7 @@ export default function ResultScreen() {
             [];
 
           return {
+            itemId: it.itemId,
             name: it.drug_name_zh || t.unknownMedicine,
             dose: it.dose ?? "",
             quantity: it.quantity ?? "",
@@ -202,15 +213,14 @@ export default function ResultScreen() {
         updatedAt: serverTimestamp(),
       });
 
-      // 2) 重寫 items 子集合（先刪舊的，再寫新的）
+      // 2) 保留既有 item ID；新項目改用 item-01、item-02 等固定格式。
       const batch = writeBatch(db);
 
-      const oldSnap = await getDocs(collection(db, "prescriptions", id, "items"));
-      oldSnap.docs.forEach((d) => batch.delete(d.ref));
-
-      for (const it of items) {
-        const itemRef = doc(collection(db, "prescriptions", id, "items"));
+      for (const [itemIndex, it] of items.entries()) {
+        const itemId = it.itemId || makePrescriptionItemDocumentId(itemIndex);
+        const itemRef = doc(db, "prescriptions", id, "items", itemId);
         batch.set(itemRef, {
+          itemId,
           drug_name_zh: it.name ?? "",
           dose: it.dose ?? "",
           quantity: it.quantity ?? "",
@@ -222,6 +232,16 @@ export default function ResultScreen() {
       }
 
       await batch.commit();
+      await createMedicationReminders({
+        patientId: activePatientId,
+        prescriptionId: id,
+        items: items.map((item, itemIndex) => ({
+          itemId: item.itemId || makePrescriptionItemDocumentId(itemIndex),
+          drug_name_zh: item.name,
+          dose: item.dose,
+          time_of_day: item.time.join(","),
+        })),
+      });
 
       Alert.alert(t.success, t.saveSuccessMessage, [
         { text: t.confirm, onPress: () => router.replace("/family/list") },

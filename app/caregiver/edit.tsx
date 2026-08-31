@@ -3,7 +3,7 @@ import { View, Text, TextInput, ScrollView, Pressable, Alert, StyleSheet, Status
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
-import { doc, collection, getDoc, getDocs, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
+import { doc, collection, getDoc, getDocs, query, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { createMedicationReminders, inferScheduleTimesFromText, normalizeExplicitScheduleTimes } from "@/src/reminders/createMedicationReminders";
 import {
@@ -65,7 +65,7 @@ function safeParseItems(itemsJson: string | undefined, language: Language): Edit
         memo: pickLocalizedString(it.raw ?? it, "note", language, it.note_zh ?? it.memo ?? it.note ?? ""),
       };
     });
-  } catch (e) {
+  } catch {
     return [{ itemId: undefined, name: "", dosage: "", usage_type: "", usage_time: "", feeding_times: "", memo: "" }];
   }
 }
@@ -149,8 +149,8 @@ export default function CaregiverEditScreen() {
         if (fetchedItems.length > 0) {
           setItems(fetchedItems);
         }
-      } catch (e) {
-        console.log("caregiver edit load items error:", e);
+      } catch (error) {
+        console.log("caregiver edit load items error:", error);
       }
     })();
   }, [id, language]);
@@ -199,24 +199,11 @@ export default function CaregiverEditScreen() {
         const presSnap = await getDoc(presRef);
         const patientId = String(presSnap.data()?.patientId ?? "");
 
-        const remindersBatch = writeBatch(db);
-        const remindersSnap = await getDocs(
-          query(
-            collection(db, "medication_reminders"),
-            where("prescriptionId", "==", id)
-          )
-        );
-
-        remindersSnap.docs.forEach((docSnap) => {
-          remindersBatch.delete(docSnap.ref);
-        });
-
-        await remindersBatch.commit();
-
         await createMedicationReminders({
           patientId,
           prescriptionId: id,
           items: items.map((it) => ({
+            itemId: it.itemId,
             drug_name_zh: it.name,
             dose: it.dosage,
             time_of_day: `${it.usage_type}${
@@ -321,6 +308,16 @@ export default function CaregiverEditScreen() {
           </View>
         </View>
 
+        <View style={styles.memoCard}>
+          <Text style={styles.label}>{t.prescriptionNote}</Text>
+          <TextInput
+            style={[styles.input, styles.memoInput]}
+            value={prescriptionMemo}
+            multiline
+            placeholder={t.notePlaceholder}
+            onChangeText={setPrescriptionMemo}
+          />
+        </View>
         {items.map((it, idx) => (
           <View key={it.itemId ?? idx} style={styles.editCard}>
             <Text style={styles.itemTag}>{t.medicineItem} {idx + 1}</Text>
@@ -343,10 +340,10 @@ export default function CaregiverEditScreen() {
               <Text style={styles.label}>{t.note}</Text>
               <TextInput
                 style={[styles.input, styles.memoInput]}
-                value={prescriptionMemo}
+                value={it.memo}
                 multiline
-                onChangeText={setPrescriptionMemo}
-                placeholder="請輸入藥單備註"
+                onChangeText={(text) => updateItem(idx, "memo", text)}
+                placeholder={t.notePlaceholder}
               />
             </View>
           </View>
@@ -366,7 +363,8 @@ const styles = StyleSheet.create({
   pageTitle: { fontSize: 26, fontWeight: "900", color: "#000" },
   saveBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
   saveBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
-  scrollContent: { padding: 20, gap: 20},
+  scrollContent: { padding: 20, gap: 20 },
+  memoCard: { padding: 20, borderRadius: 20, backgroundColor: "#F7F7F7", gap: 8 },
   editCard: { padding: 20, borderRadius: 20, borderWidth: 1, borderColor: "#E0E0E0", backgroundColor: "#fff", gap: 15 },
   itemTag: { color: "#007AFF", fontWeight: "bold", fontSize: 16 },
   inputBox: { gap: 8 },

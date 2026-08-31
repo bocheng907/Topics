@@ -83,7 +83,7 @@ export default function CaregiverDetailScreen() {
       });
       setItems(list);
       setLoaded(true);
-    } catch (e) {
+    } catch {
       setLoaded(true);
       Alert.alert(t.resultReadFailedTitle, t.resultReadFailedMessage);
     }
@@ -154,6 +154,13 @@ export default function CaregiverDetailScreen() {
           <Image source={{ uri: p.sourceImageUrl }} style={styles.img} resizeMode="contain" />
         )}
 
+        <View style={styles.prescriptionNoteCard}>
+          <Text style={styles.prescriptionNoteLabel}>{t.prescriptionNote}</Text>
+          <Text style={prescriptionMemo ? styles.prescriptionNoteValue : styles.emptyNoteValue}>
+            {prescriptionMemo || t.none}
+          </Text>
+        </View>
+
         <Text style={styles.sectionTitle}>{t.medicineDetails}</Text>
         {items.map((it, idx) => {
           const usageParts = String(it.usage_zh ?? "")
@@ -187,8 +194,8 @@ export default function CaregiverDetailScreen() {
                 <Text style={styles.infoValue}>{timeDetail}</Text>
               </View>
 
-              <Text style={styles.itemNote}>
-                {t.note}：{prescriptionMemo || it.memo || t.notSet}
+              <Text style={it.memo ? styles.itemNote : styles.emptyItemNote}>
+                {t.medicineNote}：{it.memo || t.none}
               </Text>
             </View>
           );
@@ -210,6 +217,10 @@ const styles = StyleSheet.create({
   editBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
   scrollContent: { padding: 20 },
   img: { width: "100%", height: 300, borderRadius: 12, backgroundColor: "#eee", marginBottom: 20 },
+  prescriptionNoteCard: { padding: 16, borderRadius: 12, backgroundColor: "#F7F7F7", marginBottom: 20 },
+  prescriptionNoteLabel: { fontSize: 16, color: "#555", fontWeight: "700", marginBottom: 6 },
+  prescriptionNoteValue: { fontSize: 15, color: "#333", lineHeight: 22 },
+  emptyNoteValue: { fontSize: 15, color: "#AAA" },
   sectionTitle: { fontSize: 20, fontWeight: "800", marginBottom: 10 },
   itemCard: { padding: 16, borderRadius: 12, borderWidth: 1, borderColor: "#eee", backgroundColor: "#fff", marginBottom: 10 },
   itemName: { fontSize: 18, fontWeight: "800", color: "#007AFF", marginBottom: 8 },
@@ -217,5 +228,6 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 15, color: "#666", width: 85 },
   infoValue: { fontSize: 15, color: "#333", fontWeight: "600", flex: 1 },
   itemNote: { fontSize: 14, color: "#999", marginTop: 8, fontStyle: "italic" },
+  emptyItemNote: { fontSize: 14, color: "#BBB", marginTop: 8, fontStyle: "italic" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 });

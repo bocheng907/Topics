@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { View, Text, Pressable, ScrollView, Image, StyleSheet, StatusBar } from "react-native";
-import { router, useLocalSearchParams, useFocusEffect, Tabs } from "expo-router"; 
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { doc, getDoc, collection, getDocs, query } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { useAuthContext } from "@/src/auth/AuthProvider";
@@ -161,6 +161,13 @@ export default function FamilyDetailScreen() {
           </View>
         )}
 
+        <View style={styles.prescriptionNoteCard}>
+          <Text style={styles.prescriptionNoteLabel}>{t.prescriptionNote}</Text>
+          <Text style={prescriptionMemo ? styles.prescriptionNoteValue : styles.emptyNoteValue}>
+            {prescriptionMemo || t.none}
+          </Text>
+        </View>
+
         <Text style={styles.sectionTitle}>{t.medicineContent}</Text>
         
         {p.items?.map((it: any, idx: number) => {
@@ -178,13 +185,10 @@ export default function FamilyDetailScreen() {
             parts.slice(1).join("，") ||
             t.asDirectedUsage;
 
-          const note =
-            prescriptionMemo || it.memo;
-
           return (
             <View key={idx} style={styles.itemCard}>
               <View style={styles.cardHeader}>
-                <Text style={styles.itemName} numberOfLines={2}>{it.name}</Text>
+                <Text style={styles.itemName}>{it.name}</Text>
               </View>
               
               <View style={styles.infoRow}>
@@ -202,13 +206,11 @@ export default function FamilyDetailScreen() {
                 <Text style={styles.infoValue}>{timeDetail}</Text>
               </View>
 
-              {note ? (
-                <View style={styles.noteBox}>
-                  <Text style={styles.noteText}>
-                    {t.note}：{note}
-                  </Text>
-                </View>
-              ) : null}
+              <View style={styles.noteBox}>
+                <Text style={it.memo ? styles.noteText : styles.emptyItemNote}>
+                  {t.medicineNote}：{it.memo || t.none}
+                </Text>
+              </View>
             </View>
           );
         })}
@@ -243,6 +245,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0", 
     marginBottom: 25,
   },
+  prescriptionNoteCard: { padding: 16, borderRadius: 12, backgroundColor: "#F7F7F7", marginBottom: 20 },
+  prescriptionNoteLabel: { fontSize: 16, color: "#555", fontWeight: "700", marginBottom: 6 },
+  prescriptionNoteValue: { fontSize: 15, color: "#333", lineHeight: 22 },
+  emptyNoteValue: { fontSize: 15, color: "#AAA" },
   sectionTitle: { fontSize: 22, fontWeight: "800", color: "#333", marginBottom: 15 },
   itemCard: { 
     padding: 18, 
@@ -258,5 +264,6 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 15, color: "#666", width: 85 },
   infoValue: { fontSize: 15, color: "#333", fontWeight: "600", flex: 1 },
   noteBox: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#EEE" },
-  noteText: { fontSize: 14, color: "#888", fontStyle: "italic" }
+  noteText: { fontSize: 14, color: "#888", fontStyle: "italic" },
+  emptyItemNote: { fontSize: 14, color: "#BBB", fontStyle: "italic" },
 });

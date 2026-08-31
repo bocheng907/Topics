@@ -23,7 +23,10 @@ export default function FamilyHomeScreen() {
   const t = translations[language];
 
   // 🌟 抓取該長輩的健康閾值設定
-  const { thresholds: dbThresholds, loading: thresholdsLoading } = useHealthThresholds(activePatientId ?? "");
+  const { thresholds: dbThresholds, loading: thresholdsLoading } = useHealthThresholds(
+    activePatientId ?? "",
+    activePatient?.patientsId
+  );
 
   // 存放最新的生理數據
   const [vitals, setVitals] = useState<any>({
@@ -79,7 +82,7 @@ export default function FamilyHomeScreen() {
     });
 
     return unsub;
-  }, [ready, activePatientId]);
+  }, [ready, activePatientId, t.fasting]);
 
   const copyInviteCode = async () => {
     if (activePatient?.inviteCode) {

@@ -503,9 +503,38 @@ service cloud.firestore {
         && resource.data.caregiverId == request.auth.uid;
     }
 
-    match /health_thresholds/{patientId} {
-      allow read: if signedIn() && isLinkedToPatient(patientId);
-      allow write: if signedIn() && isFamilyMember(patientId);
+    match /health_thresholds/{thresholdId} {
+      allow read: if signedIn() && (
+        isLinkedToPatient(thresholdId)
+        || (
+          resource.data.patientDocId is string
+          && isLinkedToPatient(resource.data.patientDocId)
+        )
+      );
+
+      allow create: if signedIn()
+        && request.resource.data.patientDocId is string
+        && request.resource.data.patientsId is string
+        && thresholdId == "threshold_pat_" + request.resource.data.patientsId
+        && isFamilyMember(request.resource.data.patientDocId);
+
+      allow update: if signedIn() && (
+        isFamilyMember(thresholdId)
+        || (
+          resource.data.patientDocId is string
+          && isFamilyMember(resource.data.patientDocId)
+          && request.resource.data.patientDocId == resource.data.patientDocId
+          && request.resource.data.patientsId == resource.data.patientsId
+        )
+      );
+
+      allow delete: if signedIn() && (
+        isFamilyMember(thresholdId)
+        || (
+          resource.data.patientDocId is string
+          && isFamilyMember(resource.data.patientDocId)
+        )
+      );
     }
 
     match /voice_records/{recordId} {

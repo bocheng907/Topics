@@ -57,7 +57,7 @@ const CRITICAL_BOUNDS = {
 };
 
 export default function FamilyDashboardScreen() {
-  const { ready, activePatientId } = useActiveCareTarget();
+  const { ready, activePatient, activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
 
@@ -74,7 +74,10 @@ export default function FamilyDashboardScreen() {
     chartTimeRange,
   });
 
-  const { thresholds: dbThresholds, loading: thresholdsLoading, saveThresholds } = useHealthThresholds(activePatientId ?? "");
+  const { thresholds: dbThresholds, loading: thresholdsLoading, saveThresholds } = useHealthThresholds(
+    activePatientId ?? "",
+    activePatient?.patientsId
+  );
   const [localThresholds, setLocalThresholds] = useState<PatientThresholds>(dbThresholds);
 
   useEffect(() => {
@@ -278,7 +281,7 @@ export default function FamilyDashboardScreen() {
       await saveThresholds(localThresholds);
       Alert.alert(t.saveSuccessTitle, t.thresholdSaveSuccessMessage);
       setActiveTab("today");
-    } catch (error) {
+    } catch {
       Alert.alert(t.resultErrorTitle, t.thresholdSaveFailedMessage);
     }
   };

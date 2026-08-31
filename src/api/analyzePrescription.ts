@@ -1,7 +1,20 @@
 import Constants from "expo-constants";
 
+export interface AnalyzedMedicine {
+  drug_name: string;
+  dosage?: string | null;
+  quantity: string;
+  usage_zh: string;
+  note_zh?: string | null;
+  common_uses?: string | null;
+}
+
 export interface AnalyzeResult {
-  medicines: any[];
+  clinic_name?: string;
+  visit_date?: string | null;
+  patient_name?: string | null;
+  medicines: AnalyzedMedicine[];
+  memo?: string | null;
   raw_text?: string;
 }
 

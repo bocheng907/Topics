@@ -1,13 +1,21 @@
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
+  getDocs,
+  query,
   serverTimestamp,
+  where,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
+import {
+  makeMedicationReminderDocumentId,
+  makePrescriptionItemDocumentId,
+} from "@/src/data/firestoreDocumentIds";
 
 type PrescriptionItem = {
+  itemId?: string;
   drug_name_zh?: string;
   dose?: string;
   time_of_day?: string[] | string;
@@ -121,13 +129,16 @@ export function normalizeExplicitScheduleTimes(value?: string[] | string): strin
   return [...normalized].sort();
 }
 
-async function getLinkedUserIds(patientId: string): Promise<string[]> {
+async function getLinkedPatientContext(patientId: string) {
   const patientRef = doc(db, "patients", patientId);
   const patientSnap = await getDoc(patientRef);
 
-  if (!patientSnap.exists()) return [];
+  if (!patientSnap.exists()) {
+    return { notifyUserIds: [] as string[], patientsId: "" };
+  }
 
   const patient = patientSnap.data() as {
+    patientsId?: string;
     families?: string[];
     caregivers?: string[];
   };
@@ -135,7 +146,10 @@ async function getLinkedUserIds(patientId: string): Promise<string[]> {
   const families = Array.isArray(patient.families) ? patient.families : [];
   const caregivers = Array.isArray(patient.caregivers) ? patient.caregivers : [];
 
-  return [...new Set([...families, ...caregivers])];
+  return {
+    notifyUserIds: [...new Set([...families, ...caregivers])],
+    patientsId: String(patient.patientsId ?? "").trim(),
+  };
 }
 
 export async function createMedicationReminders(params: {
@@ -145,15 +159,28 @@ export async function createMedicationReminders(params: {
 }) {
   const { patientId, prescriptionId, items } = params;
 
-  if (!patientId || !prescriptionId || !Array.isArray(items) || items.length === 0) {
+  if (!patientId || !prescriptionId || !Array.isArray(items)) {
     return;
   }
 
-  const notifyUserIds = await getLinkedUserIds(patientId);
+  const [{ notifyUserIds, patientsId }, existingSnap] = await Promise.all([
+    getLinkedPatientContext(patientId),
+    getDocs(
+      query(
+        collection(db, "medication_reminders"),
+        where("prescriptionId", "==", prescriptionId)
+      )
+    ),
+  ]);
+  const existingIds = new Set(existingSnap.docs.map((docSnap) => docSnap.id));
+  const desiredIds = new Set<string>();
+  const batch = writeBatch(db);
 
-  for (const item of items) {
+  items.forEach((item, itemIndex) => {
     const medicineName = item.drug_name_zh?.trim() || "未命名藥物";
     const doseText = item.dose?.trim() || "";
+    const logicalItemId = makePrescriptionItemDocumentId(itemIndex);
+    const prescriptionItemId = item.itemId?.trim() || logicalItemId;
 
     const explicitScheduleTimes = normalizeExplicitScheduleTimes(item.feeding_times);
     const scheduleTimes = new Set<string>();
@@ -168,18 +195,42 @@ export async function createMedicationReminders(params: {
       }
     }
 
-    for (const scheduleTime of scheduleTimes) {
-      await addDoc(collection(db, "medication_reminders"), {
-        patientId,
+    scheduleTimes.forEach((scheduleTime) => {
+      const reminderId = makeMedicationReminderDocumentId(
         prescriptionId,
+        prescriptionItemId,
+        scheduleTime
+      );
+      const reminderRef = doc(db, "medication_reminders", reminderId);
+      desiredIds.add(reminderId);
+
+      batch.set(reminderRef, {
+        reminderId,
+        patientId,
+        patientsId,
+        prescriptionId,
+        prescriptionItemId,
+        itemOrder: itemIndex + 1,
         medicineName,
         doseText,
         scheduleTime,
         notifyUserIds,
         enabled: true,
-        lastSentDate: "",
-        createdAt: serverTimestamp(),
-      });
-    }
-  }
+        updatedAt: serverTimestamp(),
+        ...(existingIds.has(reminderId)
+          ? {}
+          : { lastSentDate: "", createdAt: serverTimestamp() }),
+      }, { merge: true });
+    });
+  });
+
+  existingSnap.docs.forEach((docSnap) => {
+    if (desiredIds.has(docSnap.id)) return;
+    batch.update(docSnap.ref, {
+      enabled: false,
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await batch.commit();
 }

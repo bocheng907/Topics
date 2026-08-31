@@ -89,9 +89,16 @@ init_translation_cache()
 
 # ===== 載入藥物外觀資料庫 =====
 
-def load_drug_database(csv_path: str = "data.csv") -> pd.DataFrame:
-    """載入藥物外觀 CSV，並分別建立中文與混合搜尋專用的索引欄位。"""
+def normalize_drug_match_text(value: str) -> str:
+    """移除空白與標點，讓中文短藥名也能和完整核准品名比對。"""
+    return "".join(char for char in value.upper() if char.isalnum())
+
+
+def load_drug_database(csv_path: Optional[str] = None) -> pd.DataFrame:
+    """載入藥物外觀 CSV，並建立中文、混合及正規化搜尋索引。"""
     try:
+        if csv_path is None:
+            csv_path = os.path.join(os.path.dirname(__file__), "data.csv")
         df = pd.read_csv(csv_path)
         # 建立中文獨立索引（提升中文比對優先度與準確率）
         df["_zh_search_key"] = df["中文品名"].fillna("").str.strip().str.upper()
@@ -99,6 +106,9 @@ def load_drug_database(csv_path: str = "data.csv") -> pd.DataFrame:
         df["_search_key"] = (
             df["中文品名"].fillna("") + " " + df["英文品名"].fillna("")
         ).str.strip().str.upper()
+        df["_name_zh_normalized"] = df["中文品名"].fillna("").map(
+            lambda value: normalize_drug_match_text(str(value))
+        )
         return df
     except Exception as e:
         print(f"[WARNING] 無法載入藥物資料庫: {e}")
@@ -119,52 +129,74 @@ class DrugAppearance(BaseModel):
     matched_name_en: Optional[str] = Field(None, description="資料庫比對到的英文品名")
     match_score: Optional[float] = Field(None, description="比對相似度 (0–100)")
 
-def lookup_drug_appearance(drug_name: str, score_cutoff: int = 60) -> Optional[DrugAppearance]:
+
+def contains_cjk(value: str) -> bool:
+    return bool(re.search(r"[\u3400-\u9fff]", value))
+
+
+def optional_cell(value: object) -> Optional[str]:
+    if pd.isna(value):
+        return None
+    text = str(value).strip()
+    return text if text and text.lower() != "nan" else None
+
+
+def find_drug_match(
+    drug_name: str,
+    score_cutoff: int = 70,
+    minimum_score_gap: int = 5,
+) -> Optional[tuple[pd.Series, float]]:
+    """只回傳高信心且不含糊的藥品資料庫比對結果。"""
+    if DRUG_DB.empty or not drug_name.strip():
+        return None
+
+    if contains_cjk(drug_name):
+        query = normalize_drug_match_text(drug_name)
+        choices = DRUG_DB["_name_zh_normalized"].tolist()
+        scorer = fuzz.partial_ratio
+        canonical_column = "中文品名"
+    else:
+        query = drug_name.strip().upper()
+        choices = DRUG_DB["_search_key"].tolist()
+        scorer = fuzz.token_set_ratio
+        canonical_column = "英文品名"
+
+    matches = process.extract(query, choices, scorer=scorer, limit=10)
+    distinct_matches: list[tuple[pd.Series, float, str]] = []
+    seen_names: set[str] = set()
+    for _, score, idx in matches:
+        row = DRUG_DB.iloc[idx]
+        canonical_name = optional_cell(row.get(canonical_column))
+        if not canonical_name:
+            continue
+        normalized_name = normalize_drug_match_text(canonical_name)
+        if normalized_name in seen_names:
+            continue
+        seen_names.add(normalized_name)
+        distinct_matches.append((row, float(score), normalized_name))
+
+    if not distinct_matches or distinct_matches[0][1] < score_cutoff:
+        return None
+
+    best_row, best_score, _ = distinct_matches[0]
+    if len(distinct_matches) > 1:
+        runner_up_score = distinct_matches[1][1]
+        if best_score - runner_up_score < minimum_score_gap:
+            return None
+
+    return best_row, best_score
+
+
+def lookup_drug_appearance(drug_name: str, score_cutoff: int = 70) -> Optional[DrugAppearance]:
     """
     僅用於向 CSV 資料庫查詢藥品外觀與圖片資訊。
     策略：優先提取藥名中的中文部分進行中文特化比對，若無中文或比對分數過低則降級至中英混合比對。
     """
-    if DRUG_DB.empty or not drug_name:
+    result = find_drug_match(drug_name, score_cutoff=score_cutoff)
+    if result is None:
         return None
 
-    query_full = drug_name.strip().upper()
-    
-    # 嘗試提取藥名中的中文字元
-    chinese_parts = "".join(re.findall(r'[\u4e00-\u9fa5]+', drug_name)).strip().upper()
-
-    best_match = None
-    
-    # === 階段 1: 優先進行中文專用比對 ===
-    if chinese_parts:
-        zh_choices = DRUG_DB["_zh_search_key"].tolist()
-        zh_result = process.extractOne(
-            chinese_parts,
-            zh_choices,
-            scorer=fuzz.token_set_ratio,
-            score_cutoff=score_cutoff,
-        )
-        if zh_result:
-            matched_text, score, idx = zh_result
-            best_match = (idx, score)
-
-    # === 階段 2: 若無中文或中文比對未達門檻，改用全名稱混合比對 ===
-    if not best_match:
-        choices = DRUG_DB["_search_key"].tolist()
-        full_result = process.extractOne(
-            query_full,
-            choices,
-            scorer=fuzz.token_set_ratio,
-            score_cutoff=score_cutoff,
-        )
-        if full_result:
-            matched_text, score, idx = full_result
-            best_match = (idx, score)
-
-    if not best_match:
-        return None
-
-    idx, score = best_match
-    row = DRUG_DB.iloc[idx]
+    row, score = result
 
     # 處理多圖（以 ;;; 分隔）
     raw_urls = str(row.get("外觀圖檔連結", "") or "")
@@ -193,10 +225,33 @@ def lookup_drug_appearance(drug_name: str, score_cutoff: int = 60) -> Optional[D
         marking=marking,
         special_form=special_form,
         image_urls=image_urls,
-        matched_name_zh=str(row.get("中文品名", "") or "").strip() or None,
-        matched_name_en=str(row.get("英文品名", "") or "").strip() or None,
+        matched_name_zh=optional_cell(row.get("中文品名")),
+        matched_name_en=optional_cell(row.get("英文品名")),
         match_score=score,
     )
+
+
+def complete_drug_name(
+    original_name: str, appearance: Optional[DrugAppearance]
+) -> str:
+    """以唯一的高信心資料庫結果補全截短藥名；含糊時保留 OCR 原文。"""
+    original = " ".join(original_name.strip().split())
+    if not original or appearance is None:
+        return original
+
+    matched_name = (
+        appearance.matched_name_zh
+        if contains_cjk(original)
+        else appearance.matched_name_en
+    )
+    if not matched_name:
+        return original
+
+    if len(normalize_drug_match_text(matched_name)) <= len(
+        normalize_drug_match_text(original)
+    ):
+        return original
+    return matched_name
 
 # ===== 定義資料結構 =====
 
@@ -211,8 +266,11 @@ class MedicineItem(BaseModel):
     dosage: Optional[str] = Field(None, description="劑量 (例如 5mg, 0.1%)")
     quantity: str = Field(..., description="數量 (例如 1瓶, 28顆)")
     usage_zh: str = Field(..., description="中文服用說明 (例如：每日三次，飯後)")
-    common_uses: Optional[str] = Field(None, description="此藥品的常見臨床用途或適應症")
-    appearance: Optional[DrugAppearance] = Field(None, description="藥品外觀與圖片資訊（來自衛福部藥物資料庫查詢）")
+    note_zh: Optional[str] = Field(
+        None, description="圖片中明確隸屬於這項藥品的備註；不得推測"
+    )
+    common_uses: Optional[str] = Field(None, description="此藥品的常見臨床用途或適應症 (例如：降血壓、消炎止痛、抗生素)")
+    appearance: Optional[DrugAppearance] = Field(None, description="藥品外觀資訊（來自衛福部藥物資料庫比對）")
 
 class PrescriptionResponse(BaseModel):
     clinic_name: str = Field(..., description="醫療機構/診所名稱（不含科別）")
@@ -220,7 +278,10 @@ class PrescriptionResponse(BaseModel):
     visit_date: Optional[str] = Field(None, description="就診日期")
     patient_name: Optional[str] = Field(None, description="病患姓名")
     medicines: List[MedicineItem] = Field(..., description="藥品清單")
-    memo: Optional[MemoDetails] = Field(None, description="結構化備註資訊")
+    memo: Optional[MemoDetails | str] = Field(
+        None,
+        description="結構化備註資訊；相容既有純文字備註",
+    )
 
 # Gemini 解析用的內部結構
 class _MedicineItemRaw(BaseModel):
@@ -228,6 +289,7 @@ class _MedicineItemRaw(BaseModel):
     dosage: Optional[str] = None
     quantity: str
     usage_zh: str
+    note_zh: Optional[str] = None
     common_uses: Optional[str] = None
 
 class _PrescriptionRaw(BaseModel):
@@ -290,12 +352,13 @@ def process_prescription_with_gemini(img: PIL.Image.Image) -> PrescriptionRespon
     你是一個專業的醫療輔助 AI。請分析這張台灣的藥單圖片。
     
     【任務目標】
-    1. **OCR與辨識**：精準辨識藥單上印製的藥品名稱（drug_name）與用法，修正明顯的拼字錯字。請務必完整保留藥單上的原始藥名（不論中文或英文）。
-    2. **資訊拆分與提取**：
+    1. **OCR與辨識**：精準辨識藥名與用法，只修正 OCR 造成的明顯拼字錯誤；看不清楚時不得猜測。
+    2. **完整藥名**：drug_name 必須抄錄同一藥品列上可見的完整名稱，不可在空格、斜線、括號或換行處任意截斷；保留品牌名、學名、劑型及名稱內含的規格。dosage 仍另外填入劑量欄位。
+    3. **資訊拆分與提取**：
        - **clinic_name**：僅填寫診所或醫院機構全稱。
        - **department**：明確拆分出醫療科別（如：「耳鼻喉科」、「胃腸肝膽科」、「眼科」）。若無則填 null。
-    3. **common_uses**：根據藥品名稱與劑型，填寫常見臨床用途（繁體中文簡短說明，如「降血壓」）。
-    4. **memo 結構化拆分**：將藥單上的備註、警語、慢籤等資訊，嚴格分類至對應欄位（doctor_instructions, precautions, refill_info, other）。
+    4. **備註邊界**：note_zh 只能填寫圖片中明確隸屬於該藥品列的備註文字。memo 只能擷取圖片中標示為「備註」、「醫囑」或同義標題的整張藥單備註，並分類至 doctor_instructions、precautions、refill_info、other。不可把診所地址、診斷、藥品用途、用法、劑量、數量或模型推測放入 note_zh 或 memo；沒有明確文字時一律填 null。
+    5. **common_uses**：根據藥品名稱與劑型，填寫該藥品在臨床上最常見的用途或適應症（繁體中文，簡短說明，例如「降血壓」、「消炎止痛」、「廣效抗生素」、「胃酸抑制劑」）。這是推論欄位，絕對不可複製到 note_zh 或 memo。若無法判斷則填 null。
     
     【輸出限制】
     - 請直接回傳符合 JSON Schema 的資料。
@@ -321,10 +384,11 @@ def process_prescription_with_gemini(img: PIL.Image.Image) -> PrescriptionRespon
 
             enriched_medicines.append(
                 MedicineItem(
-                    drug_name=med.drug_name,  # 嚴格輸出藥單上的藥名，不替換為資料庫名稱
+                    drug_name=complete_drug_name(med.drug_name, appearance),
                     dosage=med.dosage,
                     quantity=med.quantity,
                     usage_zh=med.usage_zh,
+                    note_zh=med.note_zh,
                     common_uses=med.common_uses,
                     appearance=appearance,     # 資料庫資訊僅作為外觀物件附件
                 )

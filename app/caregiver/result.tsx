@@ -29,10 +29,15 @@ import {
   PRESCRIPTION_ITEM_TRANSLATION_SPECS,
 } from "@/src/i18n/dynamicTranslation";
 import { createMedicationReminders, inferScheduleTimesFromText } from "@/src/reminders/createMedicationReminders";
+import {
+  makePrescriptionDocumentId,
+  makePrescriptionItemDocumentId,
+} from "@/src/data/firestoreDocumentIds";
 import { translations, type Language } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 
 type Item = {
+  itemId?: string;
   raw: any;
   name: string;
   dose: string;
@@ -98,6 +103,7 @@ function pickItemNote(it: any): string {
 
 function mapItem(it: any): Item {
   return {
+    itemId: it?.itemId,
     raw: it,
     name: pickItemName(it) || "（未辨識藥品名稱）",
     dose: pickItemDose(it) || "未提供",
@@ -105,20 +111,6 @@ function mapItem(it: any): Item {
     time: pickItemTime(it),
     note: pickItemNote(it),
   };
-}
-
-function makePrescriptionId(patientId: string, date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  const ss = String(date.getSeconds()).padStart(2, "0");
-
-  const timeString = `${y}-${m}-${d}_${hh}-${mm}-${ss}`;
-  const shortId = patientId.slice(-4);
-
-  return `${timeString}_pre_${shortId}`;
 }
 
 function pickLocalizedString(
@@ -161,6 +153,10 @@ function getDisplayItem(
   };
 }
 
+function normalizeEditableText(value: string) {
+  return value.trim();
+}
+
 export default function ResultScreen() {
   const { prescriptionId, imageUrl, draftTitle, analyzeResult } =
     useLocalSearchParams<{
@@ -170,7 +166,7 @@ export default function ResultScreen() {
       analyzeResult?: string;
     }>();
 
-  const { activePatientId } = useActiveCareTarget();
+  const { activePatient, activePatientId } = useActiveCareTarget();
   const { user } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
@@ -183,6 +179,14 @@ export default function ResultScreen() {
   const [department, setDepartment] = useState("");
   const [globalMemo, setGlobalMemo] = useState("");
   const [saving, setSaving] = useState(false);
+
+  function updateItem(index: number, changes: Partial<Item>) {
+    setItems((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...changes } : item
+      )
+    );
+  }
 
   const isDraftMode = !prescriptionId && !!analyzeResult;
   const safeImageUrl =
@@ -280,7 +284,7 @@ export default function ResultScreen() {
               language,
               PRESCRIPTION_ITEM_TRANSLATION_SPECS
             );
-            return { ...raw, ...translated };
+            return { ...raw, ...translated, itemId: d.id };
           })
         );
         const mapped = translatedItems.map((item) => mapItem(item));
@@ -318,29 +322,16 @@ export default function ResultScreen() {
 
         const safe = safeAnalyze ?? {};
 
-        const rawMeds =
-          safe.medicines ??
-          safe.items ??
-          safe.result?.medicines ??
-          safe.result?.items ??
-          safe.data?.medicines ??
-          safe.data?.items ??
-          safe.payload?.medicines ??
-          safe.payload?.items ??
-          [];
-
-        const medicines: any[] = Array.isArray(rawMeds)
-          ? rawMeds
-          : rawMeds && typeof rawMeds === "object"
-          ? Object.values(rawMeds)
-          : [];
-
-        const prescriptionId = makePrescriptionId(activePatientId);
+        const prescriptionId = makePrescriptionDocumentId({
+          patientDocId: activePatientId,
+          patientsId: activePatient?.patientsId,
+        });
         const presRef = doc(db, "prescriptions", prescriptionId);
 
         await setDoc(presRef, {
           createdBy: user.uid,
           patientId: activePatientId,
+          patientsId: activePatient?.patientsId ?? "",
           sourceImageUrl: safeImageUrl,
           status: "parsed",
           title: finalTitle,
@@ -349,26 +340,34 @@ export default function ResultScreen() {
           department: safe.department ?? "",
           visit_date: safe.visit_date ?? "",
           patient_name: safe.patient_name ?? "",
-          memo: safe.memo ?? "",
+          memo: normalizeEditableText(globalMemo),
           aiRaw: safe,
         });
 
         const batch = writeBatch(db);
 
-        for (const it of medicines) {
-          const itemRef = doc(collection(db, "prescriptions", presRef.id, "items"));
-          const name = pickItemName(it);
-          const dose = pickItemDose(it);
-          const time = pickItemTime(it).join(",");
-          const note = pickItemNote(it);
+        for (const [itemIndex, item] of items.entries()) {
+          const itemId = makePrescriptionItemDocumentId(itemIndex);
+          const itemRef = doc(
+            db,
+            "prescriptions",
+            presRef.id,
+            "items",
+            itemId
+          );
+          const name = normalizeEditableText(item.name);
+          const dose = normalizeEditableText(item.dose);
+          const time = item.time.join(",");
+          const note = normalizeEditableText(item.note);
 
           batch.set(itemRef, {
-            raw: it,
+            itemId,
+            raw: item.raw,
             drug_name_zh: name,
             drug_name: name,
             dose,
             dosage: dose,
-            quantity: it.quantity ?? "",
+            quantity: item.quantity ?? "",
             usage_zh: time,
             feeding_times: inferScheduleTimesFromText(time),
             memo: note,
@@ -383,10 +382,12 @@ export default function ResultScreen() {
         await createMedicationReminders({
           patientId: activePatientId,
           prescriptionId: presRef.id,
-          items: medicines.map((it) => ({
-            drug_name_zh: pickItemName(it),
-            dose: pickItemDose(it),
-            time_of_day: pickItemTime(it).join(","),
+          items: items.map((item, itemIndex) => ({
+            itemId: makePrescriptionItemDocumentId(itemIndex),
+            drug_name_zh: normalizeEditableText(item.name),
+            dose: normalizeEditableText(item.dose),
+            time_of_day: item.time.join(","),
+            feeding_times: inferScheduleTimesFromText(item.time.join(",")),
           })),
         });
 
@@ -465,7 +466,7 @@ export default function ResultScreen() {
 
           {items.map((it, idx) => {
             const displayItem = getDisplayItem(it, language, t);
-            const note = globalMemo || displayItem.note;
+            const note = displayItem.note;
 
             const method =
               displayItem.time[0] || t.notSet;
@@ -486,15 +487,30 @@ export default function ResultScreen() {
                   gap: 6,
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: 18,
-                    fontWeight: "800",
-                    color: "#007AFF",
-                  }}
-                >
-                  {displayItem.name}
-                </Text>
+                {isDraftMode ? (
+                  <TextInput
+                    value={it.name}
+                    onChangeText={(name) => updateItem(idx, { name })}
+                    editable={!saving}
+                    multiline
+                    style={{
+                      fontSize: 18,
+                      fontWeight: "800",
+                      color: "#007AFF",
+                      padding: 0,
+                    }}
+                  />
+                ) : (
+                  <Text
+                    style={{
+                      fontSize: 18,
+                      fontWeight: "800",
+                      color: "#007AFF",
+                    }}
+                  >
+                    {displayItem.name}
+                  </Text>
+                )}
                 <View style={{ gap: 2 }}>
 
                   <Text style={{ fontSize: 15, color: "#444" }}>
@@ -509,19 +525,61 @@ export default function ResultScreen() {
                   <Text style={{ fontSize: 15, color: "#444" }}>
                     {t.usageTime}：{timeDetail}
                   </Text>
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      color: note ? "#666" : "#CCC",
-                      marginTop: 2,
-                    }}
-                  >
-                    {t.note}：{note || t.none}
-                  </Text>
+                  {isDraftMode ? (
+                    <View style={{ marginTop: 8, gap: 6 }}>
+                      <Text style={{ fontSize: 15, color: "#666" }}>{t.medicineNote}</Text>
+                      <TextInput
+                        value={it.note}
+                        onChangeText={(itemNote) => updateItem(idx, { note: itemNote })}
+                        editable={!saving}
+                        multiline
+                        placeholder={t.notePlaceholder}
+                        style={{
+                          minHeight: 64,
+                          padding: 10,
+                          borderRadius: 8,
+                          backgroundColor: "#F5F5F5",
+                          color: "#333",
+                          textAlignVertical: "top",
+                        }}
+                      />
+                    </View>
+                  ) : (
+                    <Text
+                      style={{
+                        fontSize: 15,
+                        color: note ? "#666" : "#CCC",
+                        marginTop: 2,
+                      }}
+                    >
+                      {t.medicineNote}：{note || t.none}
+                    </Text>
+                  )}
                 </View>
               </View>
             );
           })}
+
+          <View style={{ gap: 6, marginTop: 4 }}>
+            <Text style={{ fontWeight: "800", fontSize: 16 }}>{t.prescriptionNote}</Text>
+            <TextInput
+              value={globalMemo}
+              onChangeText={setGlobalMemo}
+              editable={isDraftMode && !saving}
+              multiline
+              placeholder={t.notePlaceholder}
+              style={{
+                minHeight: 80,
+                borderWidth: 1,
+                borderColor: "#ccc",
+                borderRadius: 8,
+                padding: 12,
+                backgroundColor: isDraftMode ? "#fff" : "#f5f5f5",
+                color: globalMemo ? "#333" : "#999",
+                textAlignVertical: "top",
+              }}
+            />
+          </View>
 
           <View style={{ marginTop: 20, gap: 12 }}>
             <Pressable

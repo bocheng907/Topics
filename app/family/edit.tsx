@@ -14,7 +14,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
-import { doc, collection, getDoc, getDocs, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
+import { doc, collection, getDoc, getDocs, query, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { createMedicationReminders, inferScheduleTimesFromText, normalizeExplicitScheduleTimes } from "@/src/reminders/createMedicationReminders";
 import {
@@ -76,7 +76,7 @@ function safeParseItems(itemsJson: string | undefined, language: Language): Edit
         memo: pickLocalizedString(it.raw ?? it, "note", language, it.note_zh ?? it.memo ?? it.note ?? ""),
       };
     });
-  } catch (e) {
+  } catch {
     return [{ itemId: undefined, name: "", dosage: "", usage_type: "", usage_time: "", feeding_times: "", memo: "" }];
   }
 }
@@ -210,19 +210,11 @@ export default function FamilyEditScreen() {
       const presSnap = await getDoc(presRef);
       const patientId = String(presSnap.data()?.patientId ?? "");
 
-      const remindersBatch = writeBatch(db);
-      const remindersSnap = await getDocs(
-        query(collection(db, "medication_reminders"), where("prescriptionId", "==", id))
-      );
-      remindersSnap.docs.forEach((docSnap) => {
-        remindersBatch.delete(docSnap.ref);
-      });
-      await remindersBatch.commit();
-
       await createMedicationReminders({
         patientId,
         prescriptionId: id,
         items: items.map((it) => ({
+          itemId: it.itemId,
           drug_name_zh: it.name,
           dose: it.dosage,
           time_of_day: `${it.usage_type}${it.usage_time ? "," + it.usage_time : ""}`,
@@ -302,6 +294,16 @@ export default function FamilyEditScreen() {
           </View>
         </View>
 
+        <View style={styles.memoCard}>
+          <Text style={styles.label}>{t.prescriptionNote}</Text>
+          <TextInput
+            style={[styles.input, styles.memoInput]}
+            value={prescriptionMemo}
+            multiline
+            placeholder={t.notePlaceholder}
+            onChangeText={setPrescriptionMemo}
+          />
+        </View>
         {items.map((it, idx) => (
           <View key={it.itemId ?? idx} style={styles.editCard}>
             <View style={styles.cardHeader}>
@@ -360,10 +362,10 @@ export default function FamilyEditScreen() {
               <Text style={styles.label}>{t.noteDescription}</Text>
               <TextInput
                 style={[styles.input, styles.memoInput]}
-                value={prescriptionMemo}
+                value={it.memo}
                 multiline
                 placeholder={t.notePlaceholder}
-                onChangeText={setPrescriptionMemo}
+                onChangeText={(text) => updateItem(idx, "memo", text)}
               />
             </View>
           </View>
@@ -399,6 +401,7 @@ const styles = StyleSheet.create({
   saveBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
   saveBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
   scrollContent: { padding: 20, gap: 20 },
+  memoCard: { padding: 20, borderRadius: 20, backgroundColor: "#F7F7F7", gap: 8 },
   editCard: {
     padding: 20,
     borderRadius: 20,

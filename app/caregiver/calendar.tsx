@@ -31,6 +31,7 @@ import {
 import { auth, db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { makeDailyChecklistDocumentId } from "@/src/data/firestoreDocumentIds";
 import {
   ensureFirestoreTranslations,
   pickDynamicLocalizedString,
@@ -97,6 +98,7 @@ type DailyChecklistItem = {
   title_vi?: string;
   title_id?: string;
   completed: boolean;
+  isCompleted?: boolean;
   isDefault: boolean;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
@@ -244,21 +246,20 @@ function makeCalendarEventDocId(eventDate: string, activePatientId?: string | nu
   return `${eventDate}_${patientSuffix}`;
 }
 
-function getPatientStorageId(patientDocId?: string, patientsId?: string) {
-  const docId = patientDocId?.trim() ?? "";
-  const match = docId.match(/(?:^|_)pat_([A-Za-z0-9]+)$/);
-  if (match) return `pat_${match[1]}`;
-  return patientsId?.trim() || docId;
-}
-
-function makeDailyChecklistDocId(
+function makeLegacyTopLevelDailyChecklistDocIds(
   dateKey: string,
   patientDocId?: string,
   patientsId?: string
 ) {
-  const stablePatientId = getPatientStorageId(patientDocId, patientsId);
-  if (!stablePatientId) return "";
-  return `${dateKey}_${stablePatientId}`;
+  const ids = new Set<string>();
+  const docId = patientDocId?.trim() ?? "";
+  const patientCode = docId.match(/(?:^|_)pat_([A-Za-z0-9]+)$/)?.[1];
+
+  if (patientCode) ids.add(`${dateKey}_pat_${patientCode}`);
+  if (patientsId?.trim()) ids.add(`${dateKey}_${patientsId.trim()}`);
+  if (!patientCode && docId) ids.add(`${dateKey}_${docId}`);
+
+  return [...ids];
 }
 
 function makeLegacyDailyChecklistDocId(dateKey: string, patientId?: string | null) {
@@ -482,8 +483,23 @@ export default function CaregiverCalendarScreen() {
   const selectedDateKey = useMemo(() => formatEventDateKey(selectedDate), [selectedDate]);
   const activePatientsId = activePatient?.patientsId ?? "";
   const dailyChecklistDocId = useMemo(
-    () => makeDailyChecklistDocId(selectedDateKey, activePatientId ?? "", activePatientsId),
+    () => {
+      if (!activePatientId && !activePatientsId) return "";
+      return makeDailyChecklistDocumentId(selectedDateKey, {
+        patientDocId: activePatientId,
+        patientsId: activePatientsId,
+      });
+    },
     [activePatientId, activePatientsId, selectedDateKey]
+  );
+  const legacyTopLevelChecklistDocIds = useMemo(
+    () =>
+      makeLegacyTopLevelDailyChecklistDocIds(
+        selectedDateKey,
+        activePatientId ?? "",
+        activePatientsId
+      ).filter((id) => id !== dailyChecklistDocId),
+    [activePatientId, activePatientsId, dailyChecklistDocId, selectedDateKey]
   );
   const legacyPatientDocChecklistDocId = useMemo(
     () => makeLegacyDailyChecklistDocId(selectedDateKey, activePatientId),
@@ -583,6 +599,9 @@ export default function CaregiverCalendarScreen() {
     const checklistRef = doc(db, "daily_checklist_items", dailyChecklistDocId);
     const itemsRef = collection(db, "daily_checklist_items", dailyChecklistDocId, "items");
     const legacyItemRefs = [
+      ...legacyTopLevelChecklistDocIds.map((legacyDocId) =>
+        collection(db, "daily_checklist_items", legacyDocId, "items")
+      ),
       ...(legacyPatientDocChecklistDocId
         ? [
             collection(
@@ -643,28 +662,52 @@ export default function CaregiverCalendarScreen() {
 
     const migrateLegacyItems = async () => {
       try {
-        let oldSnap = null;
-        for (const legacyItemsRef of legacyItemRefs) {
-          const candidateSnap = await getDocs(legacyItemsRef);
-          if (!candidateSnap.empty) {
-            oldSnap = candidateSnap;
-            break;
+        const flatLegacySnap = await getDocs(
+          query(
+            collection(db, "daily_checklist_items"),
+            where("patientId", "==", activePatientId),
+            where("dateKey", "==", selectedDateKey)
+          )
+        );
+        let oldDocs = flatLegacySnap.docs.filter((legacyDoc) => {
+          const legacyData = legacyDoc.data() as Partial<DailyChecklistItem>;
+          return typeof legacyData.title === "string";
+        });
+
+        if (oldDocs.length === 0) {
+          for (const legacyItemsRef of legacyItemRefs) {
+            const candidateSnap = await getDocs(legacyItemsRef);
+            if (!candidateSnap.empty) {
+              oldDocs = candidateSnap.docs;
+              break;
+            }
           }
         }
-        if (!oldSnap) return false;
+        if (oldDocs.length === 0) return false;
 
         await ensureDailyChecklistParent();
 
         const batch = writeBatch(db);
-        oldSnap.docs.forEach((oldDoc) => {
+        oldDocs.forEach((oldDoc) => {
           const oldData = oldDoc.data() as Partial<DailyChecklistItem>;
-          batch.set(doc(itemsRef, oldDoc.id), {
+          const legacyDefaultMatch = oldDoc.id.match(/_default_(\d+)$/);
+          const migratedItemId = legacyDefaultMatch
+            ? `default-${Number(legacyDefaultMatch[1]) + 1}`
+            : oldDoc.id;
+          const completed =
+            oldData.completed === true || oldData.isCompleted === true;
+          const isDefault =
+            oldData.isDefault === true ||
+            legacyDefaultMatch !== null ||
+            /^default-\d+$/.test(oldDoc.id);
+
+          batch.set(doc(itemsRef, migratedItemId), {
             title: oldData.title ?? "",
-            completed: oldData.completed === true,
-            isDefault: oldData.isDefault === true,
+            completed,
+            isDefault,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
-            completedAt: oldData.completed === true ? serverTimestamp() : null,
+            completedAt: completed ? serverTimestamp() : null,
             createdBy: user.uid,
             caregiverId: user.uid,
             patientId: activePatientId,
@@ -807,6 +850,7 @@ export default function CaregiverCalendarScreen() {
     activePatientsId,
     dailyChecklistDocId,
     legacyPatientsIdChecklistDocId,
+    legacyTopLevelChecklistDocIds,
     selectedDateKey,
     user?.uid,
   ]);

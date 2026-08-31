@@ -5,10 +5,9 @@ import {
   collection,
   doc,
   onSnapshot,
-  orderBy,
   query,
+  runTransaction,
   serverTimestamp,
-  setDoc,
   where,
 } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
@@ -26,6 +25,10 @@ import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import {
+  getPatientDocumentCode,
+  makeMedicationLogDocumentId,
+} from "@/src/data/firestoreDocumentIds";
 
 type CareTarget = {
   id: string;
@@ -85,8 +88,17 @@ function getTaipeiMinutes(date = new Date()) {
   return hour * 60 + minute;
 }
 
-function medicationLogId(patientId: string, dateKey: string, scheduleTime: string) {
-  return `${patientId}_${dateKey}_${scheduleTime.replace(":", "-")}`;
+function medicationLogId(
+  patientId: string,
+  patientsId: string | undefined,
+  dateKey: string,
+  scheduleTime: string
+) {
+  const patientCode = getPatientDocumentCode({ patientDocId: patientId, patientsId });
+  return makeMedicationLogDocumentId(
+    dateKey,
+    `slot_pat_${patientCode}_${scheduleTime.replace(":", "-")}`
+  );
 }
 
 function hhmmToMinutes(hhmm?: string) {
@@ -103,10 +115,6 @@ export default function CaregiverHomeScreen() {
 
   const [target, setTarget] = useState<CareTarget | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<{ total: number; latest?: number }>({
-    total: 0,
-    latest: undefined,
-  });
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [todayLogs, setTodayLogs] = useState<MedicationLog[]>([]);
@@ -151,39 +159,6 @@ export default function CaregiverHomeScreen() {
     setTarget(activePatient as CareTarget);
     setLoading(false);
   }, [ready, user, activePatient, activePatientId]);
-
-  // ==========================================
-  // 邏輯：監聽藥單數據
-  // ==========================================
-  useEffect(() => {
-    if (!ready || !user || !activePatientId) {
-      setStats({ total: 0, latest: undefined });
-      return;
-    }
-
-    const q = query(
-      collection(db, "prescriptions"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const rows = snap.docs.map((d) => d.data());
-        setStats({
-          total: rows.length,
-          latest: rows[0]?.createdAt,
-        });
-      },
-      (err) => {
-        console.log("caregiver home firestore error:", err);
-        setStats({ total: 0, latest: undefined });
-      }
-    );
-
-    return unsub;
-  }, [ready, user, activePatientId]);
 
   // ==========================================
   // 邏輯：監聽目前長輩的提醒
@@ -360,38 +335,54 @@ export default function CaregiverHomeScreen() {
 
       const slotReminders = activeSlot.reminders;
       const primaryReminder = slotReminders[0];
+      const logId = medicationLogId(
+        activePatientId,
+        activePatient?.patientsId,
+        todayKey,
+        activeSlot.scheduleTime
+      );
       const logRef = doc(
         db,
         "medication_logs",
-        medicationLogId(activePatientId, todayKey, activeSlot.scheduleTime)
+        logId
       );
 
-      // 固定文件 ID = 長輩 + 日期 + 餵藥時段。
-      // 即使網路延遲造成快速連點，也不會建立第二筆完成紀錄或第二次通知。
-      await setDoc(logRef, {
-        reminderId: primaryReminder.id,
-        reminderIds: slotReminders.map((reminder) => reminder.id),
-        prescriptionId: primaryReminder.prescriptionId ?? "",
-        prescriptionIds: [
-          ...new Set(
-            slotReminders
-              .map((reminder) => reminder.prescriptionId ?? "")
-              .filter(Boolean)
-          ),
-        ],
-        patientId: activePatientId,
-        medicineName: primaryReminder.medicineName,
-        medicineNames: slotReminders.map((reminder) => reminder.medicineName),
-        doseText: primaryReminder.doseText,
-        scheduleTime: activeSlot.scheduleTime,
-        status: "taken",
-        confirmedBy: user.uid,
-        takenAt: serverTimestamp(),
-        dateKey: todayKey,
-        createdAt: serverTimestamp(),
+      const created = await runTransaction(db, async (transaction) => {
+        const existingLog = await transaction.get(logRef);
+        if (existingLog.exists()) return false;
+
+        transaction.set(logRef, {
+          logId,
+          reminderId: primaryReminder.id,
+          reminderIds: slotReminders.map((reminder) => reminder.id),
+          prescriptionId: primaryReminder.prescriptionId ?? "",
+          prescriptionIds: [
+            ...new Set(
+              slotReminders
+                .map((reminder) => reminder.prescriptionId ?? "")
+                .filter(Boolean)
+            ),
+          ],
+          patientId: activePatientId,
+          patientsId: activePatient?.patientsId ?? "",
+          medicineName: primaryReminder.medicineName,
+          medicineNames: slotReminders.map((reminder) => reminder.medicineName),
+          doseText: primaryReminder.doseText,
+          scheduleTime: activeSlot.scheduleTime,
+          status: "taken",
+          confirmedBy: user.uid,
+          takenAt: serverTimestamp(),
+          dateKey: todayKey,
+          createdAt: serverTimestamp(),
+        });
+
+        return true;
       });
 
-      Alert.alert(t.alreadyDone, t.doneRecorded);
+      Alert.alert(
+        t.alreadyDone,
+        created ? t.doneRecorded : t.reminderAlreadyDone
+      );
     } catch (error) {
       console.log("done error:", error);
       Alert.alert(t.resultErrorTitle, t.recordFailed);

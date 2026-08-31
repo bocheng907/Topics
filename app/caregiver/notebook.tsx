@@ -31,6 +31,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { makeCareNoteDocumentId } from "@/src/data/firestoreDocumentIds";
 import {
   ensureFirestoreTranslations,
   pickDynamicLocalizedString,
@@ -81,14 +82,6 @@ function formatUpdatedAt(value?: Timestamp | null) {
 
 function getNoteTime(note: CareNote) {
   return note.updatedAt?.toMillis?.() ?? note.createdAt?.toMillis?.() ?? 0;
-}
-
-function makeCareNoteId(patientDocId: string) {
-  const now = new Date();
-  const pad2 = (value: number) => String(value).padStart(2, "0");
-  const patientCode = patientDocId.match(/(?:^|_)pat_([A-Za-z0-9]+)$/)?.[1]
-    ?? patientDocId.slice(-4);
-  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}_note_${patientCode}`;
 }
 
 export default function CaregiverNotebookScreen() {
@@ -238,7 +231,10 @@ export default function CaregiverNotebookScreen() {
           updatedAt: serverTimestamp(),
         });
       } else {
-        const noteDocId = makeCareNoteId(activePatientId);
+        const noteDocId = makeCareNoteDocumentId({
+          patientDocId: activePatientId,
+          patientsId: activePatient?.patientsId,
+        });
         await setDoc(
           doc(db, "care_notes", noteDocId),
           {

@@ -34,6 +34,7 @@ export type NotificationType =
   | "custom";
 
 export type NotificationDocument = {
+  notificationId?: string;
   recipientUid: string;
   type: NotificationType;
   title: string;
@@ -41,6 +42,13 @@ export type NotificationDocument = {
   createdAt: Timestamp;
   isRead: boolean;
   patientId?: string;
+  sourceCollection?: string;
+  sourceId?: string;
+  dateKey?: string;
+  pushStatus?: "pending" | "sent" | "failed";
+  pushReason?: string;
+  pushUpdatedAt?: Timestamp;
+  pushSentAt?: Timestamp;
   deepLink?: string;
   metadata?: Record<string, string | undefined> & {
     eventTitle?: string;
