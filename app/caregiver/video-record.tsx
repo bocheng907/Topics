@@ -520,7 +520,10 @@ export default function AbnormalRecordScreen() {
                   </View>
                   <View style={{ flex: 1, justifyContent: 'center' }}>
                     <Text style={styles.timelineNotes} numberOfLines={2}>{isDoctorMode ? (pickAbnormalEntryNotes(entry, language) || t.aiTranslatingShort) : entry.notesOriginal}</Text>
-                    <Text style={styles.timelineMore}>{t.viewMore}</Text>
+                    <View style={styles.timelineMoreRow}>
+                      <Text style={styles.timelineMore}>{t.viewMore}</Text>
+                      <Ionicons name="chevron-forward" size={12} color="#7BC6F9" />
+                    </View>
                   </View>
                 </View>
               </Pressable>
@@ -693,17 +696,18 @@ export default function AbnormalRecordScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Pressable 
+          <Pressable
             onPress={() => {
               if (currentView === 'folderEntryDetail' || currentView === 'editFolderEntry') goBackToFolder();
               else if (currentView === 'edit') setCurrentView(selectedRecord.type === 'folder' ? 'folder' : 'detail');
               else if (currentView !== 'list') goToList();
               else router.back();
-            }} 
+            }}
             style={styles.backBtn}
+            hitSlop={8}
           >
-            <Ionicons name="chevron-back" size={28} color="black" />
-            <Text style={styles.headerTitle}>{t.conditionView}</Text>
+            <Ionicons name="chevron-back" size={24} color="#111827" />
+            <Text style={styles.backBtnText}>{t.back}</Text>
           </Pressable>
         </View>
       </View>
@@ -726,10 +730,10 @@ const styles = StyleSheet.create({
   viewContainer: { flex: 1, position: 'relative' },
   scrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   
-  header: { backgroundColor: '#7BC6F9', paddingTop: 60, paddingBottom: 15, elevation: 2 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, justifyContent: 'flex-start' },
-  backBtn: { flexDirection: 'row', alignItems: 'center' },
-  headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#000', marginLeft: 4, letterSpacing: 1 },
+  header: { backgroundColor: '#7BC6F9', paddingTop: 54, paddingBottom: 16, elevation: 2 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'flex-start' },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
 
   dropdownMenu: { position: 'absolute', top: 35, right: 0, backgroundColor: '#FFF', borderRadius: 12, paddingVertical: 4, width: 140, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 10, borderWidth: 1, borderColor: '#EEE' },
   dropdownItem: { paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
@@ -769,6 +773,7 @@ const styles = StyleSheet.create({
   timelineThumbnail: { width: 80, height: 80, backgroundColor: '#F0F0F0', borderRadius: 12, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   timelineNotes: { color: '#000', fontSize: 15, lineHeight: 20, marginBottom: 8 },
   timelineMore: { color: '#7BC6F9', fontSize: 12, fontWeight: 'bold' },
+  timelineMoreRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   folderBadge: { alignSelf: 'flex-start', backgroundColor: '#FFF4E5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#FBE0C3', marginBottom: 16, flexDirection: 'row', alignItems: 'center' },
   folderBadgeText: { color: '#E59752', fontWeight: 'bold', fontSize: 14 },
 

@@ -3,8 +3,9 @@ import { db } from "@/firebase/firebaseConfig";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
 import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useHealthThresholds } from "@/src/health/useHealthThresholds";
@@ -21,6 +22,7 @@ export default function FamilyHomeScreen() {
   const { ready, activePatient, activePatientId, linkedCareTargets, setActivePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
+  const hasLoadedOnceRef = useRef(false);
 
   // 🌟 抓取該長輩的健康閾值設定
   const { thresholds: dbThresholds, loading: thresholdsLoading } = useHealthThresholds(activePatientId ?? "");
@@ -88,7 +90,14 @@ export default function FamilyHomeScreen() {
     }
   };
 
-  if (!ready || linkedCareTargets.length === 0 || thresholdsLoading) {
+  const isFullyLoaded = ready && linkedCareTargets.length > 0 && !thresholdsLoading;
+  useEffect(() => {
+    if (isFullyLoaded) {
+      hasLoadedOnceRef.current = true;
+    }
+  });
+
+  if (!hasLoadedOnceRef.current && !isFullyLoaded) {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
   }
 
@@ -225,7 +234,9 @@ export default function FamilyHomeScreen() {
               );
             })}
             <Pressable onPress={() => router.push("/care-target/create")}>
-              <View style={styles.avatarAdd}><Text style={styles.avatarAddText}>+</Text></View>
+              <View style={styles.avatarAdd}>
+                <Ionicons name="add" size={24} color="#4F59D5" />
+              </View>
             </Pressable>
           </ScrollView>
         </View>
@@ -233,8 +244,8 @@ export default function FamilyHomeScreen() {
         <View style={styles.userInfo}>
           <Text style={styles.userName}>{activePatient?.name ?? t.noSelectedPatient}</Text>
           <View style={styles.inviteBadge}><Text style={styles.inviteText}>{t.inviteCode}:{activePatient?.inviteCode ?? t.none}</Text></View>
-          <Pressable onPress={copyInviteCode} style={styles.copyIconWrap}>
-            <View style={styles.copyIconBack} /><View style={styles.copyIconFront} />
+          <Pressable onPress={copyInviteCode} style={styles.copyIconWrap} hitSlop={8}>
+            <Ionicons name="copy-outline" size={18} color="#6B7280" />
           </Pressable>
         </View>
 
@@ -265,19 +276,35 @@ export default function FamilyHomeScreen() {
             </View>
           )}
           <Pressable onPress={() => router.push("/family/dashboard" as any)} style={styles.chartBtn}>
+            <Ionicons name="bar-chart" size={18} color="#FFF" />
             <Text style={styles.chartBtnText}>{t.viewChart}</Text>
           </Pressable>
         </View>
 
         <View style={styles.actionsRow}>
-          <Pressable onPress={() => router.push("/family/list")} style={[styles.actionBtn, { backgroundColor: '#F4E770' }]}>
-            <Text style={styles.actionEmoji}>📋</Text><Text style={styles.actionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.prescriptionRecords}</Text>
+          <Pressable onPress={() => router.push("/family/list")} style={[styles.actionBtn, { backgroundColor: '#FEF9C3' }]}>
+            <View style={styles.actionGroup}>
+              <View style={[styles.actionIconBadge, { backgroundColor: '#CA8A04' }]}>
+                <Ionicons name="clipboard" size={26} color="#FFFFFF" />
+              </View>
+              <Text style={styles.actionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.prescriptionRecords}</Text>
+            </View>
           </Pressable>
-          <Pressable onPress={() => router.push("/family/condition" as any)} style={[styles.actionBtn, { backgroundColor: '#85C6F9' }]}>
-            <Text style={styles.actionEmoji}>📹</Text><Text style={styles.actionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.conditionView}</Text>
+          <Pressable onPress={() => router.push("/family/condition" as any)} style={[styles.actionBtn, { backgroundColor: '#DBEAFE' }]}>
+            <View style={styles.actionGroup}>
+              <View style={[styles.actionIconBadge, { backgroundColor: '#2563EB' }]}>
+                <Ionicons name="videocam" size={26} color="#FFFFFF" />
+              </View>
+              <Text style={styles.actionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.conditionView}</Text>
+            </View>
           </Pressable>
-          <Pressable onPress={() => router.push("/family/voice")} style={[styles.actionBtn, { backgroundColor: '#85E785' }]}>
-            <Text style={styles.actionEmoji}>🎙️</Text><Text style={styles.actionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.recordVoice}</Text>
+          <Pressable onPress={() => router.push("/family/voice")} style={[styles.actionBtn, { backgroundColor: '#DCFCE7' }]}>
+            <View style={styles.actionGroup}>
+              <View style={[styles.actionIconBadge, { backgroundColor: '#16A34A' }]}>
+                <Ionicons name="mic" size={26} color="#FFFFFF" />
+              </View>
+              <Text style={styles.actionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.recordVoice}</Text>
+            </View>
           </Pressable>
         </View>
       </ScrollView>
@@ -287,32 +314,29 @@ export default function FamilyHomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF" },
-  scrollContent: { paddingBottom: 100, paddingTop: 80 }, 
+  scrollContent: { paddingBottom: 150, paddingTop: 80 },
   header: { flexDirection: "row", justifyContent: "flex-start", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8 },
   avatarList: { flexDirection: "row", alignItems: "center", gap: 8 },
   avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: "center", alignItems: "center" },
-  avatarActive: { backgroundColor: "#000" },
-  avatarInactive: { backgroundColor: "#D9D9D9" },
+  avatarActive: { backgroundColor: "#4F59D5" },
+  avatarInactive: { backgroundColor: "#EEF0F4" },
   avatarText: { fontSize: 20, fontWeight: "bold" },
   textWhite: { color: "#FFF" },
-  textGray: { color: "#666" },
-  avatarAdd: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#E0E0E0", justifyContent: "center", alignItems: "center" },
-  avatarAddText: { fontSize: 24, fontWeight: "bold", color: "#000", marginBottom: 4 },
-  
+  textGray: { color: "#6B7280" },
+  avatarAdd: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: "#E5E7EB", justifyContent: "center", alignItems: "center" },
+
   userInfo: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginTop: 8, marginBottom: 16 },
-  userName: { fontSize: 28, fontWeight: "bold", letterSpacing: 2, color: "#000", marginRight: 12 },
-  inviteBadge: { backgroundColor: "#E5E5E5", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 12 },
-  inviteText: { color: "#4B5563", fontWeight: "600", fontSize: 14 },
-  copyIconWrap: { width: 24, height: 24, position: "relative" },
-  copyIconBack: { position: "absolute", top: 2, left: 2, width: 18, height: 18, borderWidth: 2, borderColor: "#000", borderRadius: 4 },
-  copyIconFront: { position: "absolute", bottom: 2, right: 2, width: 18, height: 18, borderWidth: 2, borderColor: "#000", borderRadius: 4, backgroundColor: "#FFF" },
-  
-  medCard: { backgroundColor: "#F7F7F7", marginHorizontal: 20, borderRadius: 20, paddingVertical: 20, paddingHorizontal: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
-  medTitle: { fontSize: 22, fontWeight: "bold", textAlign: "center", color: "#000", letterSpacing: 1, marginBottom: 8 },
-  medProgress: { fontSize: 26, fontWeight: "bold", textAlign: "center", color: "#000", marginBottom: 12 },
-  medDetail: { fontSize: 16, textAlign: "center", color: "#000", fontWeight: "500" },
-  
-  vitalsOuterCard: { backgroundColor: "#F2F2F2", marginHorizontal: 20, marginTop: 16, borderRadius: 20, padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
+  userName: { fontSize: 28, fontWeight: "bold", letterSpacing: 2, color: "#111827", marginRight: 12 },
+  inviteBadge: { backgroundColor: "#EDE9FE", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 12 },
+  inviteText: { color: "#4F59D5", fontWeight: "600", fontSize: 14 },
+  copyIconWrap: { width: 24, height: 24, justifyContent: "center", alignItems: "center" },
+
+  medCard: { backgroundColor: "#F8F9FC", marginHorizontal: 20, borderRadius: 20, paddingVertical: 20, paddingHorizontal: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  medTitle: { fontSize: 22, fontWeight: "bold", textAlign: "center", color: "#111827", letterSpacing: 1, marginBottom: 8 },
+  medProgress: { fontSize: 26, fontWeight: "bold", textAlign: "center", color: "#111827", marginBottom: 12 },
+  medDetail: { fontSize: 16, textAlign: "center", color: "#111827", fontWeight: "500" },
+
+  vitalsOuterCard: { backgroundColor: "#F8F9FC", marginHorizontal: 20, marginTop: 16, borderRadius: 20, padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
   vitalsGrid: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
   
   vitalBlock: { flex: 1, alignItems: "center" },
@@ -339,20 +363,19 @@ const styles = StyleSheet.create({
   vitalTimeText: { color: "#FFF", fontSize: 15, fontWeight: "500" },
   vitalLabelText: { color: "#F3F4F6", fontSize: 13 },
   
-  chartBtn: { backgroundColor: "#F5A623", borderRadius: 24, paddingVertical: 10, paddingHorizontal: 24, alignSelf: "center", marginTop: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  chartBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#F5A623", borderRadius: 24, paddingVertical: 10, paddingHorizontal: 24, alignSelf: "center", marginTop: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
   chartBtnText: { color: "#FFF", fontSize: 17, fontWeight: "bold" },
   actionsRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, marginHorizontal: 20, marginTop: 20 },
-  actionBtn: { flex: 1, aspectRatio: 1, borderRadius: 20, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2 },
-  actionEmoji: { fontSize: 40, marginBottom: 8 },
+  actionBtn: { flex: 1, aspectRatio: 1, borderRadius: 20, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
+  actionGroup: { alignItems: "center", justifyContent: "center", gap: 8 },
+  actionIconBadge: { width: 52, height: 52, borderRadius: 26, justifyContent: "center", alignItems: "center" },
   actionText: {
     width: "92%",
-    minHeight: 38,
     fontSize: 15,
     lineHeight: 19,
     fontWeight: "bold",
-    color: "#000",
+    color: "#111827",
     letterSpacing: 0.2,
     textAlign: "center",
-    textAlignVertical: "center",
   }
 });

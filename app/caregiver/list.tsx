@@ -389,10 +389,11 @@ export default function CaregiverListScreen() {
 
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.replace("/caregiver")}
+          onPress={() => router.back()}
           style={styles.backButton}
+          hitSlop={8}
         >
-          <Ionicons name="chevron-back" size={28} color="#333" />
+          <Ionicons name="chevron-back" size={24} color="#111827" />
           <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
 
@@ -509,7 +510,7 @@ export default function CaregiverListScreen() {
                 >
                   <View style={styles.medContent}>
                     <View style={styles.pillIconWrap}>
-                      <Text style={styles.pillIcon}>💊</Text>
+                      <Ionicons name="medkit" size={32} color="#5B8DEF" />
                     </View>
 
                     <View style={{ flex: 1 }}>
@@ -581,19 +582,19 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: "#F4E770",
-    paddingTop: 50,
+    paddingTop: 54,
   },
   backButton: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 15,
-    height: 60,
+    gap: 6,
+    paddingHorizontal: 20,
+    height: 48,
   },
   backText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#333",
-    marginLeft: -5,
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
   },
   tabContainer: {
     flexDirection: "row",
@@ -742,9 +743,6 @@ const styles = StyleSheet.create({
     height: 52,
     alignItems: "center",
     justifyContent: "center",
-  },
-  pillIcon: {
-    fontSize: 44,
   },
   medName: {
     fontSize: 24,

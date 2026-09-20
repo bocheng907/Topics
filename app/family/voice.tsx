@@ -356,8 +356,8 @@ export default function FamilyVoiceScreen() {
       {/* 💡 延伸的綠色 Header (拿掉電池 UI，加深 PaddingBottom) */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={30} color="black" />
+          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+            <Ionicons name="chevron-back" size={24} color="#111827" />
             <Text style={styles.backBtnText}>{t.back}</Text>
           </Pressable>
         </View>
@@ -491,10 +491,10 @@ export default function FamilyVoiceScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA' },
   // 💡 修改了 Header，增加了 paddingBottom 讓綠色延伸
-  header: { backgroundColor: '#90E389', paddingTop: 60, paddingBottom: 25, elevation: 2 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
-  backBtn: { flexDirection: 'row', alignItems: 'center' },
-  backBtnText: { fontSize: 20, fontWeight: 'bold', color: '#000', marginLeft: 2 },
+  header: { backgroundColor: '#90E389', paddingTop: 54, paddingBottom: 16, elevation: 2 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
   
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
   taskCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', paddingVertical: 14, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },

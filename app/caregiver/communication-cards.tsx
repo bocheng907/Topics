@@ -153,8 +153,8 @@ export default function CaregiverVoiceScreen() {
       {/* 💡 修改 1：換成家屬端同款的左側返回鍵 Header */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={30} color="black" />
+          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+            <Ionicons name="chevron-back" size={24} color="#111827" />
             <Text style={styles.backBtnText}>{t.back}</Text>
           </Pressable>
         </View>
@@ -230,10 +230,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA' },
   
   // 💡 Header 樣式修改：讓內容靠左對齊
-  header: { backgroundColor: '#90E389', paddingTop: 60, paddingBottom: 25, elevation: 2 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, justifyContent: 'flex-start' },
-  backBtn: { flexDirection: 'row', alignItems: 'center' },
-  backBtnText: { fontSize: 20, fontWeight: 'bold', color: '#000', marginLeft: 2 },
+  header: { backgroundColor: '#90E389', paddingTop: 54, paddingBottom: 16, elevation: 2 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'flex-start' },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
   
   hintContainer: { paddingTop: 24, paddingBottom: 8, alignItems: 'center' },
   hintBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2F9F1', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 30, borderWidth: 1, borderColor: '#D5EED4', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
