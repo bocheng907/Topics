@@ -168,22 +168,22 @@ export default function CaregiverLayout() {
         <View style={styles.footerWrapper} pointerEvents="box-none">
           <View style={styles.fabContainer} pointerEvents="box-none">
             <Pressable style={styles.fabButton} onPress={onEmergencyCall}>
-              <Text style={styles.fabIcon}>📞</Text>
+              <Ionicons name="call" size={36} color="#FFFFFF" style={styles.fabIcon} />
             </Pressable>
           </View>
 
-          <View style={styles.bottomNav}>
+          <View style={[styles.bottomNav, { paddingBottom: Math.max(16, insets.bottom + 12) }]}>
             <Pressable style={styles.navButton} hitSlop={8} onPress={() => router.navigate("/caregiver" as any)}>
-              <Text style={styles.navIcon}>🏠</Text>
+              <Ionicons name="home" size={32} color="#333" />
             </Pressable>
             <Pressable style={styles.navButton} hitSlop={8} onPress={() => router.navigate("/caregiver/calendar" as any)}>
-              <Text style={[styles.navIcon, { paddingRight: 48 }]}>📅</Text>
+              <Ionicons name="calendar" size={32} color="#333" style={{ paddingRight: 48 }} />
             </Pressable>
             <Pressable style={styles.navButton} hitSlop={8} onPress={() => router.navigate("/caregiver/notifications" as any)}>
-              <Text style={[styles.navIcon, { paddingLeft: 48 }]}>🔔</Text>
+              <Ionicons name="notifications" size={32} color="#333" style={{ paddingLeft: 48 }} />
             </Pressable>
             <Pressable style={styles.navButton} hitSlop={8} onPress={() => router.navigate("/caregiver/chat-list" as any)}>
-              <Text style={styles.navIcon}>💬</Text>
+              <Ionicons name="chatbubbles" size={32} color="#333" />
             </Pressable>
           </View>
         </View>
@@ -336,8 +336,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
-    paddingVertical: 16,
-    paddingBottom: 32,
+    paddingTop: 16,
     borderTopWidth: 1,
     borderColor: "#E5E7EB",
     zIndex: 10,
@@ -348,7 +347,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  navIcon: { fontSize: 32 },
   overlay: {
     backgroundColor: "rgba(0,0,0,0.4)",
     zIndex: 100,

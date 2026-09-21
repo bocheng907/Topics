@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget"; 
 import { translations } from "@/src/i18n/translations";
@@ -121,8 +122,9 @@ export default function CareTargetSelectScreen() {
         </Pressable>
         <Pressable
           onPress={() => router.push("/care-target/join")}
-          style={{ padding: 18, borderWidth: 1, borderColor: "#007AFF",borderRadius: 12, backgroundColor: "#fff"}}
+          style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, padding: 18, borderWidth: 1, borderColor: "#007AFF",borderRadius: 12, backgroundColor: "#fff"}}
         >
+          <Ionicons name="key" size={18} color="#007AFF" />
           <Text style={{ color: "#007AFF", textAlign: "center", fontWeight: "800", fontSize: 16 }}>{t.joinByInviteCode}</Text>
         </Pressable>
         <Pressable 

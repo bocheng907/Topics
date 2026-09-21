@@ -366,10 +366,14 @@ export default function CaregiverNotebookScreen() {
                   <View key={note.id} style={styles.noteCard}>
                     <View style={styles.noteHeader}>
                       <View style={styles.noteTitleWrap}>
-                        <Text style={styles.noteTitle} numberOfLines={2}>
-                          {note.pinned ? "📌 " : ""}
-                          {localizedTitle}
-                        </Text>
+                        <View style={styles.noteTitleRow}>
+                          {note.pinned ? (
+                            <Ionicons name="bookmark" size={16} color="#F5A623" style={styles.noteTitlePinIcon} />
+                          ) : null}
+                          <Text style={styles.noteTitle} numberOfLines={2}>
+                            {localizedTitle}
+                          </Text>
+                        </View>
                         <Text style={styles.noteTime}>更新時間：{formatUpdatedAt(note.updatedAt)}</Text>
                       </View>
 
@@ -676,7 +680,15 @@ const styles = StyleSheet.create({
   noteTitleWrap: {
     flex: 1,
   },
+  noteTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  noteTitlePinIcon: {
+    marginRight: 4,
+  },
   noteTitle: {
+    flex: 1,
     fontSize: 20,
     fontWeight: "900",
     color: "#000000",

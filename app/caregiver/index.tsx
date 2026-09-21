@@ -10,7 +10,7 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +20,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
@@ -112,6 +113,7 @@ export default function CaregiverHomeScreen() {
   const { activePatient, activePatientId, ready } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
+  const hasLoadedOnceRef = useRef(false);
 
   const [target, setTarget] = useState<CareTarget | null>(null);
   const [loading, setLoading] = useState(true);
@@ -391,7 +393,14 @@ export default function CaregiverHomeScreen() {
     }
   }
 
-  if (loading || !ready) {
+  const isFullyLoaded = !loading && ready;
+  useEffect(() => {
+    if (isFullyLoaded) {
+      hasLoadedOnceRef.current = true;
+    }
+  });
+
+  if (!hasLoadedOnceRef.current && !isFullyLoaded) {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
   }
 
@@ -409,7 +418,7 @@ export default function CaregiverHomeScreen() {
         {/* 用藥提醒卡片 */}
         <View style={styles.reminderCard}>
           <View style={styles.reminderTitleRow}>
-            <Text style={styles.emojiLarge}>⏰</Text>
+            <Ionicons name="alarm" size={32} color="#4F59D5" />
             <Text style={styles.reminderTitle}>
               {currentReminder
                 ? `${currentReminder.scheduleTime} ${t.reminder}`
@@ -418,7 +427,7 @@ export default function CaregiverHomeScreen() {
           </View>
 
           <View style={styles.reminderSubRow}>
-            <Text style={styles.emojiMedium}>💊</Text>
+            <Ionicons name="medkit" size={24} color="#2563EB" />
             <Text style={styles.reminderSubText}>
               {currentReminder
                 ? `${currentReminder.medicineName} (${currentReminder.doseText || t.doseAsDirected})`
@@ -429,20 +438,29 @@ export default function CaregiverHomeScreen() {
           <Pressable
             style={[
               styles.doneBtn,
-              (!activeSlot || activeSlotDone || doneLoading) && {
-                opacity: 0.5,
-              },
+              doneLoading
+                ? styles.doneBtnLoading
+                : activeSlotDone
+                ? styles.doneBtnDone
+                : activeSlot
+                ? styles.doneBtnActive
+                : styles.doneBtnDisabled,
             ]}
             onPress={handleDonePress}
             disabled={!activeSlot || activeSlotDone || doneLoading}
           >
-            <Text style={styles.doneBtnText}>
-              {doneLoading
-                ? "..."
-                : activeSlotDone
-                ? "DONE ✓"
-                : "DONE"}
-            </Text>
+            {doneLoading ? (
+              <Text style={styles.doneBtnTextMuted}>...</Text>
+            ) : activeSlotDone ? (
+              <View style={styles.doneBtnRow}>
+                <Text style={styles.doneBtnTextLight}>DONE</Text>
+                <Ionicons name="checkmark-circle" size={20} color="#FFF" />
+              </View>
+            ) : activeSlot ? (
+              <Text style={styles.doneBtnTextLight}>DONE</Text>
+            ) : (
+              <Text style={styles.doneBtnTextMuted}>DONE</Text>
+            )}
           </Pressable>
         </View>
 
@@ -451,8 +469,13 @@ export default function CaregiverHomeScreen() {
           <Text style={styles.sectionTitle}>{t.functionMenu}</Text>
         </View>
 
-        <Pressable onPress={() => router.push("/caregiver/camera")} style={styles.mainActionButton}>
-          <Text style={styles.mainActionText}>{t.scanPrescription}</Text>
+        {/* 掃描藥單 */}
+        <Pressable
+          onPress={() => router.push("/caregiver/camera")}
+          style={styles.mainActionButton}
+        >
+          <Ionicons name="camera" size={24} color="#FFF" />
+          <Text style={styles.mainActionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>{t.scanPrescription}</Text>
         </Pressable>
 
         {/* 2x2 功能網格 */}
@@ -460,18 +483,26 @@ export default function CaregiverHomeScreen() {
           <View style={styles.gridRow}>
             <Pressable
               onPress={() => router.push("/caregiver/list")}
-              style={[styles.gridItem, { backgroundColor: "#F4E770" }]}
+              style={[styles.gridItem, { backgroundColor: "#FEF9C3" }]}
             >
-              <Text style={styles.gridEmoji}>📋</Text>
-              <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.viewPrescriptionRecords}</Text>
+              <View style={styles.gridGroup}>
+                <View style={[styles.gridIconBadge, { backgroundColor: "#CA8A04" }]}>
+                  <Ionicons name="clipboard" size={28} color="#FFFFFF" />
+                </View>
+                <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.viewPrescriptionRecords}</Text>
+              </View>
             </Pressable>
 
             <Pressable
               onPress={() => router.push("/caregiver/health-report" as any)}
-              style={[styles.gridItem, { backgroundColor: "#EEAC6F" }]}
+              style={[styles.gridItem, { backgroundColor: "#FFEDD5" }]}
             >
-              <Text style={styles.gridEmoji}>🩺</Text>
-              <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.dailyHealthReport}</Text>
+              <View style={styles.gridGroup}>
+                <View style={[styles.gridIconBadge, { backgroundColor: "#EA580C" }]}>
+                  <Ionicons name="pulse" size={28} color="#FFFFFF" />
+                </View>
+                <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.dailyHealthReport}</Text>
+              </View>
             </Pressable>
           </View>
 
@@ -480,18 +511,26 @@ export default function CaregiverHomeScreen() {
               onPress={() =>
                 router.push("/caregiver/communication-cards" as any)
               }
-              style={[styles.gridItem, { backgroundColor: "#81E87A" }]}
+              style={[styles.gridItem, { backgroundColor: "#DCFCE7" }]}
             >
-              <Text style={styles.gridEmoji}>🖼️</Text>
-              <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.communicationCards}</Text>
+              <View style={styles.gridGroup}>
+                <View style={[styles.gridIconBadge, { backgroundColor: "#16A34A" }]}>
+                  <Ionicons name="image" size={28} color="#FFFFFF" />
+                </View>
+                <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.communicationCards}</Text>
+              </View>
             </Pressable>
 
             <Pressable
               onPress={() => router.push("/caregiver/video-record" as any)}
-              style={[styles.gridItem, { backgroundColor: "#7BC6F9" }]}
+              style={[styles.gridItem, { backgroundColor: "#DBEAFE" }]}
             >
-              <Text style={styles.gridEmoji}>📹</Text>
-              <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.conditionRecording}</Text>
+              <View style={styles.gridGroup}>
+                <View style={[styles.gridIconBadge, { backgroundColor: "#2563EB" }]}>
+                  <Ionicons name="videocam" size={28} color="#FFFFFF" />
+                </View>
+                <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.conditionRecording}</Text>
+              </View>
             </Pressable>
           </View>
         </View>
@@ -509,7 +548,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   scrollContent: {
-    paddingBottom: 80,
+    paddingBottom: 190, // 避開懸浮的緊急撥號鍵與底部導覽列（兩者皆為浮動疊層，不會自動讓出空間）
     paddingTop: 80, // 稍微加大上方的 Padding，閃開共用導覽列的漢堡按鈕
   },
   userInfo: {
@@ -520,10 +559,10 @@ const styles = StyleSheet.create({
     fontSize: 38,
     fontWeight: "bold",
     letterSpacing: 2,
-    color: "#000",
+    color: "#111827",
   },
   reminderCard: {
-    backgroundColor: "#F7F7F7",
+    backgroundColor: "#F8F9FC",
     marginHorizontal: 20,
     borderRadius: 24,
     paddingVertical: 24,
@@ -571,7 +610,6 @@ const styles = StyleSheet.create({
   doneBtn: {
     width: 110,
     height: 110,
-    backgroundColor: "#D9D9D9",
     borderRadius: 55,
     justifyContent: "center",
     alignItems: "center",
@@ -581,11 +619,26 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  doneBtnText: {
+  doneBtnActive: { backgroundColor: "#F5A623" },
+  doneBtnDone: { backgroundColor: "#22C55E" },
+  doneBtnDisabled: { backgroundColor: "#E5E7EB" },
+  doneBtnLoading: { backgroundColor: "#E5E7EB" },
+  doneBtnTextLight: {
     fontSize: 24,
     fontWeight: "900",
-    color: "#000",
     letterSpacing: 1,
+    color: "#FFFFFF",
+  },
+  doneBtnTextMuted: {
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: 1,
+    color: "#9CA3AF",
+  },
+  doneBtnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   sectionHeader: {
     paddingHorizontal: 24,
@@ -595,10 +648,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#000",
+    color: "#111827",
   },
   mainActionButton: {
-    backgroundColor: "#4651DB",
+    backgroundColor: "#4F59D5",
     marginHorizontal: 20,
     borderRadius: 16,
     paddingVertical: 16,
@@ -612,9 +665,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 3,
-  },
-  mainActionEmoji: {
-    fontSize: 24,
   },
   mainActionText: {
     flexShrink: 1,
@@ -634,29 +684,35 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     flex: 1,
-    height: 120,
+    height: 128,
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 2,
   },
-  gridEmoji: {
-    fontSize: 42,
-    marginBottom: 8,
+  gridGroup: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  gridIconBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: "center",
+    alignItems: "center",
   },
   gridText: {
     width: "92%",
-    minHeight: 40,
     fontSize: 17,
     lineHeight: 20,
     fontWeight: "bold",
-    color: "#000",
+    color: "#111827",
     letterSpacing: 0.2,
     textAlign: "center",
-    textAlignVertical: "center",
   },
 });

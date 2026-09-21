@@ -2,6 +2,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
@@ -161,9 +162,10 @@ export function NotificationDetailView() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backButton}>
-          <Text style={styles.backText}>‹ {t.back}</Text>
+          <Ionicons name="chevron-back" size={22} color="#111827" />
+          <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
-        <Text style={styles.menuIcon}>☰</Text>
+        <Ionicons name="menu" size={26} color="#111827" />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -237,16 +239,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   backButton: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 8,
     paddingRight: 12,
   },
   backText: {
     fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  menuIcon: {
-    fontSize: 28,
     fontWeight: "700",
     color: "#111827",
   },

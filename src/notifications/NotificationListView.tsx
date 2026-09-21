@@ -17,6 +17,7 @@ import {
   where,
 } from "firebase/firestore";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
@@ -223,7 +224,7 @@ export function NotificationListView({ detailRoute }: Props) {
         )}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <Text style={styles.emptyIcon}>🗒️</Text>
+            <Ionicons name="document-text-outline" size={40} color="#C4C4C4" />
             <Text style={styles.emptyText}>{t[CATEGORY_EMPTY_KEY[category]]}</Text>
           </View>
         }
@@ -243,7 +244,7 @@ export function NotificationListView({ detailRoute }: Props) {
               {isUnread ? <View style={styles.unreadDot} /> : null}
 
               <View style={[styles.avatar, { backgroundColor: visual.tintSoft }]}>
-                <Text style={styles.avatarIcon}>{visual.icon}</Text>
+                <Ionicons name={visual.icon} size={20} color={visual.tint} />
               </View>
 
               <View style={styles.body}>
@@ -429,9 +430,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-  avatarIcon: {
-    fontSize: 20,
-  },
   body: {
     flex: 1,
     gap: 4,
@@ -490,9 +488,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingTop: 80,
     gap: 10,
-  },
-  emptyIcon: {
-    fontSize: 40,
   },
   emptyText: {
     fontSize: 15,

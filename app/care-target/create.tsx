@@ -140,6 +140,11 @@ export default function CareTargetCreateScreen() {
 
       <Pressable
         onPress={async () => {
+          if (router.canGoBack()) {
+            router.back();
+            return;
+          }
+
           try {
             await signOut(auth);
             router.replace("/login");
@@ -148,7 +153,9 @@ export default function CareTargetCreateScreen() {
           }
         }}
       >
-        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700" }}>{t.logoutAndBack}</Text>
+        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700" }}>
+          {router.canGoBack() ? t.back : t.logoutAndBack}
+        </Text>
       </Pressable>
     </ScrollView>
   );

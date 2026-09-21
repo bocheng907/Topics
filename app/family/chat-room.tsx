@@ -218,7 +218,7 @@ export default function FamilyChatRoomScreen() {
         </View>
       ) : messages.length === 0 ? (
         <ScrollView contentContainerStyle={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>💬</Text>
+          <Ionicons name="chatbubbles-outline" size={80} color="#C4C4C4" style={styles.emptyIcon} />
           <Text style={styles.emptyText}>{t.noConversation}</Text>
           <Text style={styles.emptySubText}>{t.sendFirstMessage}</Text>
         </ScrollView>

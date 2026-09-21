@@ -1,7 +1,10 @@
+import type { ComponentProps } from "react";
+import type { Ionicons } from "@expo/vector-icons";
 import type { translations } from "@/src/i18n/translations";
 
 type TranslationSet = (typeof translations)[keyof typeof translations];
 type TranslationKey = keyof TranslationSet;
+type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
 export type NotificationCategoryId = "all" | "health" | "medication" | "care" | "other";
 export type NotificationLevel = "warning" | "critical";
@@ -54,18 +57,18 @@ export const CATEGORY_EMPTY_KEY: Record<NotificationCategoryId, TranslationKey> 
   other: "notificationEmptyOther",
 };
 
-type CategoryVisual = { icon: string; tint: string; tintSoft: string };
+type CategoryVisual = { icon: IoniconName; tint: string; tintSoft: string };
 
 const CATEGORY_VISUALS: Record<Exclude<NotificationCategoryId, "all">, CategoryVisual> = {
-  health: { icon: "🩺", tint: "#7C6FE0", tintSoft: "#EDE9FE" },
-  medication: { icon: "💊", tint: "#2563EB", tintSoft: "#DBEAFE" },
-  care: { icon: "📅", tint: "#C2760F", tintSoft: "#FFF4E5" },
-  other: { icon: "🔔", tint: "#6B7280", tintSoft: "#F3F4F6" },
+  health: { icon: "medical", tint: "#7C6FE0", tintSoft: "#EDE9FE" },
+  medication: { icon: "medkit", tint: "#2563EB", tintSoft: "#DBEAFE" },
+  care: { icon: "calendar", tint: "#C2760F", tintSoft: "#FFF4E5" },
+  other: { icon: "notifications", tint: "#6B7280", tintSoft: "#F3F4F6" },
 };
 
 const LEVEL_VISUALS: Record<NotificationLevel, CategoryVisual> = {
-  warning: { icon: "⚠️", tint: "#B45309", tintSoft: "#FEF3C7" },
-  critical: { icon: "🚨", tint: "#B91C1C", tintSoft: "#FEE2E2" },
+  warning: { icon: "warning", tint: "#B45309", tintSoft: "#FEF3C7" },
+  critical: { icon: "alert-circle", tint: "#B91C1C", tintSoft: "#FEE2E2" },
 };
 
 export function getNotificationVisual(data: {

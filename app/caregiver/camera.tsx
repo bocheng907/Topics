@@ -16,6 +16,7 @@ import {
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { Ionicons } from "@expo/vector-icons";
 
 import { uploadPrescriptionImage } from "@/firebase/uploadPrescriptionImage";
 import { useAuth } from "@/src/auth/useAuth";
@@ -208,8 +209,16 @@ function CameraScreen() {
   }
 
   return (
-    <ScrollView key={refreshKey} contentContainerStyle={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F4E770" />
+    <View style={styles.screen}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <View style={styles.topBar}>
+        <Pressable onPress={() => router.replace(user?.role === "family" ? "/family" : "/caregiver")} style={styles.topBarBack} hitSlop={8}>
+          <Ionicons name="chevron-back" size={24} color="#111827" />
+          <Text style={styles.topBarBackText}>{t.back}</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView key={refreshKey} contentContainerStyle={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>{t.cameraTitle}</Text>
         <Text style={styles.subtitle}>
@@ -219,14 +228,17 @@ function CameraScreen() {
 
       <View style={styles.actions}>
         <Pressable onPress={takePhoto} style={styles.primaryBtn}>
+          <Ionicons name="camera" size={20} color="#fff" />
           <Text style={styles.primaryBtnText}>{t.cameraTakePhoto}</Text>
         </Pressable>
 
         <Pressable onPress={pickImage} style={styles.outlineBtn}>
+          <Ionicons name="image" size={20} color="#007AFF" />
           <Text style={styles.outlineBtnText}>{t.cameraPickImage}</Text>
         </Pressable>
 
         <Pressable onPress={openQrScanner} style={styles.qrBtn}>
+          <Ionicons name="qr-code" size={20} color="#fff" />
           <Text style={styles.qrBtnText}>{t.cameraScanQr}</Text>
         </Pressable>
       </View>
@@ -260,18 +272,18 @@ function CameraScreen() {
         </View>
       )}
 
-      <Pressable
-        onPress={() => router.replace(user?.role === "family" ? "/family" : "/caregiver")}
-        style={styles.back}
-      >
-        <Text style={styles.backText}>{t.cameraCancelBack}</Text>
-      </Pressable>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, paddingTop: 90, paddingBottom: 40 },
+  screen: { flex: 1, backgroundColor: "#FFFFFF" },
+  topBar: { paddingTop: 54, paddingBottom: 16, paddingHorizontal: 20 },
+  topBarBack: { flexDirection: "row", alignItems: "center", gap: 6 },
+  topBarBackText: { fontSize: 17, fontWeight: "700", color: "#111827" },
+
+  container: { padding: 24, paddingBottom: 40 },
 
   header: { marginBottom: 20 },
   title: { fontSize: 28, fontWeight: "900", color: "#333" },
@@ -280,6 +292,8 @@ const styles = StyleSheet.create({
   actions: { marginBottom: 20 },
 
   primaryBtn: {
+    flexDirection: "row",
+    gap: 8,
     paddingVertical: 18,
     backgroundColor: "#007AFF",
     borderRadius: 14,
@@ -290,16 +304,21 @@ const styles = StyleSheet.create({
   primaryBtnText: { fontSize: 18, fontWeight: "900", color: "#fff" },
 
   outlineBtn: {
+    flexDirection: "row",
+    gap: 8,
     paddingVertical: 18,
     borderWidth: 2,
     borderColor: "#007AFF",
     borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
     marginBottom: 12,
   },
   outlineBtnText: { fontSize: 18, fontWeight: "900", color: "#007AFF" },
 
   qrBtn: {
+    flexDirection: "row",
+    gap: 8,
     paddingVertical: 18,
     backgroundColor: "#333",
     borderRadius: 14,
@@ -339,14 +358,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: { color: "#AAA", fontWeight: "700" },
-
-  back: { marginTop: 16 },
-  backText: {
-    color: "#666",
-    textAlign: "center",
-    fontWeight: "700",
-    fontSize: 16,
-  },
 
   qrContainer: {
     flex: 1,

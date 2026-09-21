@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '@/src/auth/useAuth';
 import { useActiveCareTarget } from '@/src/care-target/useActiveCareTarget';
@@ -172,8 +173,9 @@ export default function HealthReportScreen() {
       <View style={styles.topContainer}>
         {/* 🌟 拿掉置中標題，恢復原本的寬鬆返回鍵排版 */}
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backButtonText}>← {t.back}</Text>
+          <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
+            <Ionicons name="chevron-back" size={24} color="#111827" />
+            <Text style={styles.backButtonText}>{t.back}</Text>
           </Pressable>
         </View>
 
@@ -417,7 +419,7 @@ const styles = StyleSheet.create({
   },
   topContainer: {
     backgroundColor: '#F3CDAD',
-    paddingTop: 50,
+    paddingTop: 54,
     zIndex: 10,
   },
   headerRow: {
@@ -428,13 +430,15 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingVertical: 8,
-    paddingRight: 16,
   },
   backButtonText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#000',
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
   },
   tabRow: {
     flexDirection: 'row',

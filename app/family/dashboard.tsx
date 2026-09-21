@@ -1,4 +1,5 @@
 // app/family/dashboard.tsx
+import { Ionicons } from "@expo/vector-icons";
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import HealthTrendChart from "@/src/health/HealthTrendChart";
@@ -336,16 +337,18 @@ export default function FamilyDashboardScreen() {
       <View style={styles.topContainer}>
         {activeTab === "settings" ? (
           <View style={[styles.headerRow, styles.settingsHeader]}>
-            <Pressable onPress={handleBackPress} style={styles.settingsBackButton}>
-              <Text style={styles.backButtonText}>← {t.back}</Text>
+            <Pressable onPress={handleBackPress} style={styles.settingsBackButton} hitSlop={8}>
+              <Ionicons name="chevron-back" size={24} color="#111827" />
+              <Text style={styles.backButtonText}>{t.back}</Text>
             </Pressable>
             <Text style={styles.settingsTitle}>{t.customThresholdTitle}</Text>
           </View>
         ) : (
           <>
             <View style={styles.headerRow}>
-              <Pressable onPress={() => router.back()} style={styles.backButton}>
-                <Text style={styles.backButtonText}>{t.backHome}</Text>
+              <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
+                <Ionicons name="chevron-back" size={24} color="#111827" />
+                <Text style={styles.backButtonText}>{t.back}</Text>
               </Pressable>
             </View>
 
@@ -434,6 +437,7 @@ export default function FamilyDashboardScreen() {
           <View style={styles.tabContent}>
             <View style={{ alignItems: 'flex-end', marginBottom: 16 }}>
               <Pressable onPress={() => setActiveTab("settings")} style={styles.settingsBtn}>
+                <Ionicons name="settings" size={14} color="#D37B2B" />
                 <Text style={styles.settingsBtnText}>{t.settingsButtonLabel}</Text>
               </Pressable>
             </View>
@@ -569,6 +573,7 @@ export default function FamilyDashboardScreen() {
           <View style={styles.settingsContent}>
 
             <View style={styles.infoBanner}>
+              <Ionicons name="bulb" size={18} color="#D37B2B" style={styles.infoBannerIcon} />
               <Text style={styles.infoBannerText}>
                 {t.thresholdInfoBanner}
               </Text>
@@ -722,13 +727,13 @@ export default function FamilyDashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FAFAFA" },
-  topContainer: { backgroundColor: "#F3CDAD", paddingTop: 50, zIndex: 10 },
-  headerRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingBottom: 10 },
-  backButton: { paddingVertical: 8 },
-  backButtonText: { fontSize: 18, fontWeight: "800", color: "#000" },
+  topContainer: { backgroundColor: "#F3CDAD", paddingTop: 54, zIndex: 10 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, paddingBottom: 10 },
+  backButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 },
+  backButtonText: { fontSize: 17, fontWeight: "700", color: "#111827" },
   settingsHeader: { justifyContent: "center", position: "relative", paddingVertical: 10 },
-  settingsBackButton: { position: "absolute", left: 20, zIndex: 1, paddingVertical: 8 },
-  settingsTitle: { fontSize: 22, fontWeight: "bold", color: "#000" },
+  settingsBackButton: { flexDirection: "row", alignItems: "center", gap: 6, position: "absolute", left: 20, zIndex: 1, paddingVertical: 8 },
+  settingsTitle: { fontSize: 18, fontWeight: "800", color: "#111827" },
   tabRow: { flexDirection: "row", width: "100%" },
   tabButton: { flex: 1, paddingVertical: 16, alignItems: "center", justifyContent: "center" },
   tabButtonActive: { backgroundColor: "#E69A57" },
@@ -780,11 +785,12 @@ const styles = StyleSheet.create({
   fullCardValueRow: { flexDirection: "row", width: "100%", marginBottom: 12 },
   valueCol: { flex: 1, alignItems: "center" },
   valueUnitLarge: { fontSize: 22, fontWeight: "500", color: "#000" },
-  settingsBtn: { backgroundColor: "#FFF4E5", borderColor: "#F2A25B", borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
+  settingsBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FFF4E5", borderColor: "#F2A25B", borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
   settingsBtnText: { color: "#D37B2B", fontWeight: "bold", fontSize: 14 },
   settingsContent: { flex: 1 },
-  infoBanner: { backgroundColor: "#FFF4E5", borderColor: "#F2A25B", borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 20 },
-  infoBannerText: { color: "#D37B2B", fontWeight: "bold", fontSize: 14, lineHeight: 22 },
+  infoBanner: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#FFF4E5", borderColor: "#F2A25B", borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 20 },
+  infoBannerIcon: { marginTop: 2 },
+  infoBannerText: { flex: 1, color: "#D37B2B", fontWeight: "bold", fontSize: 14, lineHeight: 22 },
   settingCard: { backgroundColor: "#FFF", borderWidth: 2, borderRadius: 20, padding: 16, marginBottom: 16 },
   settingCardActive: { borderColor: "#E59752", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
   settingCardInactive: { borderColor: "#E5E5E5", opacity: 0.7 },

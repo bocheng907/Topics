@@ -10,6 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import {
   collection,
   onSnapshot,
@@ -27,7 +28,6 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
-import { Ionicons } from "@expo/vector-icons";
 
 type TabType = "records" | "meds";
 
@@ -412,8 +412,8 @@ export default function FamilyListScreen() {
       <StatusBar barStyle="dark-content" />
 
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={28} color="#333" />
+        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
+          <Ionicons name="chevron-back" size={24} color="#111827" />
           <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
 
@@ -531,7 +531,7 @@ export default function FamilyListScreen() {
                 >
                   <View style={styles.medContent}>
                     <View style={styles.pillIconWrap}>
-                      <Text style={styles.pillIcon}>💊</Text>
+                      <Ionicons name="medkit" size={32} color="#5B8DEF" />
                     </View>
 
                     <View style={{ flex: 1 }}>
@@ -608,19 +608,19 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: "#F4E770",
-    paddingTop: 50,
+    paddingTop: 54,
   },
   backButton: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 15,
-    height: 50,
+    gap: 6,
+    paddingHorizontal: 20,
+    height: 48,
   },
   backText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#000",
-    marginLeft: 2,
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
   },
   tabContainer: {
     flexDirection: "row",
@@ -750,9 +750,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF7B2",
     alignItems: "center",
     justifyContent: "center",
-  },
-  pillIcon: {
-    fontSize: 29,
   },
   medName: {
     fontSize: 22,

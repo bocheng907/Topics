@@ -100,21 +100,21 @@ export default function FamilyLayout() {
       )}
 
       {!hideBottomNav && (
-        <View style={styles.bottomNav}>
+        <View style={[styles.bottomNav, { paddingBottom: Math.max(16, insets.bottom + 12) }]}>
           <Pressable onPress={() => router.navigate("/family" as any)}>
-            <Text style={styles.navIcon}>🏠</Text>
+            <Ionicons name="home" size={32} color="#333" />
           </Pressable>
 
           <Pressable onPress={() => router.push("/family/calendar" as any)}>
-            <Text style={styles.navIcon}>📅</Text>
+            <Ionicons name="calendar" size={32} color="#333" />
           </Pressable>
 
           <Pressable onPress={() => router.push("/family/notifications" as any)}>
-            <Text style={styles.navIcon}>🔔</Text>
+            <Ionicons name="notifications" size={32} color="#333" />
           </Pressable>
 
           <Pressable onPress={() => router.push("/family/chat-list" as any)}>
-            <Text style={styles.navIcon}>💬</Text>
+            <Ionicons name="chatbubbles" size={32} color="#333" />
           </Pressable>
         </View>
       )}
@@ -236,13 +236,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
-    paddingVertical: 16,
-    paddingBottom: 32,
+    paddingTop: 16,
     borderTopWidth: 1,
     borderColor: "#E5E7EB",
     zIndex: 10,
   },
-  navIcon: { fontSize: 32 },
   overlay: {
     backgroundColor: "rgba(0,0,0,0.4)",
     zIndex: 100,
