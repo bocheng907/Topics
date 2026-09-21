@@ -13,11 +13,15 @@ import { useAuth } from "@/src/auth/useAuth";
 import type { Role } from "@/src/auth/AuthProvider";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { isValidRegistrationPassword } from "@/src/auth/passwordPolicy";
+import { PRIVACY_POLICY_VERSION, privacyCopy } from "@/src/privacy/consent";
+import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 
 export default function RegisterScreen() {
   const { register } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
+  const privacy = privacyCopy[language];
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,9 +29,15 @@ export default function RegisterScreen() {
   const [emergencyPhone1, setEmergencyPhone1] = useState("");
   const [emergencyPhone2, setEmergencyPhone2] = useState("");
   const [loading, setLoading] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   async function onRegister() {
-    if (!email || password.length < 6) {
+    if (loading) return;
+    if (!privacyAccepted) {
+      Alert.alert(t.prompt, privacy.required);
+      return;
+    }
+    if (!email.trim() || !isValidRegistrationPassword(password)) {
       Alert.alert(t.prompt, t.registerValidation);
       return;
     }
@@ -41,13 +51,16 @@ export default function RegisterScreen() {
       setLoading(true);
 
       await register(email, password, role, {
+        privacyConsent: { accepted: privacyAccepted, version: PRIVACY_POLICY_VERSION },
         emergencyPhone1,
         emergencyPhone2,
       });
 
       router.replace("/");
     } catch (e: any) {
-      Alert.alert(t.registerFailed, e?.message ?? t.registerFailedFallback);
+      const weakPassword = e?.code === "auth/weak-password" || e?.code === "auth/password-does-not-meet-requirements";
+      Alert.alert(t.registerFailed, e?.code === "privacy/consent-required" ? privacy.required :
+        weakPassword ? t.registerValidation : e?.message ?? t.registerFailedFallback);
     } finally {
       setLoading(false);
     }
@@ -174,6 +187,8 @@ export default function RegisterScreen() {
           <TextInput
             placeholder={t.setPasswordPlaceholder}
             secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
             value={password}
             onChangeText={setPassword}
             style={{
@@ -186,6 +201,10 @@ export default function RegisterScreen() {
             }}
           />
         </View>
+
+        <Text style={{ fontSize: 13, color: "#666", marginTop: -12 }}>
+          {t.setPasswordPlaceholder}
+        </Text>
 
         {role === "family" && (
           <>
@@ -245,14 +264,26 @@ export default function RegisterScreen() {
           </>
         )}
 
+        <View style={{ gap: 8 }}>
+          <PrivacyPolicyLink />
+          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: privacyAccepted, disabled: loading }}
+            accessibilityLabel={privacy.consent} disabled={loading}
+            onPress={() => setPrivacyAccepted(value => !value)}
+            style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 8 }}>
+            <Text accessibilityElementsHidden style={{ fontSize: 23, color: "#005FCC" }}>{privacyAccepted ? "☑" : "☐"}</Text>
+            <Text style={{ flex: 1, fontSize: 15, lineHeight: 23, color: "#333" }}>{privacy.consent}</Text>
+          </Pressable>
+          <Text style={{ fontSize: 12, lineHeight: 19, color: "#666" }}>{privacy.scope}</Text>
+        </View>
+
         <Pressable
           onPress={onRegister}
-          disabled={loading}
+          disabled={loading || !privacyAccepted}
           style={({ pressed }) => ({
             marginTop: 10,
             padding: 18,
             borderRadius: 16,
-            backgroundColor: loading ? "#CCC" : "#007AFF",
+            backgroundColor: loading || !privacyAccepted ? "#CCC" : "#007AFF",
             alignItems: "center",
             opacity: pressed ? 0.8 : 1,
           })}

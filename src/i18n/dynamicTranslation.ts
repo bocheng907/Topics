@@ -7,6 +7,7 @@ import {
 
 import { translateText, translateTexts } from "@/src/api/analyzePrescription";
 import type { Language } from "@/src/i18n/translations";
+import { canEditPrescription } from "@/src/care-target/permissions";
 
 export type DynamicTranslationSpec = {
   baseName: string;
@@ -127,7 +128,11 @@ export async function ensureFirestoreTranslations(
   }
 
   if (Object.keys(updatePayload).length > 0) {
-    await updateDoc(docRef, updatePayload);
+    // Read-only members may view translations without persisting them.
+    const prescriptionId = docRef.path.startsWith("prescriptions/") ? docRef.path.split("/")[1] : null;
+    if (!docRef.path.startsWith("chats/") && (!prescriptionId || await canEditPrescription(prescriptionId))) {
+      await updateDoc(docRef, updatePayload);
+    }
   }
 
   return updatePayload;

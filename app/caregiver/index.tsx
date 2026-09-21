@@ -451,13 +451,8 @@ export default function CaregiverHomeScreen() {
           <Text style={styles.sectionTitle}>{t.functionMenu}</Text>
         </View>
 
-        {/* 掃描藥單 */}
-        <Pressable
-          onPress={() => router.push("/caregiver/camera")}
-          style={styles.mainActionButton}
-        >
-          <Text style={styles.mainActionEmoji}>📷</Text>
-          <Text style={styles.mainActionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>{t.scanPrescription}</Text>
+        <Pressable onPress={() => router.push("/caregiver/camera")} style={styles.mainActionButton}>
+          <Text style={styles.mainActionText}>{t.scanPrescription}</Text>
         </Pressable>
 
         {/* 2x2 功能網格 */}

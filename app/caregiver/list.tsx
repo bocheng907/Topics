@@ -18,9 +18,11 @@ import {
   where,
   doc,
   getDocs,
+  getDoc,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
+import { canEditPrescription } from "@/src/care-target/permissions";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useAuth } from "@/src/auth/useAuth";
 import { translations } from "@/src/i18n/translations";
@@ -160,36 +162,18 @@ function getMemoText(value: any): string {
 }
 
 async function deletePrescriptionCascade(prescriptionId: string) {
+  if (!await canEditPrescription(prescriptionId)) throw new Error("Primary family required");
+  const parent = await getDoc(doc(db, "prescriptions", prescriptionId));
+  const patientId = parent.data()?.patientId;
+  if (!patientId) throw new Error("Patient unavailable");
   const batch = writeBatch(db);
-
-  const itemsSnap = await getDocs(
-    collection(db, "prescriptions", prescriptionId, "items")
-  );
-  itemsSnap.docs.forEach((docSnap) => {
-    batch.delete(docSnap.ref);
-  });
-
-  const remindersSnap = await getDocs(
-    query(
-      collection(db, "medication_reminders"),
-      where("prescriptionId", "==", prescriptionId)
-    )
-  );
-  remindersSnap.docs.forEach((docSnap) => {
-    batch.delete(docSnap.ref);
-  });
-
-  const logsSnap = await getDocs(
-    query(
-      collection(db, "medication_logs"),
-      where("prescriptionId", "==", prescriptionId)
-    )
-  );
-  logsSnap.docs.forEach((docSnap) => {
-    batch.delete(docSnap.ref);
-  });
-
-  batch.delete(doc(db, "prescriptions", prescriptionId));
+  const items = await getDocs(collection(db, "prescriptions", prescriptionId, "items"));
+  const reminders = await getDocs(query(collection(db, "medication_reminders"),
+    where("patientId", "==", patientId), where("prescriptionId", "==", prescriptionId)));
+  // Medication logs are immutable history and remain until retention cleanup.
+  items.docs.forEach(item => batch.delete(item.ref));
+  reminders.docs.forEach(reminder => batch.delete(reminder.ref));
+  batch.delete(parent.ref);
   await batch.commit();
 }
 

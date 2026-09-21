@@ -1,3 +1,4 @@
+import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -66,7 +67,7 @@ function toStringArray(v: any): string[] {
   return [];
 }
 
-export default function ResultScreen() {
+function ResultScreen() {
   // 🔸 你原本用 id / imageUri / itemsJson / title 都保留（不動 UI）
   const { imageUri, itemsJson, id, title: incomingTitle } = useLocalSearchParams<{
     imageUri?: string;
@@ -359,4 +360,8 @@ export default function ResultScreen() {
       )}
     </ScrollView>
   );
+}
+
+export default function GuardedResultScreen() {
+  return <PrescriptionWriteGuard><ResultScreen /></PrescriptionWriteGuard>;
 }

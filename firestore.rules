@@ -2,8 +2,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
+    function authenticated() {
       return request.auth != null;
+    }
+
+    function signedIn() {
+      return authenticated()
+        && !exists(/databases/$(database)/documents/_account_deletions/$(request.auth.uid));
     }
 
     function patientDoc(patientId) {
@@ -30,18 +35,36 @@ service cloud.firestore {
       return isFamilyMember(patientId) || isCaregiverMember(patientId);
     }
 
+    // Per-patient primary family; explicit empty UID disables legacy fallback.
+    function isPrimaryFamily(patientId) {
+      return isFamilyMember(patientId) && !isCaregiverMember(patientId)
+        && patientDoc(patientId).data.get('primaryFamilyUid',
+          patientDoc(patientId).data.get('createdBy', '')) == request.auth.uid;
+    }
+
     function prescriptionPatientId(prescriptionId) {
       return get(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId;
     }
 
+    // Caregivers may create a new prescription, its items and reminders in ONE
+    // atomic batch. Existing prescriptions cannot be extended or edited by them.
+    function isCreatingOwnPrescription(prescriptionId, patientId) {
+      let parent = getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data;
+      return !exists(/databases/$(database)/documents/prescriptions/$(prescriptionId))
+        && parent.patientId == patientId
+        && parent.createdBy == request.auth.uid
+        && parent.createdAt == request.time
+        && isCaregiverMember(patientId);
+    }
+
     function isOwnUserDoc() {
-      return signedIn()
+      return authenticated()
         && resource.data.uid is string
         && resource.data.uid == request.auth.uid;
     }
 
     function isOwnIncomingUserDoc() {
-      return signedIn()
+      return authenticated()
         && request.resource.data.uid is string
         && request.resource.data.uid == request.auth.uid;
     }
@@ -50,13 +73,30 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(userDocId)).data.uid;
     }
 
+    // Consent can be absent only on legacy profiles; new profiles must supply it.
+    function validUserConsent(data) {
+      return !('privacyConsent' in data) || (
+        data.privacyConsent is map
+        && data.privacyConsent.keys().hasAll(['accepted', 'version', 'acceptedAt'])
+        && data.privacyConsent.keys().hasOnly(['accepted', 'version', 'acceptedAt'])
+        && data.privacyConsent.accepted == true
+        && data.privacyConsent.version is string
+        && data.privacyConsent.version.size() > 0
+        && data.privacyConsent.version.size() <= 64
+        && data.privacyConsent.acceptedAt is timestamp
+      );
+    }
+
     match /users/{userDocId} {
       allow read: if isOwnUserDoc();
 
       allow create: if isOwnIncomingUserDoc()
+        && validUserConsent(request.resource.data)
+        && request.resource.data.privacyConsent.version == '2026-09-12.v1'
+        && request.resource.data.privacyConsent.acceptedAt == request.time
         && request.resource.data.keys().hasOnly([
           "uid", "email", "role", "createdAt", "activePatientId",
-          "emergencyPhone1", "emergencyPhone2"
+          "emergencyPhone1", "emergencyPhone2", "privacyConsent"
         ])
         && request.resource.data.role in ["family", "caregiver"]
         && request.resource.data.activePatientId is string
@@ -64,16 +104,22 @@ service cloud.firestore {
         && request.resource.data.emergencyPhone1 is string
         && request.resource.data.emergencyPhone2 is string;
 
-      allow update: if isOwnUserDoc()
+      allow update: if signedIn()
+        && validUserConsent(request.resource.data)
+        && isOwnUserDoc()
         && isOwnIncomingUserDoc()
         && request.resource.data.keys().hasOnly([
           "uid", "email", "role", "createdAt", "activePatientId",
-          "emergencyPhone1", "emergencyPhone2"
+          "emergencyPhone1", "emergencyPhone2", "accountStatus",
+          "deletionRequestedAt", "deletionScheduledFor", "privacyConsent"
         ])
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.email == resource.data.email
         && request.resource.data.role == resource.data.role
         && request.resource.data.createdAt == resource.data.createdAt
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          "accountStatus", "deletionRequestedAt", "deletionScheduledFor", "privacyConsent"
+        ])
         && request.resource.data.activePatientId is string
         && request.resource.data.emergencyPhone1 is string
         && request.resource.data.emergencyPhone2 is string
@@ -83,6 +129,10 @@ service cloud.firestore {
         );
 
       allow delete: if false;
+    }
+
+    match /_account_deletions/{uid} {
+      allow read, write: if false;
     }
 
     match /users/{userDocId}/devices/{deviceId} {
@@ -109,33 +159,83 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Data contract: patients uses immutable families/caregivers UID arrays and
+    // createdAt invite anchor. Health records reference the patients document ID,
+    // not its display patientsId; authors and creation timestamps are immutable.
+    // Existing membership arrays are preserved; new entries are server-validated.
+    function boundedString(value, maximum) {
+      return value is string && value.size() <= maximum;
+    }
+
+    match /users/{userDocId}/join_requests/{requestId} {
+      allow read: if signedIn() && parentUserUid(userDocId) == request.auth.uid;
+      allow write: if false;
+    }
+
+    // patients: immutable createdAt (server timestamp) also anchors invite expiry.
+    function validPatientInvite(data) {
+      return data.inviteCode is string && data.inviteCode.size() >= 4
+        && data.inviteCode.size() <= 8
+        && data.families is list && data.caregivers is list;
+    }
+
+    function validPatientProfile(data) {
+      return validPatientInvite(data)
+        && data.keys().hasOnly([
+          'patientsId', 'name', 'notes', 'note', 'inviteCode', 'caregivers',
+          'families', 'createdAt', 'createdBy', 'updatedAt',
+          'primaryFamilyUid', 'invitationVersion',
+          'emergencyPhone1', 'emergencyPhone2'
+        ])
+        && boundedString(data.patientsId, 128)
+        && boundedString(data.name, 200) && data.name.size() > 0
+        && boundedString(data.get('notes', ''), 5000)
+        && boundedString(data.get('note', ''), 5000)
+        && boundedString(data.createdBy, 128)
+        && boundedString(data.emergencyPhone1, 64)
+        && boundedString(data.emergencyPhone2, 64)
+        && data.createdAt is timestamp
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // Technical bounds only, not clinical validation or diagnostic thresholds.
+    function optionalReading(data, field) {
+      return !(field in data) || (
+        data[field] is number && data[field] >= -1000000000
+        && data[field] <= 1000000000
+      );
+    }
+
+    function validHealthRecord(data) {
+      return data.keys().hasOnly([
+          'patientId', 'caregiverId', 'createdAt', 'temperature', 'heartRate',
+          'bloodPressureSys', 'bloodPressureDia', 'bloodSugar', 'bloodSugarType'
+        ])
+        && boundedString(data.patientId, 256) && data.patientId.size() > 0
+        && boundedString(data.caregiverId, 128) && data.caregiverId.size() > 0
+        && data.createdAt is timestamp
+        && optionalReading(data, 'temperature')
+        && optionalReading(data, 'heartRate')
+        && optionalReading(data, 'bloodPressureSys')
+        && optionalReading(data, 'bloodPressureDia')
+        && optionalReading(data, 'bloodSugar')
+        && boundedString(data.get('bloodSugarType', ''), 64);
+    }
+
+    // Existing membership authorizes reads; trusted callables handle create/join.
     match /patients/{patientId} {
-  allow read: if signedIn();
-
-  allow create: if signedIn()
-    && request.resource.data.keys().hasOnly([
-      "patientsId",
-      "name", "notes", "inviteCode",
-      "caregivers", "families",
-      "createdAt", "createdBy",
-      "emergencyPhone1", "emergencyPhone2"
-    ])
-    && request.resource.data.patientsId is string
-    && request.resource.data.name is string
-    && request.resource.data.notes is string
-    && request.resource.data.inviteCode is string
-    && request.resource.data.createdBy == request.auth.uid
-    && request.resource.data.families is list
-    && request.resource.data.families.size() == 1
-    && request.auth.uid in request.resource.data.families
-    && request.resource.data.caregivers is list
-    && request.resource.data.caregivers.size() == 0
-    && request.resource.data.emergencyPhone1 is string
-    && request.resource.data.emergencyPhone2 is string;
-
-  allow update: if signedIn();
-
-  allow delete: if signedIn() && isFamilyMember(patientId);
+      allow read: if signedIn() && (
+        request.auth.uid in resource.data.families
+        || request.auth.uid in resource.data.caregivers
+      );
+      allow create: if false;
+      allow update: if signedIn() && isLinkedToPatient(patientId)
+        && validPatientProfile(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          "patientsId", "createdAt", "createdBy", "inviteCode",
+          "families", "caregivers", "primaryFamilyUid", "invitationVersion"
+        ]);
+      allow delete: if signedIn() && isPrimaryFamily(patientId);
 
       match /care_notes/{noteId} {
         allow read: if signedIn() && isLinkedToPatient(patientId);
@@ -435,27 +535,34 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.patientId is string
-        && isLinkedToPatient(request.resource.data.patientId);
+        && (isPrimaryFamily(request.resource.data.patientId)
+          || (isCaregiverMember(request.resource.data.patientId)
+            && request.resource.data.createdAt == request.time));
 
       allow update: if signedIn()
         && resource.data.patientId is string
-        && isLinkedToPatient(resource.data.patientId)
+        && isPrimaryFamily(resource.data.patientId)
         && request.resource.data.patientId == resource.data.patientId
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt;
 
       allow delete: if signedIn()
         && resource.data.patientId is string
-        && isLinkedToPatient(resource.data.patientId);
+        && isPrimaryFamily(resource.data.patientId);
 
       match /items/{itemId} {
         allow read: if signedIn()
           && prescriptionPatientId(prescriptionId) is string
           && isLinkedToPatient(prescriptionPatientId(prescriptionId));
 
-        allow create, update, delete: if signedIn()
+        allow create: if signedIn() && (
+          isPrimaryFamily(getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId)
+          || isCreatingOwnPrescription(prescriptionId,
+            getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId));
+
+        allow update, delete: if signedIn()
           && prescriptionPatientId(prescriptionId) is string
-          && isLinkedToPatient(prescriptionPatientId(prescriptionId));
+          && isPrimaryFamily(prescriptionPatientId(prescriptionId));
       }
     }
 
@@ -466,16 +573,24 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.resource.data.patientId is string
-        && isLinkedToPatient(request.resource.data.patientId);
+        && (isPrimaryFamily(request.resource.data.patientId)
+          || (request.resource.data.prescriptionId is string
+            && isCreatingOwnPrescription(request.resource.data.prescriptionId,
+              request.resource.data.patientId)
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.notifyUserIds is list
+            && request.resource.data.notifyUserIds.toSet() ==
+              patientDoc(request.resource.data.patientId).data.families.concat(
+                patientDoc(request.resource.data.patientId).data.caregivers).toSet()));
 
       allow update: if signedIn()
         && resource.data.patientId is string
-        && isLinkedToPatient(resource.data.patientId)
+        && isPrimaryFamily(resource.data.patientId)
         && request.resource.data.patientId == resource.data.patientId;
 
       allow delete: if signedIn()
         && resource.data.patientId is string
-        && isLinkedToPatient(resource.data.patientId);
+        && isPrimaryFamily(resource.data.patientId);
     }
 
     match /medication_logs/{logId} {
@@ -492,15 +607,27 @@ service cloud.firestore {
     }
 
     match /health_records/{recordId} {
-      allow read: if signedIn();
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
 
       allow create: if signedIn()
+        && validHealthRecord(request.resource.data)
+        && request.resource.data.createdAt == request.time
         && request.resource.data.caregiverId == request.auth.uid
         && request.resource.data.patientId is string
         && isLinkedToPatient(request.resource.data.patientId);
 
-      allow update, delete: if signedIn()
-        && resource.data.caregiverId == request.auth.uid;
+      allow update: if signedIn()
+        && validHealthRecord(request.resource.data)
+        && resource.data.caregiverId == request.auth.uid
+        && isLinkedToPatient(resource.data.patientId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          "patientId", "caregiverId", "createdAt"
+        ]);
+      allow delete: if signedIn()
+        && resource.data.caregiverId == request.auth.uid
+        && isLinkedToPatient(resource.data.patientId);
     }
 
     match /health_thresholds/{thresholdId} {
@@ -666,6 +793,13 @@ service cloud.firestore {
         );
     }
 
+    match /audit_logs/{logId} {
+      // Admin claim must be provisioned by a trusted administrator.
+      allow read: if request.auth != null
+        && request.auth.token.auditAdmin == true;
+      allow create, update, delete: if false;
+    }
+
     match /notifications/{notificationId} {
       allow read: if signedIn()
         && resource.data.recipientUid == request.auth.uid;
@@ -683,8 +817,23 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /chats/{patientId}/{document=**} {
-      allow read, write: if signedIn() && isLinkedToPatient(patientId);
+    match /chats/{patientId}/messages/{messageId} {
+      function validMessage(data) {
+        return data.keys().hasOnly(['senderId', 'createdAt', 'text', 'text_zh', 'text_original', 'imageUrl'])
+          && data.senderId is string && data.senderId == request.auth.uid
+          && data.senderId.size() <= 128
+          && data.createdAt is timestamp && data.createdAt == request.time
+          && (('text' in data && data.text is string && data.text.size() > 0
+            && data.text.size() <= 10000 && !('imageUrl' in data))
+            || ('imageUrl' in data && data.imageUrl is string
+              && data.imageUrl.size() > 0 && data.imageUrl.size() <= 4096 && !('text' in data)))
+          && (!('text_zh' in data) || (data.text_zh is string && data.text_zh.size() <= 10000))
+          && (!('text_original' in data) || (data.text_original is string && data.text_original.size() <= 10000));
+      }
+      allow read: if signedIn() && isLinkedToPatient(patientId);
+      allow create: if signedIn() && isLinkedToPatient(patientId) && validMessage(request.resource.data);
+      // Client messages are immutable. Readers keep translations locally.
+      allow update, delete: if false;
     }
   }
 }

@@ -1,10 +1,13 @@
 import { auth, db } from "@/firebase/firebaseConfig";
+import { exportCopy } from "@/src/export/exportCopy";
+import AuditMenuLink from "@/src/audit/AuditMenuLink";
+import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router, useSegments } from "expo-router";
-import { signOut } from "firebase/auth";
+import { signOut } from "@/src/auth/auditSession";
 import { doc, getDoc } from "firebase/firestore";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Dimensions, Linking, Pressable, StyleSheet, Text, View } from "react-native";
@@ -209,6 +212,8 @@ export default function CaregiverLayout() {
         </View>
 
         <View style={styles.menuContainer}>
+          <AuditMenuLink onNavigate={() => setIsSidebarOpen(false)} />
+          <PrivacyPolicyLink />
           <View style={styles.menuItem}>
             <Text style={styles.menuItemText}>語言</Text>
             <View style={styles.languageOptions}>
@@ -258,8 +263,26 @@ export default function CaregiverLayout() {
             <Text style={styles.menuItemTextDanger}>解除連結</Text>
           </Pressable>
 
+          <Pressable style={styles.menuItem} onPress={() => {
+            setIsSidebarOpen(false);
+            router.push("/personal-data-export" as any);
+          }}>
+            <Text style={styles.menuItemText}>{exportCopy[language].title}</Text>
+          </Pressable>
+
           <Pressable style={styles.menuItem} onPress={handleLogout}>
             <Text style={styles.menuItemTextDanger}>登出系統</Text>
+          </Pressable>
+
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/account-deletion" as any);
+            }}
+          >
+            <Text style={styles.menuItemTextDanger}>刪除帳號</Text>
           </Pressable>
         </View>
       </Animated.View>

@@ -11,6 +11,10 @@ export default function Index() {
   // 沒登入 → 去登入頁
   if (!user) return <Redirect href="/(auth)/login" />;
 
+  if (user.accountStatus === "pending_deletion") {
+    return <Redirect href={"/account-deletion" as any} />;
+  }
+
   // ✅ 已登入 → 依照身分導向專屬的控制台
   if (user?.role === "family") {
     return <Redirect href="/family" />;

@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 
 function RootLayoutNav() {
   const { user } = useAuth();
-  const segments = useSegments();
+  const segments = useSegments() as string[];
   const router = useRouter();
 
   const [isNavigationReady, setIsNavigationReady] = useState(false);
@@ -23,16 +23,19 @@ function RootLayoutNav() {
     if (!isNavigationReady) return;
 
     const inAuthGroup = segments[0] === "(auth)";
+    const inAccountDeletion = segments[0] === "account-deletion";
 
-    if (user && inAuthGroup) {
+    if (user?.accountStatus === "pending_deletion" && !inAccountDeletion) {
+      router.replace("/account-deletion" as any);
+    } else if (user && inAuthGroup) {
       router.replace("/");
     } else if (!user && !inAuthGroup) {
       router.replace("/(auth)/login");
     }
-  }, [user, segments, isNavigationReady]);
+  }, [user, segments, isNavigationReady, router]);
 
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.uid || user.accountStatus === "pending_deletion") return;
 
     (async () => {
       try {
@@ -42,7 +45,7 @@ function RootLayoutNav() {
         console.log("[push] register token failed:", error);
       }
     })();
-  }, [user?.uid]);
+  }, [user?.uid, user?.accountStatus]);
 
   return (
     <Stack
@@ -57,6 +60,9 @@ function RootLayoutNav() {
       <Stack.Screen name="caregiver" options={{ headerShown: false }} />
       <Stack.Screen name="family" options={{ headerShown: false }} />
       <Stack.Screen name="care-target" options={{ headerShown: false }} />
+      <Stack.Screen name="account-deletion" options={{ headerShown: false }} />
+      <Stack.Screen name="personal-data-export" options={{ headerShown: false }} />
+      <Stack.Screen name="audit-logs" options={{ headerShown: false }} />
     </Stack>
   );
 }

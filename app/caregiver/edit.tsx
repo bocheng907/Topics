@@ -1,3 +1,4 @@
+import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, ScrollView, Pressable, Alert, StyleSheet, StatusBar, KeyboardAvoidingView, Platform, } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -70,7 +71,7 @@ function safeParseItems(itemsJson: string | undefined, language: Language): Edit
   }
 }
 
-export default function CaregiverEditScreen() {
+function CaregiverEditScreen() {
   const { id, itemsJson } = useLocalSearchParams<{ id?: string; itemsJson?: string }>();
   const { ready } = useAuthContext();
   const { language } = useLanguage();
@@ -374,3 +375,7 @@ const styles = StyleSheet.create({
   helperText: { fontSize: 12, color: "#888", lineHeight: 18 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 });
+
+export default function GuardedCaregiverEditScreen() {
+  return <PrescriptionWriteGuard><CaregiverEditScreen /></PrescriptionWriteGuard>;
+}

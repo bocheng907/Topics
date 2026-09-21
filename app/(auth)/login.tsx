@@ -1,5 +1,6 @@
 // app/(auth)/login.tsx
 import { useAuth } from "@/src/auth/useAuth";
+import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { router, Stack } from "expo-router";
@@ -102,6 +103,7 @@ export default function LoginScreen() {
       </View>
 
       <View style={{ marginTop: 32, alignItems: "center" }}>
+        <PrivacyPolicyLink />
         <Pressable onPress={() => router.push("/(auth)/register")}>
           <Text style={{ color: "#666", fontSize: 15, fontWeight: "600" }}>
             {t.noAccount}<Text style={{ color: "#007AFF", fontWeight: "900" }}>{t.goRegister}</Text>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, ScrollView, Alert, ActivityIndicator } from "react-native";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget"; 

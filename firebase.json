@@ -1,4 +1,20 @@
 {
+  "hosting": {
+    "site": "smart-care-system-1a41e",
+    "public": "privacy-hosting",
+    "cleanUrls": true,
+    "ignore": ["**/.*", "**/node_modules/**"],
+    "redirects": [
+      { "source": "/", "destination": "/privacy/2026-09-12-v1", "type": 302 },
+      { "source": "/privacy", "destination": "/privacy/2026-09-12-v1", "type": 302 }
+    ],
+    "headers": [{ "source": "**", "headers": [
+      { "key": "Cache-Control", "value": "public, max-age=300" },
+      { "key": "X-Content-Type-Options", "value": "nosniff" },
+      { "key": "Referrer-Policy", "value": "no-referrer" },
+      { "key": "Content-Security-Policy", "value": "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" }
+    ]}]
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

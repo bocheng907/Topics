@@ -1,3 +1,4 @@
+import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useState } from "react";
 import {
   View,
@@ -23,7 +24,7 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 
-export default function CameraScreen() {
+function CameraScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [qrMode, setQrMode] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -155,7 +156,7 @@ export default function CameraScreen() {
       console.log("[3] draftTitle =", draftTitle);
 
       router.replace({
-        pathname: "/caregiver/result",
+        pathname: (user?.role === "family" ? "/family/scan-result" : "/caregiver/result") as any,
         params: {
           imageUrl: encodeURIComponent(downloadURL),
           draftTitle,
@@ -260,7 +261,7 @@ export default function CameraScreen() {
       )}
 
       <Pressable
-        onPress={() => router.replace("/caregiver")}
+        onPress={() => router.replace(user?.role === "family" ? "/family" : "/caregiver")}
         style={styles.back}
       >
         <Text style={styles.backText}>{t.cameraCancelBack}</Text>
@@ -388,3 +389,7 @@ const styles = StyleSheet.create({
     color: "#333",
   },
 });
+
+export default function GuardedCameraScreen() {
+  return <PrescriptionWriteGuard><CameraScreen /></PrescriptionWriteGuard>;
+}

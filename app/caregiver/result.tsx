@@ -1,3 +1,4 @@
+import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -18,7 +19,6 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
@@ -157,7 +157,7 @@ function normalizeEditableText(value: string) {
   return value.trim();
 }
 
-export default function ResultScreen() {
+function ResultScreen() {
   const { prescriptionId, imageUrl, draftTitle, analyzeResult } =
     useLocalSearchParams<{
       prescriptionId?: string;
@@ -240,7 +240,7 @@ export default function ResultScreen() {
 
     if (!prescriptionId) {
       Alert.alert(t.resultErrorTitle, t.resultMissingId);
-      router.replace("/caregiver");
+      router.replace(user?.role === "family" ? "/family" : "/caregiver");
       return;
     }
 
@@ -251,7 +251,7 @@ export default function ResultScreen() {
 
         if (!snap.exists()) {
           Alert.alert(t.resultErrorTitle, t.resultNotFound);
-          router.replace("/caregiver");
+          router.replace(user?.role === "family" ? "/family" : "/caregiver");
           return;
         }
 
@@ -294,10 +294,10 @@ export default function ResultScreen() {
       } catch (e) {
         console.log("read prescription error:", e);
         Alert.alert(t.resultReadFailedTitle, t.resultReadFailedMessage);
-        router.replace("/caregiver");
+        router.replace(user?.role === "family" ? "/family" : "/caregiver");
       }
     })();
-  }, [prescriptionId, isDraftMode, safeAnalyze, safeImageUrl, draftTitle, language, t]);
+  }, [prescriptionId, isDraftMode, safeAnalyze, safeImageUrl, draftTitle, language, t, user?.role]);
 
   async function handlePrimaryAction() {
     if (isDraftMode) {
@@ -328,7 +328,8 @@ export default function ResultScreen() {
         });
         const presRef = doc(db, "prescriptions", prescriptionId);
 
-        await setDoc(presRef, {
+        const batch = writeBatch(db);
+        batch.set(presRef, {
           createdBy: user.uid,
           patientId: activePatientId,
           patientsId: activePatient?.patientsId ?? "",
@@ -343,8 +344,6 @@ export default function ResultScreen() {
           memo: normalizeEditableText(globalMemo),
           aiRaw: safe,
         });
-
-        const batch = writeBatch(db);
 
         for (const [itemIndex, item] of items.entries()) {
           const itemId = makePrescriptionItemDocumentId(itemIndex);
@@ -377,9 +376,8 @@ export default function ResultScreen() {
           });
         }
 
-        await batch.commit();
-
         await createMedicationReminders({
+          creationBatch: batch,
           patientId: activePatientId,
           prescriptionId: presRef.id,
           items: items.map((item, itemIndex) => ({
@@ -391,7 +389,8 @@ export default function ResultScreen() {
           })),
         });
 
-        router.replace("/caregiver/list");
+        await batch.commit();
+        router.replace(user?.role === "family" ? "/family/list" : "/caregiver/list");
       } catch (e) {
         console.log("save prescription error:", e);
         Alert.alert(t.resultSaveFailedTitle, t.resultSaveFailedMessage);
@@ -402,7 +401,7 @@ export default function ResultScreen() {
       return;
     }
 
-    router.replace("/caregiver/list");
+    router.replace(user?.role === "family" ? "/family/list" : "/caregiver/list");
   }
 
   return (
@@ -612,4 +611,8 @@ export default function ResultScreen() {
       )}
     </ScrollView>
   );
+}
+
+export default function GuardedResultScreen() {
+  return <PrescriptionWriteGuard><ResultScreen /></PrescriptionWriteGuard>;
 }

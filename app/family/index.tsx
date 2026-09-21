@@ -1,10 +1,12 @@
 // app/family/index.tsx
 import { db } from "@/firebase/firebaseConfig";
-import * as Clipboard from "expo-clipboard";
+import { invitationCopy } from "@/src/care-target/invitationCopy";
+import { usePrimaryFamily } from "@/src/care-target/usePrimaryFamily";
 import { router } from "expo-router";
 import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useHealthThresholds } from "@/src/health/useHealthThresholds";
@@ -20,6 +22,7 @@ type SugarVital = { val: number; type: string; ts: number } | null;
 export default function FamilyHomeScreen() {
   const { ready, activePatient, activePatientId, linkedCareTargets, setActivePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
+  const isPrimaryFamily = usePrimaryFamily(activePatientId);
   const t = translations[language];
 
   // 🌟 抓取該長輩的健康閾值設定
@@ -85,10 +88,7 @@ export default function FamilyHomeScreen() {
   }, [ready, activePatientId, t.fasting]);
 
   const copyInviteCode = async () => {
-    if (activePatient?.inviteCode) {
-      await Clipboard.setStringAsync(activePatient.inviteCode);
-      Alert.alert(t.copiedTitle, t.copiedInviteCode);
-    }
+    router.push("/care-target/invitations" as any);
   };
 
   if (!ready || linkedCareTargets.length === 0 || thresholdsLoading) {
@@ -218,7 +218,10 @@ export default function FamilyHomeScreen() {
             {linkedCareTargets.map((target) => {
               const isActive = target.id === activePatientId;
               return (
-                <Pressable key={target.id} onPress={() => setActivePatientId(target.id)}>
+                <Pressable key={target.id} onPress={async () => {
+                  try { await setActivePatientId(target.id); }
+                  catch { Alert.alert(t.prompt, invitationCopy[language].error); }
+                }}>
                   <View style={[styles.avatar, isActive ? styles.avatarActive : styles.avatarInactive]}>
                     <Text style={[styles.avatarText, isActive ? styles.textWhite : styles.textGray]}>
                       {target.name ? target.name.charAt(0) : "?"}
@@ -235,12 +238,15 @@ export default function FamilyHomeScreen() {
 
         <View style={styles.userInfo}>
           <Text style={styles.userName}>{activePatient?.name ?? t.noSelectedPatient}</Text>
-          <View style={styles.inviteBadge}><Text style={styles.inviteText}>{t.inviteCode}:{activePatient?.inviteCode ?? t.none}</Text></View>
+          <View style={styles.inviteBadge}><Text style={styles.inviteText}>{invitationCopy[language].title}</Text></View>
           <Pressable onPress={copyInviteCode} style={styles.copyIconWrap}>
             <View style={styles.copyIconBack} /><View style={styles.copyIconFront} />
           </Pressable>
         </View>
 
+        {isPrimaryFamily && <Pressable onPress={() => router.push("/family/camera" as any)} style={{padding: 18, margin: 16, backgroundColor: "#e8f2ff", borderRadius: 12}}>
+          <Text style={{fontSize: 18, fontWeight: "700"}}>📷 {t.scanPrescription}</Text>
+        </Pressable>}
         <View style={styles.medCard}>
           <Text style={styles.medTitle}>{t.todayMedicationProgress}</Text>
           {stats.total > 0 ? (
@@ -248,7 +254,7 @@ export default function FamilyHomeScreen() {
           ) : (
             <View style={{ alignItems: "center", marginTop: 10 }}>
               <Text style={{ fontSize: 16, color: "#999", fontWeight: "bold" }}>{t.noPrescriptions}</Text>
-              <Text style={{ fontSize: 14, color: "#CCC", marginTop: 4 }}>{t.askCaregiverAddPrescription}</Text>
+              <Text style={{ fontSize: 14, color: "#666", marginTop: 4 }}>{invitationCopy[language].primaryOnly}</Text>
             </View>
           )}
         </View>

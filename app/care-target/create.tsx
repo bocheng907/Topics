@@ -1,46 +1,30 @@
-import { auth, db } from "@/firebase/firebaseConfig";
+import { auth } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
-import { signOut } from "firebase/auth";
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-} from "firebase/firestore";
-import React, { useState } from "react";
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { signOut } from "@/src/auth/auditSession";
+import React, { useRef, useState } from "react";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-function genInviteCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-}
-
-function genPatientsId() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-}
+import { createCareTarget } from "@/src/care-target/careTargetApi";
+import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 
 export default function CareTargetCreateScreen() {
   const { user } = useAuth();
+  const { setActivePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const created = useRef<{uid: string; patientId: string; inviteCode: string} | null>(null);
+  const submitting = useRef(false);
 
   const onCreate = async () => {
-    if (!user) return;
+    if (!user || busy || submitting.current) return;
 
     if (user.role !== "family") {
       Alert.alert(t.cannotCreate, t.createFamilyOnly);
@@ -55,98 +39,24 @@ export default function CareTargetCreateScreen() {
       return;
     }
 
-    const code = genInviteCode();
-
+    setBusy(true);
+    submitting.current = true;
     try {
-      let emergencyPhone1 = "";
-      let emergencyPhone2 = "";
-
-      try {
-        const q = query(collection(db, "users"), where("uid", "==", user.uid));
-        const snap = await getDocs(q);
-
-        if (!snap.empty) {
-          const userData = snap.docs[0].data() as any;
-          emergencyPhone1 = String(userData.emergencyPhone1 ?? "").trim();
-          emergencyPhone2 = String(userData.emergencyPhone2 ?? "").trim();
-        }
-      } catch (e) {
-        console.log("load family emergency phones failed:", e);
-      }
-
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, "0");
-      const dd = String(now.getDate()).padStart(2, "0");
-      const hh = String(now.getHours()).padStart(2, "0");
-      const min = String(now.getMinutes()).padStart(2, "0");
-      const ss = String(now.getSeconds()).padStart(2, "0");
-
-      const timeString = `${yyyy}-${mm}-${dd}_${hh}-${min}-${ss}`;
-
-      let patientsId = "";
-      let patientRef;
-      let customDocId = "";
-
-      for (let i = 0; i < 10; i++) {
-        const newPatientsId = genPatientsId();
-        const last4 = newPatientsId.slice(-4);
-        const newDocId = `${timeString}_pat_${last4}`;
-        const newRef = doc(db, "patients", newDocId);
-
-        const existed = await getDocs(query(collection(db, "patients"), where("patientsId", "==", newPatientsId)));
-        if (existed.empty) {
-          patientsId = newPatientsId;
-          customDocId = newDocId;
-          patientRef = newRef;
-          break;
-        }
-      }
-
-      if (!patientsId || !patientRef || !customDocId) {
-        throw new Error("failed to generate unique patientsId");
-      }
-
-      const payload = {
-        patientsId,
-        name: trimmedName,
-        notes: trimmedNotes,
-        inviteCode: code,
-        caregivers: [],
-        families: [user.uid],
-        createdAt: serverTimestamp(),
-        createdBy: user.uid,
-        emergencyPhone1,
-        emergencyPhone2,
-      };
-
-      await setDoc(patientRef, payload);
-
-      try {
-        const q = query(collection(db, "users"), where("uid", "==", user.uid));
-        const snap = await getDocs(q);
-
-        if (snap.empty) {
-          throw new Error("user not found");
-        }
-
-        const userDocRef = doc(db, "users", snap.docs[0].id);
-
-        await updateDoc(userDocRef, {
-          activePatientId: customDocId,
-        });
-      } catch (e) {
-        console.log("sync activePatientId error:", e);
-      }
+      const result = created.current?.uid === user.uid ? created.current :
+        (await createCareTarget({ name: trimmedName, notes: trimmedNotes })).data;
+      created.current = { ...result, uid: user.uid };
+      const code = result.inviteCode;
+      await setActivePatientId(result.patientId);
 
       Alert.alert(
         t.createSuccess,
-        `${trimmedName}\n${t.inviteCode}：${code}`,
+        `${trimmedName}\n${t.inviteCode}：${code}\n${t.inviteValidity}`,
         [
           {
             text: t.copyAndEnterHome,
             onPress: async () => {
-              await Clipboard.setStringAsync(code);
+              try { await Clipboard.setStringAsync(code); }
+              catch { Alert.alert(t.prompt, `${t.inviteCode}：${code}`); }
               router.replace("/family");
             },
           },
@@ -155,12 +65,15 @@ export default function CareTargetCreateScreen() {
     } catch (e: any) {
       console.log("create patient error:", e);
 
-      if (e?.code === "permission-denied") {
+      if (e?.code === "functions/permission-denied") {
         Alert.alert(t.createFailed, t.noCreatePermission);
         return;
       }
 
       Alert.alert(t.createFailed, t.tryLater);
+    } finally {
+      setBusy(false);
+      submitting.current = false;
     }
   };
 
@@ -172,6 +85,8 @@ export default function CareTargetCreateScreen() {
         <Text style={{ fontSize: 16, fontWeight: "800", color: "#444" }}>{t.elderName}</Text>
         <TextInput
           value={name}
+          editable={!created.current && !busy}
+          maxLength={200}
           onChangeText={setName}
           placeholder={t.elderNamePlaceholder}
           style={{
@@ -189,6 +104,8 @@ export default function CareTargetCreateScreen() {
         <Text style={{ fontSize: 16, fontWeight: "800", color: "#444" }}>{t.careNotesOptional}</Text>
         <TextInput
           value={notes}
+          editable={!created.current && !busy}
+          maxLength={5000}
           onChangeText={setNotes}
           placeholder={t.careNotesPlaceholder}
           multiline
@@ -208,9 +125,9 @@ export default function CareTargetCreateScreen() {
 
       <Pressable
         onPress={onCreate}
-        disabled={!name.trim()}
+        disabled={busy || !name.trim()}
         style={{
-          backgroundColor: name.trim() ? "#007AFF" : "#CCC",
+          backgroundColor: name.trim() && !busy ? "#007AFF" : "#CCC",
           padding: 18,
           borderRadius: 12,
           marginTop: 10,

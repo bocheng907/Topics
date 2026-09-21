@@ -1,3 +1,4 @@
+import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -81,7 +82,7 @@ function safeParseItems(itemsJson: string | undefined, language: Language): Edit
   }
 }
 
-export default function FamilyEditScreen() {
+function FamilyEditScreen() {
   const { id, itemsJson } = useLocalSearchParams<{ id?: string; itemsJson?: string }>();
   const { ready } = useAuthContext();
   const { language } = useLanguage();
@@ -418,3 +419,7 @@ const styles = StyleSheet.create({
   memoInput: { height: 80, textAlignVertical: "top" },
   helperText: { fontSize: 12, color: "#888", lineHeight: 18 },
 });
+
+export default function GuardedFamilyEditScreen() {
+  return <PrescriptionWriteGuard><FamilyEditScreen /></PrescriptionWriteGuard>;
+}

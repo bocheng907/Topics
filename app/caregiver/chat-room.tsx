@@ -16,6 +16,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { db, storage } from "@/firebase/firebaseConfig";
+import { createImageUploadFilename } from "@/firebase/uploadFilename";
+import { randomUUID } from "expo-crypto";
 import {
   collection,
   query,
@@ -108,7 +110,10 @@ export default function CaregiverChatRoomScreen() {
         msg,
         language,
         [{ baseName: "text", sourceKeys: ["text", "text_original"] }]
-      );
+      ).then(translated => {
+        if (Object.keys(translated).length) setMessages(current =>
+          current.map(item => item.id === msg.id ? {...item, ...translated} : item));
+      }).catch(() => console.warn("Chat translation unavailable"));
     });
   }, [messages, targetId, language]);
 
@@ -137,7 +142,7 @@ export default function CaregiverChatRoomScreen() {
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
-      const filename = `${Date.now()}.jpg`;
+      const filename = createImageUploadFilename();
       const storageRef = ref(storage, `chats/${targetId}/images/${filename}`);
       const uploadTask = uploadBytesResumable(storageRef, blob);
 
@@ -150,7 +155,7 @@ export default function CaregiverChatRoomScreen() {
         },
         async () => {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const customId = generateCustomId(targetId);
+          const customId = generateCustomId(targetId) + "_" + randomUUID();
 
           await setDoc(doc(db, "chats", targetId, "messages", customId), {
             imageUrl: downloadURL,
@@ -171,7 +176,7 @@ export default function CaregiverChatRoomScreen() {
     if (!inputText.trim() || !targetId || !user) return;
 
     try {
-      const customId = generateCustomId(targetId);
+      const customId = generateCustomId(targetId) + "_" + randomUUID();
 
       await setDoc(doc(db, "chats", targetId, "messages", customId), {
         text: inputText,

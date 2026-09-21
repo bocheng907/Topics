@@ -1,10 +1,11 @@
 /* global Intl */
 const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
+const {onCall, onRequest} = require("firebase-functions/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {
   onDocumentCreated,
   onDocumentUpdated,
+  onDocumentWrittenWithAuthContext,
 } = require("firebase-functions/v2/firestore");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
@@ -17,6 +18,72 @@ setGlobalOptions({maxInstances: 10});
 
 initializeApp();
 const db = getFirestore();
+exports.exportPersonalData = onCall({region: "us-central1",
+  timeoutSeconds: 240, memory: "512MiB", maxInstances: 3},
+require("./personalDataExport").createPersonalDataExportService({db}));
+const careTargetAccess = require("./careTargetAccess")
+    .createCareTargetService(db);
+exports.createCareTarget = onCall({region: "us-central1"},
+  careTargetAccess.createCareTarget);
+exports.joinCareTarget = onCall({region: "us-central1"},
+  careTargetAccess.joinCareTarget);
+exports.manageInvitation = onCall({region: "us-central1"},
+  careTargetAccess.manageInvitation);
+const audit = require("./auditLog").createAuditService(db);
+exports.recordSessionAudit = onCall({region: "us-central1"},
+  audit.recordSession);
+for (const [name, document, kind] of [
+  ["auditPrescription", "prescriptions/{prescriptionId}", "prescription"],
+  ["auditPrescriptionItem", "prescriptions/{prescriptionId}/items/{itemId}",
+    "prescription_item"],
+  ["auditCareMembers", "patients/{patientId}", "members"],
+  ["auditHealthThreshold", "health_thresholds/{thresholdId}", "threshold"],
+]) {
+  exports[name] = onDocumentWrittenWithAuthContext({
+    document, region: "us-central1", retry: true,
+  }, (event) => audit.recordChange(event, kind));
+}
+const {getStorage} = require("firebase-admin/storage");
+const {defineBoolean} = require("firebase-functions/params");
+const {runRetention} = require("./retention");
+const {createAccountDeletionService} = require("./accountDeletion");
+const retentionDryRun = defineBoolean("RETENTION_DRY_RUN", {default: true});
+
+const accountDeletion = createAccountDeletionService({db});
+
+exports.requestAccountDeletion = onCall({region: "us-central1"},
+  accountDeletion.requestAccountDeletion);
+exports.cancelAccountDeletion = onCall({region: "us-central1"},
+  accountDeletion.cancelAccountDeletion);
+exports.purgeDeletedAccounts = onSchedule({
+  schedule: "30 2 * * *",
+  timeZone: "Asia/Taipei",
+  region: "us-central1",
+  maxInstances: 1,
+  concurrency: 1,
+  timeoutSeconds: 540,
+  retryCount: 3,
+}, async () => {
+  const result = await accountDeletion.purgeDueAccounts();
+  console.log("[account deletion] purge result", result);
+  if (result.failed > 0) throw new Error("Account deletion purge failed");
+});
+
+exports.cleanupExpiredData = onSchedule({
+  schedule: "0 3 * * *",
+  timeZone: "Asia/Taipei",
+  region: "us-central1",
+  maxInstances: 1,
+  concurrency: 1,
+  timeoutSeconds: 540,
+  retryCount: 3,
+}, async () => {
+  const report = await runRetention({
+    db, bucket: getStorage().bucket(), dryRun: retentionDryRun.value(),
+  });
+  console.log("retention", report);
+  if (report.failed) throw new Error("Retention cleanup needs retry");
+});
 
 // ─────────────────────────────────────────
 // 系統預設閾值

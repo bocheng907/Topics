@@ -7,6 +7,7 @@ import {
   serverTimestamp,
   where,
   writeBatch,
+  type WriteBatch,
 } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import {
@@ -156,8 +157,9 @@ export async function createMedicationReminders(params: {
   patientId: string;
   prescriptionId: string;
   items: PrescriptionItem[];
+  creationBatch?: WriteBatch;
 }) {
-  const { patientId, prescriptionId, items } = params;
+  const { patientId, prescriptionId, items, creationBatch } = params;
 
   if (!patientId || !prescriptionId || !Array.isArray(items)) {
     return;
@@ -165,16 +167,17 @@ export async function createMedicationReminders(params: {
 
   const [{ notifyUserIds, patientsId }, existingSnap] = await Promise.all([
     getLinkedPatientContext(patientId),
-    getDocs(
+    creationBatch ? Promise.resolve({ docs: [] }) : getDocs(
       query(
         collection(db, "medication_reminders"),
+        where("patientId", "==", patientId),
         where("prescriptionId", "==", prescriptionId)
       )
     ),
   ]);
   const existingIds = new Set(existingSnap.docs.map((docSnap) => docSnap.id));
   const desiredIds = new Set<string>();
-  const batch = writeBatch(db);
+  const batch = creationBatch ?? writeBatch(db);
 
   items.forEach((item, itemIndex) => {
     const medicineName = item.drug_name_zh?.trim() || "未命名藥物";
@@ -232,5 +235,5 @@ export async function createMedicationReminders(params: {
     });
   });
 
-  await batch.commit();
+  if (!creationBatch) await batch.commit();
 }

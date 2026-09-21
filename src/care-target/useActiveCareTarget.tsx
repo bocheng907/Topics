@@ -10,13 +10,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   collection,
   doc,
-  getDoc,
+  getDocFromServer,
   getDocs,
   query,
   updateDoc,
   where,
 } from "firebase/firestore";
-import { db } from "@/firebase/firebaseConfig";
+import { auth, db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 
 export type CareTarget = {
@@ -202,83 +202,28 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
   }, [targets, activePatientId]);
 
   async function setActivePatientId(id: string) {
-    if (!user) return;
-
-    let exists = targets.some((t) => t.id === id);
-
-    // 剛用邀請碼加入時，Provider 內的 targets 還是加入前的舊快照。
-    // 此時只補抓「這一位」長輩並驗證目前帳號確實已在對應成員陣列中，
-    // 不重載或改動其他既有長輩資料。
-    if (!exists) {
-      try {
-        const patientSnap = await getDoc(doc(db, "patients", id));
-        if (!patientSnap.exists()) {
-          console.log("setActivePatientId failed: patient not found", id);
-          return;
-        }
-
-        const data = patientSnap.data() as any;
-        const roleField = user.role === "family" ? "families" : "caregivers";
-        const members = Array.isArray(data?.[roleField]) ? data[roleField] : [];
-
-        if (!members.includes(user.uid)) {
-          console.log("setActivePatientId failed: user is not linked", id);
-          return;
-        }
-
-        let createdAt = Date.now();
-        if (data.createdAt?.toMillis) {
-          createdAt = data.createdAt.toMillis();
-        } else if (typeof data.createdAt === "number") {
-          createdAt = data.createdAt;
-        }
-
-        let updatedAt = createdAt;
-        if (data.updatedAt?.toMillis) {
-          updatedAt = data.updatedAt.toMillis();
-        } else if (typeof data.updatedAt === "number") {
-          updatedAt = data.updatedAt;
-        }
-
-        const joinedTarget: CareTarget = {
-          id: patientSnap.id,
-          patientsId: data.patientsId ?? "",
-          name: data.name ?? "",
-          notes: data.notes ?? data.note ?? "",
-          inviteCode: data.inviteCode ?? "",
-          createdAt,
-          updatedAt,
-        };
-
-        setTargets((prev) =>
-          prev.some((target) => target.id === id) ? prev : [...prev, joinedTarget]
-        );
-        setLinkedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-        exists = true;
-      } catch (error) {
-        console.log("setActivePatientId refresh joined patient failed:", error);
-        return;
-      }
-    }
-
-    if (!exists) return;
-
-    await AsyncStorage.setItem(activeKey(user.uid), id);
+    if (!user || auth.currentUser?.uid !== user.uid) throw new Error("Sign in required");
+    if (!id || id.includes("/")) throw new Error("Invalid patient");
+    const uid = user.uid;
+    const snap = await getDocFromServer(doc(db, "patients", id));
+    if (!snap.exists()) throw new Error("Patient no longer exists");
+    const data = snap.data();
+    const field = user.role === "family" ? "families" : "caregivers";
+    if (!Array.isArray(data[field]) || !data[field].includes(uid)) throw new Error("Membership unavailable");
+    const profiles = await getDocs(query(collection(db, "users"), where("uid", "==", uid)));
+    if (profiles.size !== 1) throw new Error("Profile unavailable");
+    if (auth.currentUser?.uid !== uid) throw new Error("Account changed");
+    await updateDoc(profiles.docs[0].ref, { activePatientId: id });
+    if (auth.currentUser?.uid !== uid) throw new Error("Account changed");
+    await AsyncStorage.setItem(activeKey(uid), id);
+    if (auth.currentUser?.uid !== uid) throw new Error("Account changed");
+    const createdAt = data.createdAt?.toMillis?.() ?? 0;
+    const target: CareTarget = {id, patientsId: data.patientsId ?? "", name: data.name ?? "",
+      notes: data.notes ?? data.note ?? "", inviteCode: data.inviteCode ?? "", createdAt,
+      updatedAt: data.updatedAt?.toMillis?.() ?? createdAt};
+    setTargets(prev => [...prev.filter(item => item.id !== id), target]);
+    setLinkedIds(prev => prev.includes(id) ? prev : [...prev, id]);
     setActiveId(id);
-
-    try {
-      const userSnap = await getDocs(
-        query(collection(db, "users"), where("uid", "==", user.uid))
-      );
-
-      if (!userSnap.empty) {
-        await updateDoc(doc(db, "users", userSnap.docs[0].id), {
-          activePatientId: id,
-        });
-      }
-    } catch (e) {
-      console.log("set activePatientId failed:", e);
-    }
   }
 
   async function clearActivePatient() {

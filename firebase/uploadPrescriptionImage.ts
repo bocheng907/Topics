@@ -1,6 +1,7 @@
 // firebase/uploadPrescriptionImage.ts
 import { storage } from "./firebaseConfig";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { createImageUploadFilename } from "./uploadFilename";
 
 /**
  * 將藥單圖片上傳至 Firebase Storage
@@ -17,7 +18,7 @@ export async function uploadPrescriptionImage(
   const blob = await response.blob();
 
   // 2️⃣ Firebase Storage 路徑（老師會看這個結構）
-  const filePath = `prescriptions/${uid}/${Date.now()}.jpg`;
+  const filePath = `prescriptions/${uid}/${createImageUploadFilename()}`;
   const imageRef = ref(storage, filePath);
 
   // 3️⃣ 上傳圖片

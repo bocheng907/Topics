@@ -1,10 +1,14 @@
 // app/family/_layout.tsx
+import { exportCopy } from "@/src/export/exportCopy";
+import { invitationCopy } from "@/src/care-target/invitationCopy";
 import { auth } from "@/firebase/firebaseConfig";
+import AuditMenuLink from "@/src/audit/AuditMenuLink";
+import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router, useSegments } from "expo-router";
-import { signOut } from "firebase/auth";
+import { signOut } from "@/src/auth/auditSession";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -138,6 +142,11 @@ export default function FamilyLayout() {
         </View>
 
         <View style={styles.menuContainer}>
+          <AuditMenuLink onNavigate={() => setIsSidebarOpen(false)} />
+          <PrivacyPolicyLink />
+          <Pressable style={styles.menuItem} onPress={() => { setIsSidebarOpen(false); router.push("/care-target/invitations" as any); }}>
+            <Text style={styles.menuItemText}>{invitationCopy[language].title}</Text>
+          </Pressable>
           <View style={styles.menuItem}>
             <Text style={styles.menuItemText}>{t.language}</Text>
             <View style={styles.languageOptions}>
@@ -186,8 +195,26 @@ export default function FamilyLayout() {
             <Text style={styles.menuItemTextDanger}>{t.unlink}</Text>
           </Pressable>
 
+          <Pressable style={styles.menuItem} onPress={() => {
+            setIsSidebarOpen(false);
+            router.push("/personal-data-export" as any);
+          }}>
+            <Text style={styles.menuItemText}>{exportCopy[language].title}</Text>
+          </Pressable>
+
           <Pressable style={styles.menuItem} onPress={handleLogout}>
             <Text style={styles.menuItemTextDanger}>{t.logout}</Text>
+          </Pressable>
+
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/account-deletion" as any);
+            }}
+          >
+            <Text style={styles.menuItemTextDanger}>刪除帳號</Text>
           </Pressable>
         </View>
       </Animated.View>

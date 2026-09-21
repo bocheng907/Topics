@@ -1,21 +1,17 @@
 import React, { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
-import {
-  arrayUnion,
-  collection,
-  doc,
-  getDocs,
-  query,
-  updateDoc,
-  where,
-} from "firebase/firestore";
-import { signOut } from "firebase/auth";
-import { db,auth } from "@/firebase/firebaseConfig";
+import { signOut } from "@/src/auth/auditSession";
+import { auth } from "@/firebase/firebaseConfig";
+import { joinCareTarget } from "@/src/care-target/careTargetApi";
+import JoinRequests from "@/src/care-target/JoinRequests";
+import { invitationCopy } from "@/src/care-target/invitationCopy";
+import { inviteErrorMessage } from "@/src/care-target/inviteFeedback";
 
 export default function CareTargetJoinScreen() {
   const { user } = useAuth();
@@ -23,37 +19,29 @@ export default function CareTargetJoinScreen() {
   const { language } = useLanguage();
   const t = translations[language];
   const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const normalizedCode = useMemo(() => code.trim().toUpperCase(), [code]);
-  const canSubmit = normalizedCode.length >= 4;
+  const canSubmit = normalizedCode.length >= 4 && normalizedCode.length <= 8 && !busy;
 
   const onJoin = async () => {
-    if (!user || !normalizedCode) return;
+    if (!user || !normalizedCode || busy) return;
+    setBusy(true);
 
     try {
-      const q = query(
-        collection(db, "patients"),
-        where("inviteCode", "==", normalizedCode)
-      );
-      const snap = await getDocs(q);
+      const { data: result } = await joinCareTarget({ code: normalizedCode });
 
-      if (snap.empty) {
-        Alert.alert(t.invalidInviteCode, t.checkInviteCode);
+      if (result.status !== "approved" && !result.alreadyJoined) {
+        Alert.alert(t.prompt, result.status === "pending" ? invitationCopy[language].submitted : invitationCopy[language].error);
         return;
       }
 
-      const foundDoc = snap.docs[0];
-      const found = foundDoc.data() as any;
-
-      const roleField = user.role === "family" ? "families" : "caregivers";
-      const currentList = Array.isArray(found?.[roleField]) ? found[roleField] : [];
-
-      if (currentList.includes(user.uid)) {
+      if (result.alreadyJoined) {
+        await setActivePatientId(result.patientId);
         Alert.alert(t.prompt, t.alreadyJoined, [
           {
             text: t.goUse,
             onPress: async () => {
-              await setActivePatientId(foundDoc.id);
               const home = user.role === "caregiver" ? "/caregiver" : "/family";
               router.replace(home as any);
             },
@@ -62,13 +50,9 @@ export default function CareTargetJoinScreen() {
         return;
       }
 
-      await updateDoc(doc(db, "patients", foundDoc.id), {
-        [roleField]: arrayUnion(user.uid),
-      });
+      await setActivePatientId(result.patientId);
 
-      await setActivePatientId(foundDoc.id);
-
-      Alert.alert(t.joinSuccess, found?.name ?? t.selectCareTarget, [
+      Alert.alert(t.joinSuccess, t.selectCareTarget, [
         {
           text: t.startUse,
           onPress: async () => {
@@ -80,28 +64,37 @@ export default function CareTargetJoinScreen() {
     } catch (e: any) {
       console.log("join patient error:", e);
 
-      if (e?.code === "permission-denied") {
+      if (e?.code === "functions/not-found" || e?.code === "functions/invalid-argument") {
+        Alert.alert(t.invalidInviteCode, inviteErrorMessage(e, language, t.checkInviteCode, t.inviteExpired));
+        return;
+      }
+      if (e?.code === "functions/permission-denied") {
         Alert.alert(
           t.joinFailed,
-          t.invitePermissionDenied
+          t.inviteJoinDenied
         );
         return;
       }
 
       Alert.alert(t.joinFailed, t.tryLater);
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 90, gap: 24 }}>
+      <JoinRequests />
       <View style={{ gap: 8 }}>
         <Text style={{ fontSize: 28, fontWeight: "900" }}>{t.joinCareTarget}</Text>
         <Text style={{ fontSize: 16, color: "#666" }}>{t.askInviteCode}</Text>
+        <Text style={{ color: "#666" }}>{invitationCopy[language].validity}</Text>
       </View>
 
       <View style={{ gap: 12 }}>
         <TextInput
           value={code}
+          maxLength={8}
           onChangeText={setCode}
           placeholder={t.inviteCodePlaceholder}
           autoCapitalize="characters"
