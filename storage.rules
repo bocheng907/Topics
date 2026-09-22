@@ -1,0 +1,135 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null
+        && !firestore.exists(
+          /databases/(default)/documents/_account_deletions/$(request.auth.uid));
+    }
+
+    function patient(patientId) {
+      return firestore.get(
+        /databases/(default)/documents/patients/$(patientId));
+    }
+
+    function patientExists(patientId) {
+      return signedIn() && firestore.exists(
+        /databases/(default)/documents/patients/$(patientId));
+    }
+
+    function isFamily(patientId) {
+      return patientExists(patientId)
+        && patient(patientId).data.families is list
+        && request.auth.uid in patient(patientId).data.families;
+    }
+
+    function isCaregiver(patientId) {
+      return patientExists(patientId)
+        && patient(patientId).data.caregivers is list
+        && request.auth.uid in patient(patientId).data.caregivers;
+    }
+
+    function isLinked(patientId) {
+      return isFamily(patientId) || isCaregiver(patientId);
+    }
+
+    function uuidFile(fileName, extensions) {
+      return fileName.matches(
+        '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.('
+        + extensions + ')$');
+    }
+
+    function ownMetadata(patientId) {
+      return request.resource.metadata.uploaderUid == request.auth.uid
+        && request.resource.metadata.patientId == patientId;
+    }
+
+    function ownExistingUpload() {
+      return resource.metadata.uploaderUid == request.auth.uid;
+    }
+
+    // New patient-scoped prescription image path.
+    match /prescriptions/{patientId}/{uploaderUid}/{fileName} {
+      allow read: if isLinked(patientId);
+      allow create: if resource == null && isLinked(patientId)
+        && uploaderUid == request.auth.uid
+        && uuidFile(fileName, 'jpg|jpeg|png')
+        && request.resource.size > 0 && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*')
+        && ownMetadata(patientId);
+      allow update: if false;
+      allow delete: if isLinked(patientId);
+    }
+
+    // Backward-compatible path still used by the current scanner.
+    match /prescriptions/{uploaderUid}/{fileName} {
+      allow read: if signedIn() && (
+        request.auth.uid == uploaderUid
+        || (resource.metadata.patientId is string && isLinked(resource.metadata.patientId))
+      );
+      allow create: if resource == null && signedIn()
+        && uploaderUid == request.auth.uid
+        && request.resource.metadata.patientId is string
+        && request.resource.metadata.uploaderUid == request.auth.uid
+        && isLinked(request.resource.metadata.patientId)
+        && uuidFile(fileName, 'jpg|jpeg|png')
+        && request.resource.size > 0 && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow update: if false;
+      allow delete: if signedIn() && (
+        request.auth.uid == uploaderUid
+        || (resource.metadata.patientId is string && isLinked(resource.metadata.patientId))
+      );
+    }
+
+    // User avatar. Only the owner can change it; signed-in users may load avatars shown in chat.
+    match /profile_images/{uid}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && request.auth.uid == uid
+        && fileName == 'avatar.jpg'
+        && request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /chats/{patientId}/images/{fileName} {
+      allow read: if isLinked(patientId);
+      allow create: if resource == null && isLinked(patientId)
+        && uuidFile(fileName, 'jpg|jpeg|png')
+        && request.resource.size > 0 && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*')
+        && ownMetadata(patientId);
+      allow update: if false;
+      allow delete: if signedIn() && ownExistingUpload();
+    }
+
+    match /abnormal_media/{patientId}/{fileName} {
+      allow read: if isLinked(patientId);
+      allow create: if resource == null && isCaregiver(patientId)
+        && uuidFile(fileName, 'jpg|jpeg|png|mp4|mov')
+        && request.resource.size > 0 && request.resource.size <= 100 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*'))
+        && ownMetadata(patientId);
+      allow update: if false;
+      allow delete: if signedIn() && ownExistingUpload();
+    }
+
+    match /voice_messages/{patientId}/{fileName} {
+      allow read: if isLinked(patientId);
+      allow create: if resource == null && isFamily(patientId)
+        && uuidFile(fileName, 'm4a')
+        && request.resource.size > 0 && request.resource.size <= 25 * 1024 * 1024
+        && request.resource.contentType.matches('audio/.*')
+        && ownMetadata(patientId);
+      allow update: if false;
+      allow delete: if signedIn() && ownExistingUpload();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

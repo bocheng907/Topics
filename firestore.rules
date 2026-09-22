@@ -1,0 +1,957 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function authenticated() {
+      return request.auth != null;
+    }
+
+    function signedIn() {
+      return authenticated()
+        && !exists(/databases/$(database)/documents/_account_deletions/$(request.auth.uid));
+    }
+
+    function patientDoc(patientId) {
+      return get(/databases/$(database)/documents/patients/$(patientId));
+    }
+
+    function patientExists(patientId) {
+      return signedIn() && exists(/databases/$(database)/documents/patients/$(patientId));
+    }
+
+    function isFamilyMember(patientId) {
+      return patientExists(patientId)
+        && patientDoc(patientId).data.families is list
+        && request.auth.uid in patientDoc(patientId).data.families;
+    }
+
+    function isCaregiverMember(patientId) {
+      return patientExists(patientId)
+        && patientDoc(patientId).data.caregivers is list
+        && request.auth.uid in patientDoc(patientId).data.caregivers;
+    }
+
+    function isLinkedToPatient(patientId) {
+      return isFamilyMember(patientId) || isCaregiverMember(patientId);
+    }
+
+    // Per-patient primary family; explicit empty UID disables legacy fallback.
+    function isPrimaryFamily(patientId) {
+      return isFamilyMember(patientId) && !isCaregiverMember(patientId)
+        && patientDoc(patientId).data.get('primaryFamilyUid',
+          patientDoc(patientId).data.get('createdBy', '')) == request.auth.uid;
+    }
+
+    function prescriptionPatientId(prescriptionId) {
+      return get(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId;
+    }
+
+    function canDeletePrescription(prescriptionId) {
+      let prescription = get(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data;
+      return prescription.patientId is string
+        && isLinkedToPatient(prescription.patientId);
+    }
+
+    // Caregivers may create a new prescription, its items and reminders in ONE
+    // atomic batch. Existing prescriptions cannot be extended or edited by them.
+    function isCreatingOwnPrescription(prescriptionId, patientId) {
+      let parent = getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data;
+      return !exists(/databases/$(database)/documents/prescriptions/$(prescriptionId))
+        && parent.patientId == patientId
+        && parent.createdBy == request.auth.uid
+        && parent.createdAt == request.time
+        && isCaregiverMember(patientId);
+    }
+
+    function isOwnUserDoc() {
+      return authenticated()
+        && resource.data.uid is string
+        && resource.data.uid == request.auth.uid;
+    }
+
+    function isOwnIncomingUserDoc() {
+      return authenticated()
+        && request.resource.data.uid is string
+        && request.resource.data.uid == request.auth.uid;
+    }
+
+    function parentUserUid(userDocId) {
+      return get(/databases/$(database)/documents/users/$(userDocId)).data.uid;
+    }
+
+    // Consent can be absent only on legacy profiles; new profiles must supply it.
+    function validUserConsent(data) {
+      return !('privacyConsent' in data) || (
+        data.privacyConsent is map
+        && data.privacyConsent.keys().hasAll(['accepted', 'version', 'acceptedAt'])
+        && data.privacyConsent.keys().hasOnly(['accepted', 'version', 'acceptedAt'])
+        && data.privacyConsent.accepted == true
+        && data.privacyConsent.version is string
+        && data.privacyConsent.version.size() > 0
+        && data.privacyConsent.version.size() <= 64
+        && data.privacyConsent.acceptedAt is timestamp
+      );
+    }
+
+    // ==========================================
+    // Agency profile
+    // ==========================================
+    match /agencies/{agencyUid} {
+      allow read: if signedIn()
+        && request.auth.uid == agencyUid;
+
+      allow create: if signedIn()
+        && request.auth.uid == agencyUid
+        && request.resource.data.keys().hasOnly([
+          "agencyUid",
+          "email",
+          "inviteCode",
+          "createdAt"
+        ])
+        && request.resource.data.agencyUid == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.inviteCode is string
+        && request.resource.data.inviteCode.size() == 6
+        && request.resource.data.createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+
+
+    // ==========================================
+    // Agency invite codes
+    // ==========================================
+    match /agency_invites/{inviteCode} {
+      // 看護之後需要用邀請碼查這一筆
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "inviteCode",
+          "agencyUid",
+          "agencyEmail",
+          "active",
+          "createdAt"
+        ])
+        && request.resource.data.inviteCode == inviteCode
+        && request.resource.data.inviteCode.size() == 6
+        && request.resource.data.agencyUid == request.auth.uid
+        && request.resource.data.agencyEmail is string
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+    // ==========================================
+    // Agency ↔ Caregiver membership
+    // ==========================================
+    match /agency_memberships/{caregiverUid} {
+
+      // 看護可以讀自己的綁定資料
+      // 仲介可以讀屬於自己的看護綁定資料
+      allow read: if signedIn() && (
+        request.auth.uid == caregiverUid
+        || resource.data.agencyUid == request.auth.uid
+      );
+
+      // 看護只能替自己建立一筆綁定
+      // 並且必須使用有效、啟用中的仲介邀請碼
+      allow create: if signedIn()
+        && request.auth.uid == caregiverUid
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "caregiverEmail",
+          "agencyUid",
+          "agencyInviteCode",
+          "createdAt"
+        ])
+        && request.resource.data.caregiverUid == request.auth.uid
+        && request.resource.data.caregiverEmail is string
+        && request.resource.data.agencyUid is string
+        && request.resource.data.agencyInviteCode is string
+        && request.resource.data.agencyInviteCode.size() == 6
+        && request.resource.data.createdAt == request.time
+
+        // 邀請碼文件必須存在
+        && exists(
+          /databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode)
+        )
+
+        // 邀請碼必須啟用
+        && get(
+          /databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode)
+        ).data.active == true
+
+        // 邀請碼所屬仲介必須與送進來的 agencyUid 相同
+        && get(
+          /databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode)
+        ).data.agencyUid == request.resource.data.agencyUid;
+
+      // MVP：綁定後暫時不允許自行換仲介或解除
+      allow update, delete: if false;
+    }
+
+  match /users/{userDocId} {
+      allow read: if isOwnUserDoc();
+
+      allow create: if isOwnIncomingUserDoc()
+        && validUserConsent(request.resource.data)
+        && request.resource.data.privacyConsent.version == '2026-09-12.v1'
+        && request.resource.data.privacyConsent.acceptedAt == request.time
+        && request.resource.data.keys().hasOnly([
+          "uid", "email", "role", "createdAt", "activePatientId",
+          "emergencyPhone1", "emergencyPhone2", "displayName", "avatarUrl", "privacyConsent"
+        ])
+        && request.resource.data.role in ["family", "caregiver", "agency"]
+        && request.resource.data.activePatientId is string
+        && request.resource.data.email is string
+        && boundedString(request.resource.data.displayName, 120)
+        && request.resource.data.displayName.size() > 0
+        && boundedString(request.resource.data.avatarUrl, 4096)
+        && request.resource.data.emergencyPhone1 is string
+        && request.resource.data.emergencyPhone2 is string;
+
+      allow update: if signedIn()
+        && validUserConsent(request.resource.data)
+        && isOwnUserDoc()
+        && isOwnIncomingUserDoc()
+        && request.resource.data.keys().hasOnly([
+          "uid", "email", "role", "createdAt", "activePatientId",
+          "emergencyPhone1", "emergencyPhone2", "displayName", "avatarUrl", "accountStatus",
+          "deletionRequestedAt", "deletionScheduledFor", "privacyConsent"
+        ])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.createdAt == resource.data.createdAt
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          "accountStatus", "deletionRequestedAt", "deletionScheduledFor", "privacyConsent"
+        ])
+        && request.resource.data.activePatientId is string
+        && request.resource.data.emergencyPhone1 is string
+        && request.resource.data.emergencyPhone2 is string
+        && boundedString(request.resource.data.get('displayName', ''), 120)
+        && boundedString(request.resource.data.get('avatarUrl', ''), 4096)
+        && (
+          request.resource.data.activePatientId == "" ||
+          isLinkedToPatient(request.resource.data.activePatientId)
+        );
+
+      allow delete: if false;
+    }
+
+    match /_account_deletions/{uid} {
+      allow read, write: if false;
+    }
+
+    match /users/{userDocId}/devices/{deviceId} {
+      allow read: if signedIn() && parentUserUid(userDocId) == request.auth.uid;
+
+      allow create: if signedIn()
+        && parentUserUid(userDocId) == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          "expoPushToken", "platform", "enabled", "updatedAt"
+        ])
+        && request.resource.data.expoPushToken is string
+        && request.resource.data.platform is string
+        && request.resource.data.enabled is bool;
+
+      allow update: if signedIn()
+        && parentUserUid(userDocId) == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          "expoPushToken", "platform", "enabled", "updatedAt"
+        ])
+        && request.resource.data.expoPushToken is string
+        && request.resource.data.platform is string
+        && request.resource.data.enabled is bool;
+
+      allow delete: if false;
+    }
+
+    // Data contract: patients uses immutable families/caregivers UID arrays and
+    // createdAt invite anchor. Health records reference the patients document ID,
+    // not its display patientsId; authors and creation timestamps are immutable.
+    // Existing membership arrays are preserved; new entries are server-validated.
+    function boundedString(value, maximum) {
+      return value is string && value.size() <= maximum;
+    }
+
+    match /users/{userDocId}/join_requests/{requestId} {
+      allow read: if signedIn() && parentUserUid(userDocId) == request.auth.uid;
+      allow write: if false;
+    }
+
+    // patients: immutable createdAt (server timestamp) also anchors invite expiry.
+    function validPatientInvite(data) {
+      return data.inviteCode is string && data.inviteCode.size() >= 4
+        && data.inviteCode.size() <= 8
+        && data.families is list && data.caregivers is list;
+    }
+
+    function validPatientProfile(data) {
+      return validPatientInvite(data)
+        && data.keys().hasOnly([
+          'patientsId', 'name', 'notes', 'note', 'inviteCode', 'caregivers',
+          'families', 'createdAt', 'createdBy', 'updatedAt',
+          'primaryFamilyUid', 'invitationVersion',
+          'emergencyPhone1', 'emergencyPhone2', 'familyGroupId'
+        ])
+        && boundedString(data.patientsId, 128)
+        && boundedString(data.name, 200) && data.name.size() > 0
+        && boundedString(data.get('notes', ''), 5000)
+        && boundedString(data.get('note', ''), 5000)
+        && boundedString(data.createdBy, 128)
+        && boundedString(data.emergencyPhone1, 64)
+        && boundedString(data.emergencyPhone2, 64)
+        && boundedString(data.get('familyGroupId', ''), 256)
+        && data.createdAt is timestamp
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // Technical bounds only, not clinical validation or diagnostic thresholds.
+    function optionalReading(data, field) {
+      return !(field in data) || (
+        data[field] is number && data[field] >= -1000000000
+        && data[field] <= 1000000000
+      );
+    }
+
+    function validHealthRecord(data) {
+      return data.keys().hasOnly([
+          'patientId', 'caregiverId', 'createdAt', 'temperature', 'heartRate',
+          'bloodPressureSys', 'bloodPressureDia', 'bloodSugar', 'bloodSugarType'
+        ])
+        && boundedString(data.patientId, 256) && data.patientId.size() > 0
+        && boundedString(data.caregiverId, 128) && data.caregiverId.size() > 0
+        && data.createdAt is timestamp
+        && optionalReading(data, 'temperature')
+        && optionalReading(data, 'heartRate')
+        && optionalReading(data, 'bloodPressureSys')
+        && optionalReading(data, 'bloodPressureDia')
+        && optionalReading(data, 'bloodSugar')
+        && boundedString(data.get('bloodSugarType', ''), 64);
+    }
+
+    // Existing membership authorizes reads; trusted callables handle create/join.
+    match /patients/{patientId} {
+      allow read: if signedIn() && (
+        request.auth.uid in resource.data.families
+        || request.auth.uid in resource.data.caregivers
+      );
+      allow create: if false;
+      allow update: if signedIn() && isLinkedToPatient(patientId)
+        && validPatientProfile(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          "patientsId", "createdAt", "createdBy", "inviteCode",
+          "families", "caregivers", "primaryFamilyUid", "invitationVersion",
+          "familyGroupId"
+        ]);
+      allow delete: if signedIn() && isPrimaryFamily(patientId);
+
+      match /care_notes/{noteId} {
+        allow read: if signedIn() && isLinkedToPatient(patientId);
+
+        allow create: if signedIn()
+          && isCaregiverMember(patientId)
+          && request.resource.data.keys().hasOnly([
+            "title",
+            "content",
+            "pinned",
+            "createdAt",
+            "updatedAt",
+            "createdBy",
+            "caregiverId",
+            "patientId"
+          ])
+          && request.resource.data.title is string
+          && request.resource.data.content is string
+          && request.resource.data.pinned is bool
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.caregiverId == request.auth.uid
+          && request.resource.data.patientId == patientId;
+
+        allow update: if signedIn()
+          && isCaregiverMember(patientId)
+          && resource.data.patientId == patientId
+          && request.resource.data.patientId == resource.data.patientId
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.caregiverId == resource.data.caregiverId
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "title",
+            "title_en",
+            "title_vi",
+            "title_id",
+            "content",
+            "content_en",
+            "content_vi",
+            "content_id",
+            "pinned",
+            "updatedAt"
+          ])
+          && request.resource.data.title is string
+          && request.resource.data.content is string
+          && request.resource.data.pinned is bool
+          && request.resource.data.updatedAt == request.time;
+
+        allow update: if signedIn()
+          && isCaregiverMember(patientId)
+          && resource.data.patientId == patientId
+          && request.resource.data.patientId == resource.data.patientId
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.caregiverId == resource.data.caregiverId
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "title_en",
+            "title_vi",
+            "title_id",
+            "content_en",
+            "content_vi",
+            "content_id"
+          ])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["title_en"]) || request.resource.data.title_en is string)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["title_vi"]) || request.resource.data.title_vi is string)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["title_id"]) || request.resource.data.title_id is string)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["content_en"]) || request.resource.data.content_en is string)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["content_vi"]) || request.resource.data.content_vi is string)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["content_id"]) || request.resource.data.content_id is string);
+
+        allow delete: if signedIn()
+          && isCaregiverMember(patientId)
+          && resource.data.patientId == patientId;
+      }
+
+      match /daily_checklists/{dailyChecklistDocId} {
+        allow read: if signedIn() && isLinkedToPatient(patientId);
+
+        allow create: if signedIn()
+          && isCaregiverMember(patientId)
+          && request.resource.data.keys().hasOnly([
+            "patientId",
+            "patientsId",
+            "dateKey",
+            "dailyChecklistDocId",
+            "createdAt",
+            "updatedAt",
+            "createdBy"
+          ])
+          && request.resource.data.patientId == patientId
+          && request.resource.data.patientsId is string
+          && request.resource.data.dateKey is string
+          && request.resource.data.dateKey.matches("^\\d{4}-\\d{2}-\\d{2}$")
+          && request.resource.data.dailyChecklistDocId == dailyChecklistDocId
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.createdBy == request.auth.uid;
+
+        allow update: if signedIn()
+          && isCaregiverMember(patientId)
+          && resource.data.patientId == patientId
+          && resource.data.dailyChecklistDocId == dailyChecklistDocId
+          && request.resource.data.patientId == resource.data.patientId
+          && request.resource.data.dateKey == resource.data.dateKey
+          && request.resource.data.dailyChecklistDocId == resource.data.dailyChecklistDocId
+          && request.resource.data.keys().hasOnly([
+            "patientId",
+            "patientsId",
+            "dateKey",
+            "dailyChecklistDocId",
+            "createdAt",
+            "updatedAt",
+            "createdBy"
+          ])
+          && request.resource.data.patientsId is string
+          && request.resource.data.dateKey is string
+          && request.resource.data.dateKey.matches("^\\d{4}-\\d{2}-\\d{2}$")
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.createdBy == request.auth.uid;
+
+        allow delete: if signedIn()
+          && isCaregiverMember(patientId)
+          && resource.data.patientId == patientId
+          && resource.data.dailyChecklistDocId == dailyChecklistDocId;
+
+        match /items/{itemId} {
+          allow read: if signedIn() && isLinkedToPatient(patientId);
+
+          allow create: if signedIn()
+            && isCaregiverMember(patientId)
+            && request.resource.data.keys().hasOnly([
+            "title",
+            "completed",
+            "isDefault",
+            "createdAt",
+            "updatedAt",
+            "completedAt",
+            "createdBy",
+            "caregiverId",
+            "patientId",
+            "patientsId",
+            "dateKey",
+            "dailyChecklistDocId"
+            ])
+            && request.resource.data.title is string
+            && request.resource.data.completed is bool
+            && request.resource.data.isDefault is bool
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.updatedAt == request.time
+            && (
+              request.resource.data.completedAt == null ||
+              request.resource.data.completedAt == request.time
+            )
+            && request.resource.data.createdBy == request.auth.uid
+            && request.resource.data.caregiverId == request.auth.uid
+            && request.resource.data.patientId == patientId
+            && request.resource.data.patientsId is string
+            && request.resource.data.dateKey is string
+            && request.resource.data.dateKey.matches("^\\d{4}-\\d{2}-\\d{2}$")
+            && request.resource.data.dailyChecklistDocId == dailyChecklistDocId;
+
+          allow update: if signedIn()
+            && isCaregiverMember(patientId)
+            && resource.data.patientId == patientId
+            && resource.data.dailyChecklistDocId == dailyChecklistDocId
+            && request.resource.data.patientId == resource.data.patientId
+            && request.resource.data.patientsId == resource.data.patientsId
+            && request.resource.data.dateKey == resource.data.dateKey
+            && request.resource.data.dailyChecklistDocId == resource.data.dailyChecklistDocId
+            && request.resource.data.createdBy == resource.data.createdBy
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.isDefault == resource.data.isDefault
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "title",
+              "title_en",
+              "title_vi",
+              "title_id",
+              "completed",
+              "completedAt",
+              "caregiverId",
+              "updatedAt"
+            ])
+            && request.resource.data.title is string
+            && request.resource.data.completed is bool
+            && request.resource.data.caregiverId is string
+            && request.resource.data.dateKey is string
+            && request.resource.data.dateKey.matches("^\\d{4}-\\d{2}-\\d{2}$")
+            && (
+              request.resource.data.caregiverId == resource.data.caregiverId ||
+              request.resource.data.caregiverId == request.auth.uid
+            )
+            && request.resource.data.updatedAt == request.time
+          && (
+            request.resource.data.completedAt == null ||
+            request.resource.data.completedAt == request.time ||
+            request.resource.data.completedAt == resource.data.completedAt
+          );
+
+          allow update: if signedIn()
+            && isCaregiverMember(patientId)
+            && resource.data.patientId == patientId
+            && resource.data.dailyChecklistDocId == dailyChecklistDocId
+            && resource.data.isDefault == false
+            && request.resource.data.patientId == resource.data.patientId
+            && request.resource.data.patientsId == resource.data.patientsId
+            && request.resource.data.dateKey == resource.data.dateKey
+            && request.resource.data.dailyChecklistDocId == resource.data.dailyChecklistDocId
+            && request.resource.data.createdBy == resource.data.createdBy
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.isDefault == resource.data.isDefault
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "title_en",
+              "title_vi",
+              "title_id"
+            ])
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["title_en"]) || request.resource.data.title_en is string)
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["title_vi"]) || request.resource.data.title_vi is string)
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["title_id"]) || request.resource.data.title_id is string);
+
+          allow delete: if signedIn()
+            && isCaregiverMember(patientId)
+            && resource.data.patientId == patientId
+            && resource.data.dailyChecklistDocId == dailyChecklistDocId;
+        }
+      }
+}
+
+    match /care_notes/{noteId} {
+      allow read: if signedIn()
+        && resource.data.caregiverUid == request.auth.uid;
+
+      allow create: if signedIn()
+        && request.resource.data.patientDocId is string
+        && isCaregiverMember(request.resource.data.patientDocId)
+        && request.resource.data.caregiverUid == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.content is string
+        && request.resource.data.isPinned is bool;
+
+      allow update: if signedIn()
+        && resource.data.patientDocId is string
+        && isCaregiverMember(resource.data.patientDocId)
+        && resource.data.caregiverUid == request.auth.uid
+        && request.resource.data.patientDocId == resource.data.patientDocId
+        && request.resource.data.patientId == resource.data.patientId
+        && request.resource.data.caregiverUid == resource.data.caregiverUid
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if signedIn()
+        && resource.data.patientDocId is string
+        && isCaregiverMember(resource.data.patientDocId)
+        && resource.data.caregiverUid == request.auth.uid;
+    }
+
+    match /daily_checklist_items/{dailyDocId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+      allow create, update: if signedIn()
+        && request.resource.data.patientId is string
+        && isCaregiverMember(request.resource.data.patientId)
+        && request.resource.data.dailyChecklistDocId == dailyDocId
+        && request.resource.data.createdBy == request.auth.uid;
+      allow delete: if signedIn()
+        && resource.data.patientId is string
+        && isCaregiverMember(resource.data.patientId);
+
+      match /items/{itemId} {
+        allow read: if signedIn()
+          && resource.data.patientId is string
+          && isLinkedToPatient(resource.data.patientId);
+        allow create: if signedIn()
+          && request.resource.data.patientId is string
+          && isCaregiverMember(request.resource.data.patientId)
+          && request.resource.data.dailyChecklistDocId == dailyDocId
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.caregiverId == request.auth.uid;
+        allow update: if signedIn()
+          && resource.data.patientId is string
+          && isCaregiverMember(resource.data.patientId)
+          && request.resource.data.patientId == resource.data.patientId
+          && request.resource.data.dailyChecklistDocId == resource.data.dailyChecklistDocId
+          && request.resource.data.createdBy == resource.data.createdBy;
+        allow delete: if signedIn()
+          && resource.data.patientId is string
+          && isCaregiverMember(resource.data.patientId);
+      }
+    }
+
+    match /prescriptions/{prescriptionId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.patientId is string
+        && isCaregiverMember(request.resource.data.patientId)
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      match /items/{itemId} {
+        allow read: if signedIn()
+          && prescriptionPatientId(prescriptionId) is string
+          && isLinkedToPatient(prescriptionPatientId(prescriptionId));
+
+        allow create: if signedIn() && (
+          (exists(/databases/$(database)/documents/prescriptions/$(prescriptionId))
+            && prescriptionPatientId(prescriptionId) is string
+            && isLinkedToPatient(prescriptionPatientId(prescriptionId)))
+          || isCreatingOwnPrescription(prescriptionId,
+            getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId));
+
+        allow update: if signedIn()
+          && prescriptionPatientId(prescriptionId) is string
+          && isLinkedToPatient(prescriptionPatientId(prescriptionId));
+
+        allow delete: if signedIn()
+          && canDeletePrescription(prescriptionId);
+      }
+    }
+
+    match /medication_reminders/{reminderId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId);
+
+      allow update: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId;
+
+      allow delete: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+    }
+
+    match /medication_logs/{logId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId)
+        && request.resource.data.confirmedBy == request.auth.uid;
+
+      allow update, delete: if false;
+    }
+
+    match /health_records/{recordId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && validHealthRecord(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.caregiverId == request.auth.uid
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId);
+
+      allow update: if signedIn()
+        && validHealthRecord(request.resource.data)
+        && resource.data.caregiverId == request.auth.uid
+        && isLinkedToPatient(resource.data.patientId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          "patientId", "caregiverId", "createdAt"
+        ]);
+      allow delete: if signedIn()
+        && resource.data.caregiverId == request.auth.uid
+        && isLinkedToPatient(resource.data.patientId);
+    }
+
+    match /health_thresholds/{thresholdId} {
+      allow read: if signedIn() && (
+        isLinkedToPatient(thresholdId)
+        || (
+          resource.data.patientDocId is string
+          && isLinkedToPatient(resource.data.patientDocId)
+        )
+      );
+
+      allow create: if signedIn()
+        && request.resource.data.patientDocId is string
+        && request.resource.data.patientsId is string
+        && thresholdId == "threshold_pat_" + request.resource.data.patientsId
+        && isFamilyMember(request.resource.data.patientDocId);
+
+      allow update: if signedIn() && (
+        isFamilyMember(thresholdId)
+        || (
+          resource.data.patientDocId is string
+          && isFamilyMember(resource.data.patientDocId)
+          && request.resource.data.patientDocId == resource.data.patientDocId
+          && request.resource.data.patientsId == resource.data.patientsId
+        )
+      );
+
+      allow delete: if signedIn() && (
+        isFamilyMember(thresholdId)
+        || (
+          resource.data.patientDocId is string
+          && isFamilyMember(resource.data.patientDocId)
+        )
+      );
+    }
+
+    match /voice_records/{recordId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId)
+        && request.resource.data.familyId == request.auth.uid;
+
+      allow update, delete: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && resource.data.familyId == request.auth.uid;
+    }
+
+    match /abnormal_records/{recordId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isCaregiverMember(request.resource.data.patientId)
+        && request.resource.data.caregiverId == request.auth.uid;
+
+      allow update: if signedIn()
+        && resource.data.patientId is string
+        && isCaregiverMember(resource.data.patientId)
+        && resource.data.caregiverId == request.auth.uid
+        && request.resource.data.patientId == resource.data.patientId
+        && request.resource.data.caregiverId == resource.data.caregiverId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "titleOriginal",
+          "titleZh",
+          "title_en",
+          "title_vi",
+          "title_id",
+          "notesOriginal",
+          "notesZh",
+          "notes_en",
+          "notes_vi",
+          "notes_id",
+          "entries",
+          "hasMedia",
+          "mediaUrl",
+          "mediaType",
+          "updatedAt"
+        ])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["title_en"]) || request.resource.data.title_en is string)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["title_vi"]) || request.resource.data.title_vi is string)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["title_id"]) || request.resource.data.title_id is string)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["notes_en"]) || request.resource.data.notes_en is string)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["notes_vi"]) || request.resource.data.notes_vi is string)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["notes_id"]) || request.resource.data.notes_id is string)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["entries"]) || request.resource.data.entries is list);
+
+      allow delete: if signedIn()
+        && resource.data.patientId is string
+        && isCaregiverMember(resource.data.patientId)
+        && resource.data.caregiverId == request.auth.uid;
+    }
+
+    match /calendar_events/{eventId} {
+      allow read: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId);
+
+      allow create: if signedIn()
+        && request.resource.data.patientId is string
+        && isLinkedToPatient(request.resource.data.patientId)
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow update: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name",
+          "name_en",
+          "name_vi",
+          "name_id",
+          "personName",
+          "title",
+          "title_en",
+          "title_vi",
+          "title_id",
+          "eventTitle",
+          "event",
+          "description",
+          "description_en",
+          "description_vi",
+          "description_id",
+          "location",
+          "location_en",
+          "location_vi",
+          "location_id",
+          "place",
+          "color",
+          "startAt",
+          "eventDate",
+          "hour",
+          "minute",
+          "period",
+          "updatedAt",
+          "isCompleted",
+          "completedAt",
+          "completedBy"
+        ])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "completedBy"
+          ])
+          || request.resource.data.completedBy == request.auth.uid
+          || request.resource.data.completedBy == ""
+        );
+
+      allow delete: if signedIn()
+        && resource.data.patientId is string
+        && isLinkedToPatient(resource.data.patientId)
+        && (
+          isFamilyMember(resource.data.patientId)
+          || resource.data.createdBy == request.auth.uid
+        );
+    }
+
+    match /audit_logs/{logId} {
+      // Admin claim must be provisioned by a trusted administrator.
+      allow read: if request.auth != null
+        && request.auth.token.auditAdmin == true;
+      allow create, update, delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn()
+        && resource.data.recipientUid == request.auth.uid;
+
+      allow create: if false;
+
+      allow update: if signedIn()
+        && resource.data.recipientUid == request.auth.uid
+        && request.resource.data.recipientUid == resource.data.recipientUid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "isRead"
+        ])
+        && request.resource.data.isRead is bool;
+
+      allow delete: if false;
+    }
+
+    // A care target owns exactly two fixed rooms: the existing caregiver room
+    // and the family care group. Membership always comes from the patient;
+    // clients cannot create arbitrary rooms or maintain a second member list.
+    match /chats/{patientId}/{roomId}/{messageId} {
+      function validMessage(data) {
+        return data.keys().hasOnly(['senderId', 'senderName', 'senderAvatarUrl', 'createdAt', 'text', 'text_zh', 'text_original', 'imageUrl'])
+          && data.senderId is string && data.senderId == request.auth.uid
+          && data.senderId.size() <= 128
+          && (!('senderName' in data) || (data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 120))
+          && (!('senderAvatarUrl' in data) || (data.senderAvatarUrl is string && data.senderAvatarUrl.size() <= 4096))
+          && data.createdAt is timestamp && data.createdAt == request.time
+          && (('text' in data && data.text is string && data.text.size() > 0
+            && data.text.size() <= 10000 && !('imageUrl' in data))
+            || ('imageUrl' in data && data.imageUrl is string
+              && data.imageUrl.size() > 0 && data.imageUrl.size() <= 4096 && !('text' in data)))
+          && (!('text_zh' in data) || (data.text_zh is string && data.text_zh.size() <= 10000))
+          && (!('text_original' in data) || (data.text_original is string && data.text_original.size() <= 10000));
+      }
+      allow read: if signedIn() && (
+          (roomId == 'messages' && isLinkedToPatient(patientId)) ||
+          (roomId == 'familyMessages' && isFamilyMember(patientId))
+        );
+      allow create: if signedIn() && validMessage(request.resource.data) && (
+          (roomId == 'messages' && isLinkedToPatient(patientId)) ||
+          (roomId == 'familyMessages' && isFamilyMember(patientId))
+        );
+      // Client messages are immutable. Readers keep translations locally.
+      allow update, delete: if false;
+    }
+  }
+}
