@@ -3,6 +3,7 @@ import { exportCopy } from "@/src/export/exportCopy";
 import AuditMenuLink from "@/src/audit/AuditMenuLink";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { useSyncCaregiverServices } from "@/src/agency/useSyncCaregiverServices";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +23,8 @@ export default function CaregiverLayout() {
   const insets = useSafeAreaInsets();
   const { language, setLanguage } = useLanguage();
 
+  useSyncCaregiverServices();
+
   const hideBottomNavRoutes = [
     "chat-room",
     "detail",
@@ -36,6 +39,7 @@ export default function CaregiverLayout() {
     "handbook",
     "notification-detail",
     "account-settings",
+    "agency-binding",
     "result",
   ];
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
@@ -165,7 +169,7 @@ export default function CaregiverLayout() {
         </Pressable>
       )}
 
-      {!hideBottomNav && (
+      {!hideBottomNav && !!activePatientId && (
         <View style={styles.footerWrapper} pointerEvents="box-none">
           <View style={styles.fabContainer} pointerEvents="box-none">
             <Pressable style={styles.fabButton} onPress={onEmergencyCall}>
@@ -268,6 +272,16 @@ export default function CaregiverLayout() {
             }}
           >
             <Text style={styles.menuItemText}>帳號設定</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/caregiver/agency-binding" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>綁定仲介</Text>
           </Pressable>
 
           <Pressable style={styles.menuItem} onPress={() => Alert.alert("警告", "確定要解除連結嗎？")}>

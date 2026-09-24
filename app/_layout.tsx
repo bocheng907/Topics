@@ -59,6 +59,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="caregiver" options={{ headerShown: false }} />
       <Stack.Screen name="family" options={{ headerShown: false }} />
+      <Stack.Screen name="agency" options={{ headerShown: false }} />
       <Stack.Screen name="care-target" options={{ headerShown: false }} />
       <Stack.Screen name="account-deletion" options={{ headerShown: false }} />
       <Stack.Screen name="personal-data-export" options={{ headerShown: false }} />

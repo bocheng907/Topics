@@ -20,7 +20,10 @@ import { reportSession, signOut } from "./auditSession";
 import { isValidRegistrationPassword } from "./passwordPolicy";
 import { assertPrivacyConsent, PRIVACY_POLICY_VERSION, type PrivacyConsent } from "@/src/privacy/consent";
 
-export type Role = "caregiver" | "family";
+export type Role =
+  | "caregiver"
+  | "family"
+  | "agency";
 
 export type AuthUser = {
   uid: string;

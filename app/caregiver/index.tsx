@@ -154,7 +154,6 @@ export default function CaregiverHomeScreen() {
     if (!activePatient || !activePatientId) {
       setTarget(null);
       setLoading(false);
-      router.replace("/care-target/join");
       return;
     }
 
@@ -397,6 +396,62 @@ export default function CaregiverHomeScreen() {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
   }
 
+  if (!activePatientId || !activePatient) {
+    return (
+      <View style={styles.noTargetContainer}>
+        <View style={styles.noTargetCard}>
+          <Ionicons
+            name="person-add-outline"
+            size={54}
+            color="#4F59D5"
+          />
+
+          <Text style={styles.noTargetTitle}>
+            尚未綁定照護對象
+          </Text>
+
+          <Text style={styles.noTargetDescription}>
+            你可以先加入照護對象，也可以先綁定所屬仲介
+          </Text>
+
+          <Pressable
+            style={styles.primarySetupButton}
+            onPress={() =>
+              router.push("/care-target/join" as any)
+            }
+          >
+            <Ionicons
+              name="people-outline"
+              size={22}
+              color="#FFF"
+            />
+            <Text style={styles.primarySetupButtonText}>
+              綁定照護對象
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.secondarySetupButton}
+            onPress={() =>
+              router.push(
+                "/caregiver/agency-binding" as any
+              )
+            }
+          >
+            <Ionicons
+              name="business-outline"
+              size={22}
+              color="#4F59D5"
+            />
+            <Text style={styles.secondarySetupButtonText}>
+              綁定仲介
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -539,6 +594,73 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
+  },
+  noTargetContainer: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+
+  noTargetCard: {
+    backgroundColor: "#F8F9FC",
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    alignItems: "center",
+    gap: 14,
+  },
+
+  noTargetTitle: {
+    marginTop: 6,
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#111827",
+    textAlign: "center",
+  },
+
+  noTargetDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+
+  primarySetupButton: {
+    width: "100%",
+    minHeight: 56,
+    borderRadius: 16,
+    backgroundColor: "#4F59D5",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  primarySetupButtonText: {
+    color: "#FFF",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+
+  secondarySetupButton: {
+    width: "100%",
+    minHeight: 56,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#4F59D5",
+    backgroundColor: "#FFF",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  secondarySetupButtonText: {
+    color: "#4F59D5",
+    fontSize: 17,
+    fontWeight: "800",
   },
   scrollContent: {
     paddingBottom: 190, // 避開懸浮的緊急撥號鍵與底部導覽列（兩者皆為浮動疊層，不會自動讓出空間）

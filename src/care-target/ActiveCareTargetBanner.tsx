@@ -25,7 +25,10 @@ export default function ActiveCareTargetBanner() {
   const { activePatient, activePatientId } = useActiveCareTarget();
 
   // 未登入或還沒有資料：不顯示（避免一直跳）
-  if (!user) return null;
+  // 未登入或仲介身分：不顯示照護對象 Banner
+  if (!user || user.role === "agency") {
+    return null;
+  }
 
   const name = activePatient?.name ?? "(尚未選擇長輩)";
   const hint = activePatientId ? `ID：${activePatientId}` : "請先選擇要查看的長輩";

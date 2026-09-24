@@ -16,10 +16,15 @@ export default function Index() {
   }
 
   // ✅ 已登入 → 依照身分導向專屬的控制台
-  if (user?.role === "family") {
+  if (user.role === "family") {
     return <Redirect href="/family" />;
-  } else {
-    // 預設或身分為 caregiver，導向看護控制台
+  }
+
+  if (user.role === "caregiver") {
     return <Redirect href="/caregiver" />;
+  }
+
+  if (user.role === "agency") {
+    return <Redirect href="/agency" />;
   }
 }
