@@ -8,6 +8,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -52,7 +53,28 @@ export default function AgencyLayout() {
     router.push(path as any);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+     // Web 測試
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "確定要登出目前帳號嗎？"
+      );
+
+      if (!confirmed) return;
+
+      try {
+        await signOut(auth);
+        setIsSidebarOpen(false);
+        router.replace("/");
+      } catch (error) {
+        console.log("登出失敗:", error);
+        window.alert("登出失敗，請稍後再試");
+      }
+
+      return;
+    }
+
+    //手機版
     Alert.alert("登出", "確定要登出嗎？", [
       {
         text: "取消",

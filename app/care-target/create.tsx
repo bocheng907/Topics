@@ -101,7 +101,7 @@ export default function CareTargetCreateScreen() {
       }
     } catch (e: any) {
       console.log("join by invite from create screen failed:", e);
-      Alert.alert(t.joinFailed, t.checkInviteCode ?? t.tryLater);
+      Alert.alert(t.joinFailed, t.checkInviteCode);
     } finally {
       setJoining(false);
     }

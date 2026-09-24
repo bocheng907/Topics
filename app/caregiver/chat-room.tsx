@@ -236,11 +236,11 @@ export default function CaregiverChatRoomScreen() {
             <Text style={styles.backIcon}>＜</Text>
           </Pressable>
           <Text style={styles.headerTitle}>
-            {roomType === "family"
-              ? `${activePatient?.name ? `${activePatient.name} · ` : ""}${t.familyGroupTitle}`
-              : activePatient?.name
-                ? language === "zh" ? `${activePatient.name}${t.familyLabel}` : `${activePatient.name} ${t.familyLabel}`
-                : t.chatRoom}
+            {activePatient?.name
+              ? language === "zh"
+                ? `${activePatient.name}${t.familyLabel}`
+                : `${activePatient.name} ${t.familyLabel}`
+              : t.chatRoom}
           </Text>
         </View>
         <View style={{ width: 40 }} />
@@ -255,7 +255,9 @@ export default function CaregiverChatRoomScreen() {
         <ScrollView contentContainerStyle={styles.emptyContainer}>
           <Ionicons name="chatbubbles-outline" size={80} color="#C4C4C4" style={styles.emptyIcon} />
           <Text style={styles.emptyText}>{t.noConversation}</Text>
-          <Text style={styles.emptySubText}>{roomType === "family" ? t.familyGroupFirstMessage : t.sendFirstMessage}</Text>
+          <Text style={styles.emptySubText}>
+            {t.sendFirstMessage}
+          </Text>
         </ScrollView>
       ) : (
         <ScrollView
