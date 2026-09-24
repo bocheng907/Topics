@@ -9,7 +9,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
 
 function RootLayoutNav() {
-  const { user } = useAuth();
+  const { user, ready } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -20,7 +20,8 @@ function RootLayoutNav() {
   }, []);
 
   useEffect(() => {
-    if (!isNavigationReady) return;
+    // Router 與 Firebase 登入狀態都準備好之後才判斷導頁
+    if (!isNavigationReady || !ready) return;
 
     const inAuthGroup = segments[0] === "(auth)";
 
@@ -29,7 +30,7 @@ function RootLayoutNav() {
     } else if (!user && !inAuthGroup) {
       router.replace("/(auth)/login");
     }
-  }, [user, segments, isNavigationReady]);
+  }, [user, ready, segments, isNavigationReady]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -56,6 +57,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="caregiver" options={{ headerShown: false }} />
       <Stack.Screen name="family" options={{ headerShown: false }} />
+      <Stack.Screen name="agency" options={{ headerShown: false }} />
       <Stack.Screen name="care-target" options={{ headerShown: false }} />
     </Stack>
   );

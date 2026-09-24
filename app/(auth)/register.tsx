@@ -25,6 +25,7 @@ export default function RegisterScreen() {
   const [emergencyPhone1, setEmergencyPhone1] = useState("");
   const [emergencyPhone2, setEmergencyPhone2] = useState("");
   const [loading, setLoading] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   async function onRegister() {
     if (!email || password.length < 6) {
@@ -37,12 +38,18 @@ export default function RegisterScreen() {
       return;
     }
 
+    if (!privacyAccepted) {
+      Alert.alert("提醒", "請先閱讀並同意隱私權政策");
+      return;
+    }
+
     try {
       setLoading(true);
 
       await register(email, password, role, {
         emergencyPhone1,
         emergencyPhone2,
+        privacyAccepted,
       });
 
       router.replace("/");
@@ -128,6 +135,28 @@ export default function RegisterScreen() {
                 }}
               >
                 {t.family}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setRole("agency")}
+              style={{
+                flex: 1,
+                padding: 14,
+                borderRadius: 12,
+                borderWidth: 2,
+                borderColor: role === "agency" ? "#007AFF" : "#EEE",
+                backgroundColor: role === "agency" ? "#E1E9FF" : "#FFF",
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontWeight: "900",
+                  color: role === "agency" ? "#007AFF" : "#999",
+                }}
+              >
+                仲介
               </Text>
             </Pressable>
           </View>
@@ -244,6 +273,36 @@ export default function RegisterScreen() {
             </View>
           </>
         )}
+
+        <Pressable
+          onPress={() => setPrivacyAccepted((prev) => !prev)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <View
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 5,
+              borderWidth: 2,
+              borderColor: privacyAccepted ? "#4F59D5" : "#AAA",
+              backgroundColor: privacyAccepted ? "#4F59D5" : "#FFF",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {privacyAccepted && (
+              <Text style={{ color: "#FFF", fontWeight: "bold" }}>✓</Text>
+            )}
+          </View>
+
+          <Text style={{ flex: 1, color: "#555", fontSize: 14 }}>
+            我已閱讀並同意隱私權政策
+          </Text>
+        </Pressable>
 
         <Pressable
           onPress={onRegister}

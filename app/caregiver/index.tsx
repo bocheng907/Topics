@@ -146,7 +146,6 @@ export default function CaregiverHomeScreen() {
     if (!activePatient || !activePatientId) {
       setTarget(null);
       setLoading(false);
-      router.replace("/care-target/join");
       return;
     }
 
@@ -413,6 +412,91 @@ export default function CaregiverHomeScreen() {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
   }
 
+  if (!target || !activePatientId) {
+    return (
+      <View style={styles.container}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.setupScrollContent}
+        >
+          <View style={styles.setupHeader}>
+            <Text style={styles.setupTitle}>開始設定</Text>
+            <Text style={styles.setupSubtitle}>
+              您可以先綁定照護對象或仲介，兩者沒有先後順序。
+            </Text>
+          </View>
+
+          <Pressable
+            style={[styles.setupCard, { backgroundColor: "#FEF9C3" }]}
+            onPress={() => router.push("/care-target/join" as any)}
+          >
+            <View
+              style={[
+                styles.setupIconBadge,
+                { backgroundColor: "#CA8A04" },
+              ]}
+            >
+              <Ionicons name="person-add" size={30} color="#FFFFFF" />
+            </View>
+
+            <View style={styles.setupCardText}>
+              <Text style={styles.setupCardTitle}>綁定照護對象</Text>
+              <Text style={styles.setupCardDescription}>
+                輸入長者提供的邀請碼，開始使用照護相關功能
+              </Text>
+            </View>
+
+            <Ionicons
+              name="chevron-forward"
+              size={26}
+              color="#6B7280"
+            />
+          </Pressable>
+
+          <Pressable
+            style={[styles.setupCard, { backgroundColor: "#E1E9FF" }]}
+            onPress={() =>
+              router.push("/caregiver/agency-binding" as any)
+            }
+          >
+            <View
+              style={[
+                styles.setupIconBadge,
+                { backgroundColor: "#4F59D5" },
+              ]}
+            >
+              <Ionicons name="business" size={30} color="#FFFFFF" />
+            </View>
+
+            <View style={styles.setupCardText}>
+              <Text style={styles.setupCardTitle}>綁定仲介</Text>
+              <Text style={styles.setupCardDescription}>
+                輸入仲介提供的邀請碼，建立仲介管理關係
+              </Text>
+            </View>
+
+            <Ionicons
+              name="chevron-forward"
+              size={26}
+              color="#6B7280"
+            />
+          </Pressable>
+
+          <View style={styles.setupHint}>
+            <Ionicons
+              name="information-circle-outline"
+              size={22}
+              color="#6B7280"
+            />
+            <Text style={styles.setupHintText}>
+              綁定仲介不是使用照護功能的必要條件；綁定照護對象後，即可使用原本的用藥與健康照護功能。
+            </Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+  
   return (
     <View style={styles.container}>
       <ScrollView
@@ -723,5 +807,85 @@ const styles = StyleSheet.create({
     color: "#111827",
     letterSpacing: 0.2,
     textAlign: "center",
+  },
+  setupScrollContent: {
+    paddingTop: 90,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+
+  setupHeader: {
+    marginBottom: 28,
+  },
+
+  setupTitle: {
+    fontSize: 34,
+    fontWeight: "bold",
+    color: "#111827",
+  },
+
+  setupSubtitle: {
+    marginTop: 8,
+    fontSize: 16,
+    lineHeight: 24,
+    color: "#6B7280",
+  },
+
+  setupCard: {
+    width: "100%",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+
+  setupIconBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  setupCardText: {
+    flex: 1,
+  },
+
+  setupCardTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#111827",
+  },
+
+  setupCardDescription: {
+    marginTop: 5,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#6B7280",
+  },
+
+  setupHint: {
+    marginTop: 10,
+    backgroundColor: "#F8F9FC",
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+
+  setupHintText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 21,
+    color: "#6B7280",
   },
 });

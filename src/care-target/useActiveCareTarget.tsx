@@ -80,6 +80,15 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
           return;
         }
 
+        // 仲介不使用長者切換 / CareTarget 系統
+        if (role === "agency") {
+          setTargets([]);
+          setLinkedIds([]);
+          setActiveId(null);
+          setHydrating(false);
+          return;
+        }
+
         const field = role === "family" ? "families" : "caregivers";
 
         const [snap, activeRaw] = await Promise.all([
@@ -203,6 +212,9 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
 
   async function setActivePatientId(id: string) {
     if (!user) return;
+
+    // 仲介角色不使用 CareTarget
+    if (user.role === "agency") return;
 
     let exists = targets.some((t) => t.id === id);
 

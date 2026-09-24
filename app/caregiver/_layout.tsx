@@ -9,11 +9,13 @@ import { doc, getDoc } from "firebase/firestore";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Dimensions, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSyncCaregiverServices } from "@/src/agency/useSyncCaregiverServices";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.55;
 
 export default function CaregiverLayout() {
+  useSyncCaregiverServices();
   const segments = useSegments() as string[];
   const currentPage = segments[segments.length - 1];
   const insets = useSafeAreaInsets();
@@ -31,6 +33,8 @@ export default function CaregiverLayout() {
     "communication-cards",
     "notebook",
     "handbook",
+    "agency-binding",
+    "account-settings",
     "notification-detail",
     "result",
   ];
@@ -161,7 +165,7 @@ export default function CaregiverLayout() {
         </Pressable>
       )}
 
-      {!hideBottomNav && (
+      {!hideBottomNav && !!activePatientId && (
         <View style={styles.footerWrapper} pointerEvents="box-none">
           <View style={styles.fabContainer} pointerEvents="box-none">
             <Pressable style={styles.fabButton} onPress={onEmergencyCall}>
@@ -234,6 +238,19 @@ export default function CaregiverLayout() {
               </Pressable>
             </View>
           </View>
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/caregiver/account-settings" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>
+              帳號設定
+            </Text>
+          </Pressable>
+
           <Pressable
             style={styles.menuItem}
             onPress={() => {
@@ -242,6 +259,16 @@ export default function CaregiverLayout() {
             }}
           >
             <Text style={styles.menuItemText}>記事本</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/caregiver/agency-binding" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>綁定仲介</Text>
           </Pressable>
 
           <Pressable

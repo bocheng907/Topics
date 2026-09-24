@@ -1,6 +1,14 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
@@ -16,7 +24,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "@/firebase/firebaseConfig";
 
-export type Role = "caregiver" | "family";
+export type Role = "caregiver" | "family" | "agency";
 
 export type AuthUser = {
   uid: string;
@@ -27,6 +35,7 @@ export type AuthUser = {
 type RegisterExtra = {
   emergencyPhone1?: string;
   emergencyPhone2?: string;
+  privacyAccepted?: boolean;
 };
 
 type AuthValue = {
@@ -47,6 +56,7 @@ const AuthContext = createContext<AuthValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const registeringRef = useRef(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
@@ -69,38 +79,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role: (data.role as Role) ?? "family",
           });
         } else {
-          const fallbackRole: Role = "family";
+          // 註冊流程中，Firebase Auth 可能比 Firestore user profile 更早完成。
+          // 此時先等待 register() 建立正式 profile，不要擅自建立 family 帳號。
+          if (registeringRef.current) {
+            console.log("[AuthProvider] waiting for register profile creation");
+            return;
+          }
 
-          const now = new Date();
-          const yyyy = now.getFullYear();
-          const mm = String(now.getMonth() + 1).padStart(2, "0");
-          const dd = String(now.getDate()).padStart(2, "0");
-          const hh = String(now.getHours()).padStart(2, "0");
-          const min = String(now.getMinutes()).padStart(2, "0");
-          const ss = String(now.getSeconds()).padStart(2, "0");
-
-          const timeString = `${yyyy}-${mm}-${dd}_${hh}-${min}-${ss}`;
-          const shortId = fbUser.uid.slice(-4);
-          const customDocId = `${timeString}_user_${shortId}`;
-
-          const payload = {
-            uid: fbUser.uid,
-            email: fbUser.email ?? "",
-            role: fallbackRole,
-            createdAt: serverTimestamp(),
-            activePatientId: "",
-            emergencyPhone1: "",
-            emergencyPhone2: "",
-          };
-
-          const docRef = doc(db, "users", customDocId);
-          await setDoc(docRef, payload);
-
-          setUser({
-            uid: fbUser.uid,
-            email: fbUser.email ?? "",
-            role: fallbackRole,
-          });
+          console.log("[AuthProvider] authenticated user has no Firestore profile");
+          await signOut(auth);
+          setUser(null);
         }
       } catch (e) {
         console.log("[AuthProvider] onAuthStateChanged error:", e);
@@ -132,12 +120,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const emergencyPhone1 = (extra?.emergencyPhone1 ?? "").trim();
       const emergencyPhone2 = (extra?.emergencyPhone2 ?? "").trim();
+      const privacyAccepted = extra?.privacyAccepted === true;
+
+      if (!privacyAccepted) {
+        throw new Error("請先閱讀並同意隱私權政策");
+      }
 
       if (role === "family") {
         if (!emergencyPhone1 || !emergencyPhone2) {
           throw new Error("家屬帳號請填寫 2 組緊急聯絡電話");
         }
       }
+
+      registeringRef.current = true;
+      let createdFbUser: any = null;
 
       try {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -163,6 +159,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           activePatientId: "",
           emergencyPhone1: role === "family" ? emergencyPhone1 : "",
           emergencyPhone2: role === "family" ? emergencyPhone2 : "",
+
+          privacyConsent: {
+            accepted: true,
+            version: "2026-09-12.v1",
+            acceptedAt: serverTimestamp(),
+          },
         };
 
         const docRef = doc(db, "users", customDocId);
@@ -176,7 +178,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (e: any) {
         console.log("[register] error code =", e?.code);
         console.log("[register] error message =", e?.message);
+        if (createdFbUser) {
+          try {
+            await deleteUser(createdFbUser);
+          } catch (cleanupError) {
+            console.log("[register] cleanup auth user failed:", cleanupError);
+          }
+        }
+
         throw e;
+      } finally {
+        registeringRef.current = false;
       }
     }
 
