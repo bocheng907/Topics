@@ -11,7 +11,7 @@ import { Stack, router, useSegments } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import { doc, getDoc } from "firebase/firestore";
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Dimensions, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Animated, Dimensions, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -123,7 +123,28 @@ export default function CaregiverLayout() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Web 測試
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "確定要登出目前帳號嗎？"
+      );
+
+      if (!confirmed) return;
+
+      try {
+        await signOut(auth);
+        setIsSidebarOpen(false);
+        router.replace("/");
+      } catch (error) {
+        console.log("登出失敗:", error);
+        window.alert("登出失敗，請稍後再試");
+      }
+
+      return;
+    }
+
+    //手機版
     Alert.alert("登出系統", "確定要登出目前帳號嗎？", [
       { text: "取消", style: "cancel" },
       {
