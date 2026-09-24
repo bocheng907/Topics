@@ -72,7 +72,9 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
         const role = user?.role;
 
         if (!role) {
-          console.log("useActiveCareTarget: user.role missing");
+          console.log(
+            "useActiveCareTarget: user.role missing"
+          );
           setTargets([]);
           setLinkedIds([]);
           setActiveId(null);
@@ -80,7 +82,19 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
           return;
         }
 
-        const field = role === "family" ? "families" : "caregivers";
+        // 仲介沒有照護對象，不進 patient 查詢流程
+        if (role === "agency") {
+          setTargets([]);
+          setLinkedIds([]);
+          setActiveId(null);
+          setHydrating(false);
+          return;
+        }
+
+        const field =
+          role === "family"
+            ? "families"
+            : "caregivers";
 
         const [snap, activeRaw] = await Promise.all([
           getDocs(
@@ -202,7 +216,7 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
   }, [targets, activePatientId]);
 
   async function setActivePatientId(id: string) {
-    if (!user || auth.currentUser?.uid !== user.uid) throw new Error("Sign in required");
+    if (!user || user.role === "agency") return;
     if (!id || id.includes("/")) throw new Error("Invalid patient");
     const uid = user.uid;
     const snap = await getDocFromServer(doc(db, "patients", id));
@@ -227,7 +241,7 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
   }
 
   async function clearActivePatient() {
-    if (!user) return;
+    if (!user || user.role === "agency") return;
 
     await AsyncStorage.removeItem(activeKey(user.uid));
     setActiveId(null);
