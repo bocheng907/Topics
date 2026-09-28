@@ -191,6 +191,230 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ==========================================
+    // Caregiver profile
+    // 看護本人維護，已綁定仲介可讀取
+    // ==========================================
+    match /caregiver_profiles/{caregiverUid} {
+
+      // 看護本人可以看
+      // 與此看護綁定的仲介也可以看
+      allow read: if signedIn() && (
+        request.auth.uid == caregiverUid
+        || (
+          exists(
+            /databases/$(database)/documents/agency_memberships/$(caregiverUid)
+          )
+          &&
+          get(
+            /databases/$(database)/documents/agency_memberships/$(caregiverUid)
+          ).data.agencyUid == request.auth.uid
+        )
+      );
+
+      // 只有看護本人可以建立自己的基本資料
+      allow create: if signedIn()
+        && request.auth.uid == caregiverUid
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "displayName",
+          "email",
+          "phone",
+          "avatarUrl",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.caregiverUid == request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 120
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 320
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 64
+        && request.resource.data.avatarUrl is string
+        && request.resource.data.avatarUrl.size() <= 4096
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      // 只有看護本人可以修改
+      allow update: if signedIn()
+        && request.auth.uid == caregiverUid
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "displayName",
+          "email",
+          "phone",
+          "avatarUrl",
+          "createdAt",
+          "updatedAt"
+        ])
+
+        // 建立後不可修改
+        && request.resource.data.caregiverUid
+          == resource.data.caregiverUid
+        && request.resource.data.email
+          == resource.data.email
+        && request.resource.data.createdAt
+          == resource.data.createdAt
+
+        // 只允許改姓名、電話、頭像、updatedAt
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            "displayName",
+            "phone",
+            "avatarUrl",
+            "updatedAt"
+          ])
+
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 120
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 64
+        && request.resource.data.avatarUrl is string
+        && request.resource.data.avatarUrl.size() <= 4096
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+
+    // ==========================================
+    // Caregiver service summaries
+    // 看護維護自己的照護對象摘要，所屬仲介可讀
+    // ==========================================
+    match /caregiver_service_summaries/{caregiverUid}/patients/{patientId} {
+
+      // 看護本人或所屬仲介可以讀
+      allow read: if signedIn() && (
+        request.auth.uid == caregiverUid
+        || (
+          exists(
+            /databases/$(database)/documents/agency_memberships/$(caregiverUid)
+          )
+          &&
+          get(
+            /databases/$(database)/documents/agency_memberships/$(caregiverUid)
+          ).data.agencyUid == request.auth.uid
+        )
+      );
+
+      // 看護只能替自己、且是真的照護對象建立摘要
+      allow create: if signedIn()
+        && request.auth.uid == caregiverUid
+        && isCaregiverMember(patientId)
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "patientId",
+          "patientName",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.caregiverUid == caregiverUid
+        && request.resource.data.patientId == patientId
+        && request.resource.data.patientName is string
+        && request.resource.data.patientName.size() > 0
+        && request.resource.data.patientName.size() <= 200
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedIn()
+        && request.auth.uid == caregiverUid
+        && isCaregiverMember(patientId)
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "patientId",
+          "patientName",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.caregiverUid
+          == resource.data.caregiverUid
+        && request.resource.data.patientId
+          == resource.data.patientId
+        && request.resource.data.createdAt
+          == resource.data.createdAt
+        && request.resource.data.patientName is string
+        && request.resource.data.patientName.size() > 0
+        && request.resource.data.patientName.size() <= 200
+        && request.resource.data.updatedAt == request.time;
+
+      // 看護可以清除自己的服務摘要
+      allow delete: if signedIn()
+        && request.auth.uid == caregiverUid
+        && resource.data.caregiverUid == caregiverUid;
+    }
+
+
+    // ==========================================
+    // Agency reports
+    // Cloud Function 建立，所屬仲介讀取與處理
+    // ==========================================
+    match /agency_reports/{reportId} {
+
+      // 只有這筆回報所屬的仲介可以讀
+      allow read: if signedIn()
+        && resource.data.agencyUid == request.auth.uid;
+
+      // 回報只能透過受信任的 Cloud Function 建立
+      allow create: if false;
+
+      // 仲介只能更新處理相關欄位
+      allow update: if signedIn()
+        && resource.data.agencyUid == request.auth.uid
+
+        // 回報歸屬不可被修改
+        && request.resource.data.agencyUid
+          == resource.data.agencyUid
+        && request.resource.data.caregiverUid
+          == resource.data.caregiverUid
+        && request.resource.data.patientId
+          == resource.data.patientId
+        && request.resource.data.reporterUid
+          == resource.data.reporterUid
+        && request.resource.data.createdAt
+          == resource.data.createdAt
+
+        // 只允許修改這些處理欄位
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            "level",
+            "status",
+            "handlingNote",
+            "updatedAt",
+            "handledAt",
+            "handledBy"
+          ])
+
+        && request.resource.data.level in [
+          "normal",
+          "pending",
+          "attention"
+        ]
+
+        && request.resource.data.status in [
+          "open",
+          "resolved"
+        ]
+
+        && request.resource.data.handlingNote is string
+        && request.resource.data.handlingNote.size() <= 3000
+
+        && request.resource.data.updatedAt is timestamp
+
+        && (
+          request.resource.data.handledAt == null
+          || request.resource.data.handledAt is timestamp
+        )
+
+        && request.resource.data.handledBy is string
+        && (
+          request.resource.data.handledBy == ""
+          || request.resource.data.handledBy == request.auth.uid
+        );
+
+      allow delete: if false;
+    }
+
   match /users/{userDocId} {
       allow read: if isOwnUserDoc();
 

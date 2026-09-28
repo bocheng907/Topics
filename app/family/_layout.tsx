@@ -36,6 +36,7 @@ export default function FamilyLayout() {
     "notification-detail",
     "account-settings",
     "emergency-contacts",
+    "report-care-issue",
   ];
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
 
@@ -168,6 +169,23 @@ export default function FamilyLayout() {
           <PrivacyPolicyLink />
           <Pressable style={styles.menuItem} onPress={() => { setIsSidebarOpen(false); router.push("/care-target/invitations" as any); }}>
             <Text style={styles.menuItemText}>{invitationCopy[language].title}</Text>
+          </Pressable>
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/family/report-care-issue" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>
+              {language === "zh"
+                ? "回報照護問題"
+                : language === "en"
+                  ? "Report Care Issue"
+                  : language === "vi"
+                    ? "Báo cáo vấn đề chăm sóc"
+                    : "Laporkan Masalah Perawatan"}
+            </Text>
           </Pressable>
           <View style={styles.menuItem}>
             <Text style={styles.menuItemText}>{t.language}</Text>

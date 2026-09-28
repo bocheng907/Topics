@@ -109,7 +109,13 @@ export default function RegisterScreen() {
             {t.role}
           </Text>
 
-          <View style={{ flexDirection: "row", gap: 12 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 10,
+            }}
+          >
+            {/* 看護 */}
             <Pressable
               onPress={() => setRole("caregiver")}
               style={{
@@ -117,21 +123,25 @@ export default function RegisterScreen() {
                 padding: 14,
                 borderRadius: 12,
                 borderWidth: 2,
-                borderColor: role === "caregiver" ? "#007AFF" : "#EEE",
-                backgroundColor: role === "caregiver" ? "#E1E9FF" : "#FFF",
+                borderColor:
+                  role === "caregiver" ? "#007AFF" : "#EEE",
+                backgroundColor:
+                  role === "caregiver" ? "#E1E9FF" : "#FFF",
                 alignItems: "center",
               }}
             >
               <Text
                 style={{
                   fontWeight: "900",
-                  color: role === "caregiver" ? "#007AFF" : "#999",
+                  color:
+                    role === "caregiver" ? "#007AFF" : "#999",
                 }}
               >
                 {t.caregiver}
               </Text>
             </Pressable>
 
+            {/* 家屬 */}
             <Pressable
               onPress={() => setRole("family")}
               style={{
@@ -139,18 +149,47 @@ export default function RegisterScreen() {
                 padding: 14,
                 borderRadius: 12,
                 borderWidth: 2,
-                borderColor: role === "family" ? "#007AFF" : "#EEE",
-                backgroundColor: role === "family" ? "#E1E9FF" : "#FFF",
+                borderColor:
+                  role === "family" ? "#007AFF" : "#EEE",
+                backgroundColor:
+                  role === "family" ? "#E1E9FF" : "#FFF",
                 alignItems: "center",
               }}
             >
               <Text
                 style={{
                   fontWeight: "900",
-                  color: role === "family" ? "#007AFF" : "#999",
+                  color:
+                    role === "family" ? "#007AFF" : "#999",
                 }}
               >
                 {t.family}
+              </Text>
+            </Pressable>
+
+            {/* 仲介 */}
+            <Pressable
+              onPress={() => setRole("agency")}
+              style={{
+                flex: 1,
+                padding: 14,
+                borderRadius: 12,
+                borderWidth: 2,
+                borderColor:
+                  role === "agency" ? "#007AFF" : "#EEE",
+                backgroundColor:
+                  role === "agency" ? "#E1E9FF" : "#FFF",
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontWeight: "900",
+                  color:
+                    role === "agency" ? "#007AFF" : "#999",
+                }}
+              >
+                {t.agency}
               </Text>
             </Pressable>
           </View>
