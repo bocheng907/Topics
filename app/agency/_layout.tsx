@@ -150,13 +150,14 @@ export default function AgencyLayout() {
         </View>
 
         <View style={styles.menuContainer}>
+
           <Pressable
             style={styles.menuItem}
-            onPress={() => goTo("/agency")}
+            onPress={() => goTo("/account-settings")}
           >
-            <Text style={styles.menuItemText}>仲介首頁</Text>
+            <Text style={styles.menuItemText}>帳號設定</Text>
           </Pressable>
-
+          
           <Pressable
             style={styles.menuItem}
             onPress={() => goTo("/agency/caregivers")}
@@ -166,25 +167,15 @@ export default function AgencyLayout() {
 
           <Pressable
             style={styles.menuItem}
-            onPress={() => {
-              setIsSidebarOpen(false);
-              Alert.alert("問題回報", "下一階段會建立問題回報頁面");
-            }}
+            onPress={() => goTo("/agency/reports")}
           >
-            <Text style={styles.menuItemText}>問題回報</Text>
+            <Text style={styles.menuItemText}>回報管理</Text>
           </Pressable>
 
           <Pressable
             style={styles.menuItem}
-            onPress={() => {
-              setIsSidebarOpen(false);
-              Alert.alert("仲介邀請碼", "下一階段會建立仲介邀請碼功能");
-            }}
+            onPress={handleLogout}
           >
-            <Text style={styles.menuItemText}>仲介邀請碼</Text>
-          </Pressable>
-
-          <Pressable style={styles.menuItem} onPress={handleLogout}>
             <Text style={styles.menuItemTextDanger}>登出</Text>
           </Pressable>
         </View>

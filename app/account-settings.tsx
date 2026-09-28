@@ -4,14 +4,21 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { updateDoc } from "firebase/firestore";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import {
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 import React, { useEffect, useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
-  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -23,33 +30,80 @@ export default function AccountSettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [role, setRole] = useState<"family" | "caregiver" | "">("");
+  const [phone, setPhone] = useState("");
+
+  const [role, setRole] = useState<
+    "family" | "caregiver" | "agency" | ""
+  >("");
 
   const uid = auth.currentUser?.uid ?? "";
   const email = auth.currentUser?.email ?? "";
 
   useEffect(() => {
     let mounted = true;
+
     (async () => {
       if (!uid) {
         if (mounted) setLoading(false);
         return;
       }
+
       try {
         const snap = await getUserDocSnapshotByUid(uid);
         if (!mounted || !snap) return;
+
         const data = snap.data() as any;
+
         setDisplayName(String(data.displayName ?? ""));
         setAvatarUrl(String(data.avatarUrl ?? ""));
-        setRole(data.role === "caregiver" ? "caregiver" : "family");
+
+        const loadedRole =
+          data.role === "caregiver"
+            ? "caregiver"
+            : data.role === "agency"
+              ? "agency"
+              : data.role === "family"
+                ? "family"
+                : "";
+
+        setRole(loadedRole);
+
+        // 看護才需要讀 caregiver_profiles
+        if (loadedRole === "caregiver") {
+          const profileRef = doc(
+            db,
+            "caregiver_profiles",
+            uid
+          );
+
+          const profileSnap = await getDoc(profileRef);
+
+          if (profileSnap.exists() && mounted) {
+            const profileData = profileSnap.data();
+
+            setPhone(
+              String(profileData.phone ?? "")
+            );
+          }
+        }
       } catch (error) {
-        console.log("load account settings failed:", error);
-        Alert.alert("讀取失敗", "目前無法讀取帳號設定");
+        console.log(
+          "load account settings failed:",
+          error
+        );
+
+        Alert.alert(
+          "讀取失敗",
+          "目前無法讀取帳號設定"
+        );
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+
+    return () => {
+      mounted = false;
+    };
   }, [uid]);
 
   async function chooseAvatar() {
@@ -77,7 +131,28 @@ export default function AccountSettingsScreen() {
       const url = await getDownloadURL(avatarRef);
       const snap = await getUserDocSnapshotByUid(uid);
       if (!snap) throw new Error("Profile unavailable");
-      await updateDoc(snap.ref, { avatarUrl: url });
+      await updateDoc(snap.ref, {
+        avatarUrl: url,
+      });
+
+      if (role === "caregiver") {
+        const profileRef = doc(
+          db,
+          "caregiver_profiles",
+          uid
+        );
+
+        const profileSnap =
+          await getDoc(profileRef);
+
+        if (profileSnap.exists()) {
+          await updateDoc(profileRef, {
+            avatarUrl: url,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
       setAvatarUrl(url);
       Alert.alert("完成", "頭貼已更新");
     } catch (error) {
@@ -90,25 +165,113 @@ export default function AccountSettingsScreen() {
 
   async function saveProfile() {
     if (!uid || saving) return;
+
     const name = displayName.trim();
+    const cleanPhone = phone.trim();
+
     if (!name) {
-      Alert.alert("請輸入名稱", "顯示名稱不能留白，家庭群組會用這個名稱識別發言者。");
+      Alert.alert(
+        "請輸入名稱",
+        "顯示名稱不能留白，其他使用者會看到這個名稱。"
+      );
       return;
     }
+
     if (name.length > 120) {
-      Alert.alert("名稱太長", "顯示名稱請控制在 120 個字元內。");
+      Alert.alert(
+        "名稱太長",
+        "顯示名稱請控制在 120 個字元內。"
+      );
       return;
     }
+
+    if (
+      role === "caregiver" &&
+      !cleanPhone
+    ) {
+      Alert.alert(
+        "請輸入聯絡電話",
+        "看護帳號請填寫聯絡電話。"
+      );
+      return;
+    }
+
     setSaving(true);
+
     try {
-      const snap = await getUserDocSnapshotByUid(uid);
-      if (!snap) throw new Error("Profile unavailable");
-      await updateDoc(snap.ref, { displayName: name });
+      // 先更新共用 users 資料
+      const snap =
+        await getUserDocSnapshotByUid(uid);
+
+      if (!snap) {
+        throw new Error(
+          "Profile unavailable"
+        );
+      }
+
+      await updateDoc(snap.ref, {
+        displayName: name,
+      });
+
+      // 看護另外同步 caregiver_profiles
+      if (role === "caregiver") {
+        const profileRef = doc(
+          db,
+          "caregiver_profiles",
+          uid
+        );
+
+        const profileSnap =
+          await getDoc(profileRef);
+
+        if (profileSnap.exists()) {
+          await updateDoc(profileRef, {
+            displayName: name,
+            phone: cleanPhone,
+            avatarUrl,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(profileRef, {
+            caregiverUid: uid,
+            displayName: name,
+            email,
+            phone: cleanPhone,
+            avatarUrl,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
       setDisplayName(name);
-      Alert.alert("完成", "帳號設定已儲存");
+
+      if (role === "caregiver") {
+        setPhone(cleanPhone);
+      }
+
+      Alert.alert(
+        "完成",
+        "帳號設定已儲存",
+        [
+          {
+            text: "確定",
+            onPress: () => {
+              router.back();
+            },
+          },
+        ]
+      );
     } catch (error) {
-      console.log("save account settings failed:", error);
-      Alert.alert("儲存失敗", "目前無法儲存帳號設定，請稍後再試。");
+      console.log(
+        "save account settings failed:",
+        error
+      );
+
+      Alert.alert(
+        "儲存失敗",
+        "目前無法儲存帳號設定，請稍後再試。"
+      );
     } finally {
       setSaving(false);
     }
@@ -128,7 +291,12 @@ export default function AccountSettingsScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.avatarWrap}>
           {avatarUrl ? (
             <Image source={{ uri: avatarUrl }} style={styles.avatar} />
@@ -152,18 +320,43 @@ export default function AccountSettingsScreen() {
           style={styles.input}
         />
 
+        {role === "caregiver" && (
+          <>
+            <Text style={styles.label}>
+              聯絡電話
+            </Text>
+
+            <TextInput
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="例如：0912345678"
+              keyboardType="phone-pad"
+              maxLength={30}
+              style={styles.input}
+            />
+          </>
+        )}
+
         <Text style={styles.label}>登入帳號</Text>
         <View style={styles.readonlyBox}><Text style={styles.readonlyText}>{email || "—"}</Text></View>
 
         <Text style={styles.label}>帳號身分</Text>
         <View style={styles.readonlyBox}>
-          <Text style={styles.readonlyText}>{role === "caregiver" ? "看護" : "家屬"}</Text>
+          <Text style={styles.readonlyText}>
+            {role === "caregiver"
+              ? "看護"
+              : role === "family"
+                ? "家屬"
+                : role === "agency"
+                  ? "仲介"
+                  : "—"}
+          </Text>
         </View>
 
         <Pressable style={[styles.saveButton, saving && styles.disabled]} onPress={saveProfile} disabled={saving}>
           {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>儲存設定</Text>}
         </Pressable>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -175,7 +368,7 @@ const styles = StyleSheet.create({
   backButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   headerSpacer: { width: 44 },
   headerTitle: { fontSize: 21, fontWeight: "900", color: "#111827" },
-  content: { padding: 22 },
+  content: { padding: 22,  paddingBottom: 60, },
   avatarWrap: { alignItems: "center", marginBottom: 30 },
   avatar: { width: 112, height: 112, borderRadius: 56 },
   avatarFallback: { alignItems: "center", justifyContent: "center", backgroundColor: "#EEEAFB", borderWidth: 1, borderColor: "#D9D0F3" },
@@ -188,4 +381,5 @@ const styles = StyleSheet.create({
   saveButton: { marginTop: 32, minHeight: 54, borderRadius: 16, backgroundColor: "#8B78D7", alignItems: "center", justifyContent: "center" },
   disabled: { opacity: 0.55 },
   saveText: { color: "#FFF", fontSize: 18, fontWeight: "900" },
+  scrollView: { flex: 1, },
 });
