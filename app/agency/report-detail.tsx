@@ -164,7 +164,12 @@ export default function AgencyReportDetailScreen() {
           {
             text: "確定",
             onPress: () => {
-              router.replace("/agency/reports" as any);
+              router.replace({
+                pathname: "/agency/caregiver-detail",
+                params: {
+                  caregiverUid: report.caregiverUid,
+                },
+              } as any);
             },
           },
         ]
