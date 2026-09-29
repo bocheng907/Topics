@@ -1,4 +1,3 @@
-import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import {
   createAgencyReport,
   getAgencyReportContext,
@@ -6,6 +5,7 @@ import {
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -372,7 +372,6 @@ export default function ReportCareIssueScreen() {
       await createAgencyReport({
         patientId: activePatientId,
         caregiverUid: selectedCaregiverUid,
-        category: "communication",
         title: cleanTitle,
         description: cleanDescription,
       });

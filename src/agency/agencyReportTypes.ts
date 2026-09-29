@@ -1,11 +1,5 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type AgencyReportCategory =
-  | "medication"
-  | "communication"
-  | "care"
-  | "other";
-
 export type AgencyReportLevel =
   | "normal"
   | "attention"
@@ -29,8 +23,6 @@ export type AgencyReport = {
   reporterUid: string;
   reporterRole: "family" | "caregiver";
   reporterName: string;
-
-  category: AgencyReportCategory;
 
   title: string;
   description: string;

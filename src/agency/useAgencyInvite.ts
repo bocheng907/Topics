@@ -1,10 +1,14 @@
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
+import { getUserDocSnapshotByUid } from "@/src/user/getUserDocRefByUid";
 import {
+  collection,
   doc,
-  getDoc,
+  getDocs,
+  query,
   runTransaction,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
@@ -21,6 +25,10 @@ function generateInviteCode(length = 6) {
   return result;
 }
 
+function isValidInviteCode(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length === 6;
+}
+
 export function useAgencyInvite() {
   const { user } = useAuth();
 
@@ -28,18 +36,18 @@ export function useAgencyInvite() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  
   useEffect(() => {
     if (!user || user.role !== "agency") {
       setInviteCode("");
       setLoading(false);
+      setError(null);
       return;
     }
 
-    // 先把目前登入仲介的資料固定下來
-    // 後面的 async function 就不需要再直接讀 user
+    // 先把值固定下來，避免 async function 裡 TypeScript
+    // 認為 user 有可能在等待期間變回 null。
     const agencyUid = user.uid;
-    const agencyEmail = user.email;
+    const agencyEmail = user.email ?? "";
 
     let cancelled = false;
 
@@ -48,31 +56,98 @@ export function useAgencyInvite() {
         setLoading(true);
         setError(null);
 
-        const agencyRef = doc(
-          db,
-          "agencies",
-          agencyUid
-        );
+        // 仲介基本資料統一由 users 管理。
+        const userSnap = await getUserDocSnapshotByUid(agencyUid);
 
-        // 先確認這個仲介是否已經有邀請碼
-        const agencySnap = await getDoc(agencyRef);
+        if (!userSnap) {
+          throw new Error("找不到仲介帳號資料");
+        }
 
-        if (agencySnap.exists()) {
-          const data = agencySnap.data();
+        const userData = userSnap.data() as any;
 
+        // ==========================================
+        // 1. users 已經有 agencyInviteCode
+        // ==========================================
+        const storedCode = String(
+          userData.agencyInviteCode ?? ""
+        ).trim();
+
+        if (isValidInviteCode(storedCode)) {
           if (!cancelled) {
-            setInviteCode(data.inviteCode ?? "");
+            setInviteCode(storedCode);
           }
 
           return;
         }
 
-        // 尚未建立時才產生新邀請碼
-        for (
-          let attempt = 0;
-          attempt < 10;
-          attempt += 1
-        ) {
+        // ==========================================
+        // 2. 舊資料相容
+        //    agency_invites 已有此仲介的邀請碼，
+        //    但 users 還沒有 agencyInviteCode。
+        // ==========================================
+        const existingInviteQuery = query(
+          collection(db, "agency_invites"),
+          where("agencyUid", "==", agencyUid)
+        );
+
+        const existingInviteSnapshot = await getDocs(
+          existingInviteQuery
+        );
+
+        const existingInvite = existingInviteSnapshot.docs.find(
+          (inviteDoc) => inviteDoc.data().active === true
+        );
+
+        if (existingInvite) {
+          const existingData = existingInvite.data();
+
+          const existingCode = String(
+            existingData.inviteCode ?? existingInvite.id
+          ).trim();
+
+          if (isValidInviteCode(existingCode)) {
+            const migratedCode = await runTransaction(
+              db,
+              async (transaction) => {
+                const freshUserSnap = await transaction.get(
+                  userSnap.ref
+                );
+
+                if (!freshUserSnap.exists()) {
+                  throw new Error("找不到仲介帳號資料");
+                }
+
+                const freshUserData = freshUserSnap.data() as any;
+
+                const currentCode = String(
+                  freshUserData.agencyInviteCode ?? ""
+                ).trim();
+
+                // 若另一個流程已先完成搬移，直接沿用。
+                if (isValidInviteCode(currentCode)) {
+                  return currentCode;
+                }
+
+                transaction.update(userSnap.ref, {
+                  agencyInviteCode: existingCode,
+                });
+
+                return existingCode;
+              }
+            );
+
+            if (!cancelled) {
+              setInviteCode(migratedCode);
+            }
+
+            return;
+          }
+        }
+
+        // ==========================================
+        // 3. 完全沒有邀請碼 -> 建立新的
+        // ==========================================
+        for (let attempt = 0; attempt < 10; attempt += 1) {
           const newCode = generateInviteCode();
 
           try {
@@ -82,26 +157,40 @@ export function useAgencyInvite() {
               newCode
             );
 
-            await runTransaction(
+            const resultCode = await runTransaction(
               db,
               async (transaction) => {
-                const inviteSnap =
-                  await transaction.get(inviteRef);
+                const freshUserSnap = await transaction.get(
+                  userSnap.ref
+                );
 
-                // 已有人使用這組邀請碼，重新產生
-                if (inviteSnap.exists()) {
-                  throw new Error(
-                    "invite-code-collision"
-                  );
+                if (!freshUserSnap.exists()) {
+                  throw new Error("找不到仲介帳號資料");
                 }
 
-                transaction.set(agencyRef, {
-                  agencyUid,
-                  email: agencyEmail,
-                  inviteCode: newCode,
-                  createdAt: serverTimestamp(),
+                const freshUserData = freshUserSnap.data() as any;
+
+                const currentCode = String(
+                  freshUserData.agencyInviteCode ?? ""
+                ).trim();
+
+                // 同時間另一個流程可能已完成建立。
+                if (isValidInviteCode(currentCode)) {
+                  return currentCode;
+                }
+
+                const inviteSnap = await transaction.get(inviteRef);
+
+                if (inviteSnap.exists()) {
+                  throw new Error("invite-code-collision");
+                }
+
+                // 邀請碼保存在 users。
+                transaction.update(userSnap.ref, {
+                  agencyInviteCode: newCode,
                 });
 
+                // agency_invites 保留為「邀請碼 -> 仲介」索引。
                 transaction.set(inviteRef, {
                   inviteCode: newCode,
                   agencyUid,
@@ -109,18 +198,19 @@ export function useAgencyInvite() {
                   active: true,
                   createdAt: serverTimestamp(),
                 });
+
+                return newCode;
               }
             );
 
             if (!cancelled) {
-              setInviteCode(newCode);
+              setInviteCode(resultCode);
             }
 
             return;
           } catch (transactionError: any) {
             if (
-              transactionError?.message ===
-              "invite-code-collision"
+              transactionError?.message === "invite-code-collision"
             ) {
               continue;
             }
@@ -129,19 +219,12 @@ export function useAgencyInvite() {
           }
         }
 
-        throw new Error(
-          "無法產生唯一仲介邀請碼"
-        );
+        throw new Error("無法產生唯一仲介邀請碼");
       } catch (e: any) {
-        console.log(
-          "[agency invite] error:",
-          e
-        );
+        console.log("[agency invite] error:", e);
 
         if (!cancelled) {
-          setError(
-            e?.message ?? "邀請碼建立失敗"
-          );
+          setError(e?.message ?? "邀請碼建立失敗");
         }
       } finally {
         if (!cancelled) {
@@ -155,11 +238,7 @@ export function useAgencyInvite() {
     return () => {
       cancelled = true;
     };
-  }, [
-    user?.uid,
-    user?.role,
-    user?.email,
-  ]);
+  }, [user?.uid, user?.role, user?.email]);
 
   return {
     inviteCode,

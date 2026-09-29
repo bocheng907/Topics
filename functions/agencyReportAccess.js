@@ -286,10 +286,6 @@ function createAgencyReportService(db) {
         data.caregiverUid || "",
     ).trim();
 
-    const category = String(
-        data.category || "",
-    ).trim();
-
     const title = String(
         data.title || "",
     ).trim();
@@ -305,19 +301,6 @@ function createAgencyReportService(db) {
       );
     }
 
-    const allowedCategories = [
-      "medication",
-      "communication",
-      "care",
-      "other",
-    ];
-
-    if (!allowedCategories.includes(category)) {
-      throw new HttpsError(
-          "invalid-argument",
-          "回報類型不正確。",
-      );
-    }
 
     if (!title || title.length > 200) {
       throw new HttpsError(
@@ -493,7 +476,6 @@ function createAgencyReportService(db) {
       reporterRole,
       reporterName,
 
-      category,
       title,
       description,
 
