@@ -157,20 +157,6 @@ export default function AgencyLayout() {
           >
             <Text style={styles.menuItemText}>帳號設定</Text>
           </Pressable>
-          
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => goTo("/agency/caregivers")}
-          >
-            <Text style={styles.menuItemText}>旗下看護</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => goTo("/agency/reports")}
-          >
-            <Text style={styles.menuItemText}>回報管理</Text>
-          </Pressable>
 
           <Pressable
             style={styles.menuItem}
