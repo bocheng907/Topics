@@ -36,7 +36,10 @@ export default function FamilyLayout() {
     "notification-detail",
     "emergency-contacts",
   ];
-  const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
+  // 照顧者交流是巢狀路由（community/index、community/[id]、community/new-post），
+  // 整個區塊都不顯示底部導覽列，避免遮住發文浮動鍵
+  const hideBottomNav =
+    hideBottomNavRoutes.includes(currentPage) || segments.includes("community");
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
