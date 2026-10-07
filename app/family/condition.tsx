@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ResizeMode, Video } from 'expo-av';
+import VideoPlayerView from '@/src/media/VideoPlayerView';
 import { router, useNavigation } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -110,12 +110,7 @@ export default function FamilyConditionScreen() {
 
     if (isVideo) {
       return (
-        <Video 
-          source={{ uri }} 
-          style={styles.mediaImage} 
-          useNativeControls 
-          resizeMode={ResizeMode.CONTAIN} 
-        />
+        <VideoPlayerView uri={uri} style={styles.mediaImage} />
       );
     }
     return (

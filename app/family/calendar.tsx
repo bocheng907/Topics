@@ -1280,7 +1280,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   formOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.08)",
     justifyContent: "flex-start",
   },

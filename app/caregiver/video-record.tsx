@@ -1,5 +1,5 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { ResizeMode, Video } from 'expo-av';
+import VideoPlayerView from '@/src/media/VideoPlayerView';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useNavigation } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -144,7 +144,7 @@ export default function AbnormalRecordScreen() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') return Alert.alert(t.warning, t.cameraPermissionMessage);
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ['images', 'videos'],
       videoMaxDuration: 60,
       quality: 0.7,
     });
@@ -158,7 +158,7 @@ export default function AbnormalRecordScreen() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') return Alert.alert(t.warning, t.cameraAlbumPermissionMessage);
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ['images', 'videos'],
       videoMaxDuration: 60,
       quality: 0.7,
     });
@@ -365,11 +365,9 @@ export default function AbnormalRecordScreen() {
   const renderMedia = (uri: string, type: 'image' | 'video' | null | undefined, isUploadBox: boolean = false) => {
     if (type === 'video') {
       return (
-        <Video 
-          source={{ uri }} 
-          style={isUploadBox ? { width: '100%', height: '100%' } : styles.mediaImage} 
-          useNativeControls 
-          resizeMode={ResizeMode.CONTAIN} 
+        <VideoPlayerView
+          uri={uri}
+          style={isUploadBox ? { width: '100%', height: '100%' } : styles.mediaImage}
         />
       );
     }

@@ -191,7 +191,7 @@ export default function CaregiverLayout() {
 
       <Animated.View
         pointerEvents={isSidebarOpen ? "auto" : "none"}
-        style={[StyleSheet.absoluteFillObject, styles.overlay, { opacity: overlayOpacity }]}
+        style={[StyleSheet.absoluteFill, styles.overlay, { opacity: overlayOpacity }]}
       >
         <Pressable style={{ flex: 1 }} onPress={() => setIsSidebarOpen(false)} />
       </Animated.View>

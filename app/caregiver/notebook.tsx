@@ -765,7 +765,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.45)",
   },
   modalSheet: {

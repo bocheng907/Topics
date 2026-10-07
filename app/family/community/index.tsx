@@ -34,14 +34,18 @@ export default function CommunityHomeScreen() {
     []
   );
 
+  /** 掛載時固定一次「七天前」的時間基準，避免每次渲染都重新取現在時間 */
+  const [hotSince] = useState(() => Date.now() - SEVEN_DAYS_MS);
+
   /** 本週熱門：過去 7 天內、依觀看數取前 5 名；不足 5 篇就顯示現有的 */
-  const hotPosts = useMemo(() => {
-    const since = Date.now() - SEVEN_DAYS_MS;
-    return visiblePosts
-      .filter((post) => post.createdAt >= since)
-      .sort((a, b) => b.viewCount - a.viewCount)
-      .slice(0, HOT_POST_LIMIT);
-  }, [visiblePosts]);
+  const hotPosts = useMemo(
+    () =>
+      visiblePosts
+        .filter((post) => post.createdAt >= hotSince)
+        .sort((a, b) => b.viewCount - a.viewCount)
+        .slice(0, HOT_POST_LIMIT),
+    [visiblePosts, hotSince]
+  );
 
   /** 列表：先套分類與關鍵字，再依觀看數由高到低排序（預設排序） */
   const listPosts = useMemo(() => {

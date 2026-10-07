@@ -4,7 +4,7 @@ import { invitationCopy } from "@/src/care-target/invitationCopy";
 import { usePrimaryFamily } from "@/src/care-target/usePrimaryFamily";
 import { router } from "expo-router";
 import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,7 +25,7 @@ export default function FamilyHomeScreen() {
   const { language } = useLanguage();
   const isPrimaryFamily = usePrimaryFamily(activePatientId);
   const t = translations[language];
-  const hasLoadedOnceRef = useRef(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   // 🌟 抓取該長輩的健康閾值設定
   const { thresholds: dbThresholds, loading: thresholdsLoading } = useHealthThresholds(
@@ -93,14 +93,15 @@ export default function FamilyHomeScreen() {
     router.push("/care-target/invitations" as any);
   };
 
+  // 只在「第一次真正載入完成前」顯示整頁讀取畫面。
+  // 之後背景重新整理時不再把整頁換掉，避免 ScrollView 重新建立、捲動位置被重置。
   const isFullyLoaded = ready && linkedCareTargets.length > 0 && !thresholdsLoading;
-  useEffect(() => {
-    if (isFullyLoaded) {
-      hasLoadedOnceRef.current = true;
-    }
-  });
+  if (isFullyLoaded && !hasLoadedOnce) {
+    // 渲染期間調整 state 是 React 官方建議的作法（取代在 effect 裡寫 ref）
+    setHasLoadedOnce(true);
+  }
 
-  if (!hasLoadedOnceRef.current && !isFullyLoaded) {
+  if (!hasLoadedOnce && !isFullyLoaded) {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
   }
 

@@ -1,6 +1,6 @@
 // app/caregiver/communication-cards.tsx
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { router } from 'expo-router'; // 💡 新增：引入 router 來做返回功能
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -40,13 +40,19 @@ export default function CaregiverVoiceScreen() {
   
   const [tasks, setTasks] = useState<any[]>(initialTasks.map(t => ({ ...t, hasRecording: false })));
   const [playingTaskId, setPlayingTaskId] = useState<number | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  // expo-audio 的播放器由 hook 管理生命週期（元件卸載時自動釋放），
+  // 不需要像舊版 expo-av 那樣自己 unloadAsync
+  const player = useAudioPlayer();
+  const playerStatus = useAudioPlayerStatus(player);
 
   const [waveHeights, setWaveHeights] = useState([6, 6, 6, 6]);
 
+  // 播放結束時清掉「播放中」狀態（取代舊版的 setOnPlaybackStatusUpdate）
   useEffect(() => {
-    return sound ? () => { sound.unloadAsync(); } : undefined;
-  }, [sound]);
+    if (playerStatus.didJustFinish) {
+      setPlayingTaskId(null);
+    }
+  }, [playerStatus.didJustFinish]);
 
   // ==========================================
   // 1. 抓取 Firebase 語音紀錄
@@ -112,36 +118,24 @@ export default function CaregiverVoiceScreen() {
       return;
     }
 
+    // 點同一張卡片 → 停止播放
     if (playingTaskId === task.id) {
-      if (sound) { await sound.stopAsync(); await sound.unloadAsync(); setSound(null); }
+      player.pause();
       setPlayingTaskId(null);
       return;
     }
 
-    if (sound) { await sound.stopAsync(); await sound.unloadAsync(); }
-
     setPlayingTaskId(task.id);
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
 
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: task.audioUrl },
-        { shouldPlay: true },
-        null,
-        false // 無延遲秒播參數
-      );
-      
-      setSound(newSound);
-      
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setPlayingTaskId(null);
-        }
-      });
+      // 換音源後從頭播放（replace 會自動停掉前一個音源）
+      player.replace({ uri: task.audioUrl });
+      player.play();
     } catch (error) {
       Alert.alert(t.resultErrorTitle, t.playVoiceFailed);
       setPlayingTaskId(null);
@@ -250,7 +244,7 @@ const styles = StyleSheet.create({
   imageBox: { width: '100%', aspectRatio: 1, backgroundColor: '#F7F7F7', borderRadius: 20, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   taskImage: { width: 150, height: 150 },
   
-  playingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  playingOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   playingText: { color: '#FFF', fontWeight: 'bold', fontSize: 18, letterSpacing: 2, textShadowColor: 'rgba(0, 0, 0, 0.75)', textShadowOffset: {width: -1, height: 1}, textShadowRadius: 10 },
   
   iconBadge: { position: 'absolute', bottom: 8, right: 8, width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },

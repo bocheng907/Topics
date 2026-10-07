@@ -1,6 +1,13 @@
 // app/family/voice.tsx
 import { Feather, Ionicons } from '@expo/vector-icons'; // 💡 引入專業圖示庫
-import { Audio } from 'expo-av';
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+} from 'expo-audio';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -48,9 +55,12 @@ export default function FamilyVoiceScreen() {
   const [recordingTask, setRecordingTask] = useState<any>(null); 
   
   // 錄音與試聽狀態 (Modal 用)
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [modalSound, setModalSound] = useState<Audio.Sound | null>(null);
-  const [audioUri, setAudioUri] = useState<string | null>(null); 
+  // expo-audio 的錄音器與播放器都由 hook 管理生命週期，元件卸載時自動釋放，
+  // 不需要像舊版 expo-av 那樣自己 unloadAsync
+  const recorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
+  const modalPlayer = useAudioPlayer();
+  const modalPlayerStatus = useAudioPlayerStatus(modalPlayer);
+  const [audioUri, setAudioUri] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -58,17 +68,22 @@ export default function FamilyVoiceScreen() {
   const [previewTime, setPreviewTime] = useState(0); 
 
   // 列表播放狀態 (實體播放用)
-  const [listSound, setListSound] = useState<Audio.Sound | null>(null);
-  const [playingTaskId, setPlayingTaskId] = useState<number | null>(null); 
+  const listPlayer = useAudioPlayer();
+  const listPlayerStatus = useAudioPlayerStatus(listPlayer);
+  const [playingTaskId, setPlayingTaskId] = useState<number | null>(null);
 
-  // 清除未使用的音檔資源
+  // 播放結束時清掉播放中狀態（取代舊版的 setOnPlaybackStatusUpdate）
   useEffect(() => {
-    return modalSound ? () => { modalSound.unloadAsync(); } : undefined;
-  }, [modalSound]);
+    if (modalPlayerStatus.didJustFinish) {
+      setIsPlayingModal(false);
+    }
+  }, [modalPlayerStatus.didJustFinish]);
 
   useEffect(() => {
-    return listSound ? () => { listSound.unloadAsync(); } : undefined;
-  }, [listSound]);
+    if (listPlayerStatus.didJustFinish) {
+      setPlayingTaskId(null);
+    }
+  }, [listPlayerStatus.didJustFinish]);
 
   // ==========================================
   // 1. 抓取 Firebase 語音紀錄 (同步狀態)
@@ -150,20 +165,20 @@ export default function FamilyVoiceScreen() {
   // ==========================================
   const startRecording = async () => {
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.status !== 'granted') {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
         Alert.alert(t.resultErrorTitle, t.micPermissionNeeded);
         return;
       }
       // 💡 錄音前：開啟錄音模式
-      await Audio.setAudioModeAsync({ 
-        allowsRecordingIOS: true, 
-        playsInSilentModeIOS: true,
-        playThroughEarpieceAndroid: false // 防止 Android 也從聽筒出聲
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false, // 防止 Android 也從聽筒出聲
       });
-      
-      const { recording: newRecording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.LOW_QUALITY);
-      setRecording(newRecording);
+
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       setIsRecording(true);
       setRecordTime(0);
       setAudioUri(null);
@@ -173,12 +188,11 @@ export default function FamilyVoiceScreen() {
   };
 
   const stopRecording = async () => {
-    if (!recording) return;
+    if (!recorder.isRecording) return;
     setIsRecording(false);
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
-    setAudioUri(uri);
-    setRecording(null);
+    await recorder.stop();
+    // expo-audio 的錄音檔路徑在 recorder.uri
+    setAudioUri(recorder.uri);
   };
 
   const toggleRecord = () => {
@@ -189,7 +203,7 @@ export default function FamilyVoiceScreen() {
 
   const togglePreview = async () => {
     if (isPlayingModal) {
-      if (modalSound) await modalSound.stopAsync();
+      modalPlayer.pause();
       setIsPlayingModal(false);
       setPreviewTime(0);
     } else {
@@ -197,25 +211,14 @@ export default function FamilyVoiceScreen() {
       setIsPlayingModal(true);
 
       // 💡 播放前：關閉錄音模式，強制聲音從底部主喇叭放出！
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false, 
-        playsInSilentModeIOS: true,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
 
-      // 🟢 正確寫法：一樣補上 null，再放 false
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: audioUri },
-        { shouldPlay: true },
-        null,  // 💡 填 null
-        false  // 💡 填 false
-      );
-      
-      setModalSound(newSound);
-      
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) setIsPlayingModal(false);
-      });
+      modalPlayer.replace({ uri: audioUri });
+      modalPlayer.play();
     }
   };
 
@@ -227,39 +230,24 @@ export default function FamilyVoiceScreen() {
 
     // 如果點擊的是正在播放的，就停止
     if (playingTaskId === task.id) {
-      if (listSound) { await listSound.stopAsync(); await listSound.unloadAsync(); setListSound(null); }
+      listPlayer.pause();
       setPlayingTaskId(null);
       return;
     }
-
-    // 停止上一首
-    if (listSound) { await listSound.stopAsync(); await listSound.unloadAsync(); }
 
     setPlayingTaskId(task.id);
     try {
 
       // 💡 播放前：關閉錄音模式，強制聲音從底部主喇叭放出！
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
 
-      // 🟢 正確寫法：把 false 移到第 4 個位子，第 3 個位子補上 null
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: task.audioUrl },
-        { shouldPlay: true },
-        null,  // 💡 第三個參數保留給系統，我們填 null
-        false  // 💡 第四個參數才是真正的「不要等下載完」！
-      );
-      
-      setListSound(newSound);
-      
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setPlayingTaskId(null);
-        }
-      });
+      // 換音源後從頭播放（replace 會自動停掉前一首）
+      listPlayer.replace({ uri: task.audioUrl });
+      listPlayer.play();
     } catch (error) {
       Alert.alert(t.resultErrorTitle, t.playVoiceFailed);
       setPlayingTaskId(null);
@@ -285,7 +273,7 @@ export default function FamilyVoiceScreen() {
             
             // 如果正在播放則停止
             if (playingTaskId === task.id) {
-              if (listSound) await listSound.stopAsync();
+              listPlayer.pause();
               setPlayingTaskId(null);
             }
           } catch (error) {

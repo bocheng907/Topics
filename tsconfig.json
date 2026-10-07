@@ -16,6 +16,11 @@
   ],
   "exclude": [
     "node_modules",
-    "docs"
+    "docs",
+    "app/(tabs)",
+    "app/modal.tsx",
+    "components",
+    "hooks",
+    "constants"
   ]
 }

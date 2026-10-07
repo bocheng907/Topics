@@ -10,7 +10,7 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -113,7 +113,7 @@ export default function CaregiverHomeScreen() {
   const { activePatient, activePatientId, ready } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
-  const hasLoadedOnceRef = useRef(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const [target, setTarget] = useState<CareTarget | null>(null);
   const [loading, setLoading] = useState(true);
@@ -393,14 +393,14 @@ export default function CaregiverHomeScreen() {
     }
   }
 
+  // 只在「第一次真正載入完成前」顯示整頁讀取畫面，之後背景更新不整頁重繪
   const isFullyLoaded = !loading && ready;
-  useEffect(() => {
-    if (isFullyLoaded) {
-      hasLoadedOnceRef.current = true;
-    }
-  });
+  if (isFullyLoaded && !hasLoadedOnce) {
+    // 渲染期間調整 state 是 React 官方建議的作法（取代在 effect 裡寫 ref）
+    setHasLoadedOnce(true);
+  }
 
-  if (!hasLoadedOnceRef.current && !isFullyLoaded) {
+  if (!hasLoadedOnce && !isFullyLoaded) {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
   }
 
