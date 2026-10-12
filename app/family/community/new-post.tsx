@@ -165,21 +165,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingTop: 54,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COMMUNITY_COLORS.borderLight,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    backgroundColor: COMMUNITY_COLORS.headerBg,
   },
   headerSide: {
     minWidth: 56,
   },
   cancelText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "600",
     color: COMMUNITY_COLORS.textSecondary,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: "800",
     color: COMMUNITY_COLORS.text,
     letterSpacing: 0.5,
@@ -188,9 +187,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   publishText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
-    color: "#4A90E2",
+    color: COMMUNITY_COLORS.primary,
   },
   publishTextDisabled: {
     color: "#D1D5DB",
@@ -219,7 +218,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   categoryText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
   },
   titleWrap: {
@@ -229,7 +228,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   titleInput: {
-    fontSize: 19,
+    fontSize: 20,
     fontWeight: "700",
     color: COMMUNITY_COLORS.text,
     padding: 0,
@@ -246,8 +245,8 @@ const styles = StyleSheet.create({
   },
   contentInput: {
     minHeight: 220,
-    fontSize: 17,
-    lineHeight: 26,
+    fontSize: 18,
+    lineHeight: 28,
     color: COMMUNITY_COLORS.text,
     padding: 0,
   },
@@ -267,7 +266,7 @@ const styles = StyleSheet.create({
     borderColor: "#D1D5DB",
   },
   imageText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "600",
     color: COMMUNITY_COLORS.textSecondary,
   },

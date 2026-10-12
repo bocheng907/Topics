@@ -68,10 +68,11 @@ export default function CommunityHomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header：返回鍵沿用家屬端其他頁面的樣式 */}
+      {/* Header：色底 + 「‹ 返回」文字，與家屬端其他頁面一致 */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Ionicons name="chevron-back" size={24} color={COMMUNITY_COLORS.text} />
+          <Ionicons name="chevron-back" size={24} color="#111827" />
+          <Text style={styles.backText}>返回</Text>
         </Pressable>
         <Text style={styles.headerTitle}>照顧者交流</Text>
       </View>
@@ -168,20 +169,27 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 12,
     paddingTop: 54,
-    paddingBottom: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COMMUNITY_COLORS.borderLight,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    backgroundColor: COMMUNITY_COLORS.headerBg,
   },
   backBtn: {
-    padding: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  backText: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
   },
   headerTitle: {
-    fontSize: 21,
+    flexShrink: 1,
+    fontSize: 20,
     fontWeight: "800",
-    color: COMMUNITY_COLORS.text,
+    color: "#111827",
     letterSpacing: 0.5,
   },
   scrollArea: {
@@ -207,7 +215,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     color: COMMUNITY_COLORS.text,
     padding: 0,
   },
@@ -220,7 +228,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
     color: COMMUNITY_COLORS.text,
   },
@@ -249,12 +257,12 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   emptyTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "700",
     color: COMMUNITY_COLORS.textSecondary,
   },
   emptyHint: {
-    fontSize: 15,
+    fontSize: 16,
     color: COMMUNITY_COLORS.textLight,
     textAlign: "center",
   },

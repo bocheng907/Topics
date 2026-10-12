@@ -30,7 +30,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   label: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
   },
 });

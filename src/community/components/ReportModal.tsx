@@ -124,13 +124,13 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   title: {
-    fontSize: 19,
+    fontSize: 20,
     fontWeight: "800",
     color: COMMUNITY_COLORS.text,
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 16,
     color: COMMUNITY_COLORS.textSecondary,
     fontWeight: "500",
     marginBottom: 16,
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     backgroundColor: COMMUNITY_COLORS.danger,
   },
   reasonText: {
-    fontSize: 16,
+    fontSize: 17,
     color: "#374151",
   },
   reasonTextSelected: {
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   },
   detailInput: {
     marginTop: 8,
-    height: 84,
+    height: 88,
     backgroundColor: COMMUNITY_COLORS.surface,
     borderWidth: 1,
     borderColor: COMMUNITY_COLORS.border,
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   cancelText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
     color: COMMUNITY_COLORS.textSecondary,
   },
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEE2E2",
   },
   submitText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
     color: COMMUNITY_COLORS.white,
   },

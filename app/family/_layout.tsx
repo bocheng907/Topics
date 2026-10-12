@@ -184,6 +184,17 @@ export default function FamilyLayout() {
           >
             <Text style={styles.menuItemText}>{t.handbook}</Text>
           </Pressable>
+          {/* 照顧者交流：與照護手冊同屬「內容型」功能，放在一起 */}
+          <Pressable
+            style={[styles.menuItem, styles.menuItemWithIcon]}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/family/community" as any);
+            }}
+          >
+            <Ionicons name="people-outline" size={20} color="#4F59D5" />
+            <Text style={styles.menuItemText}>照顧者交流</Text>
+          </Pressable>
           <Pressable
             style={styles.menuItem}
             onPress={() => {
@@ -293,6 +304,12 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 2,
     borderBottomColor: "#000",
+  },
+  // 帶圖示的選單項（目前只有「照顧者交流」使用）
+  menuItemWithIcon: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   menuItemText: {
     color: "#000",

@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     borderColor: COMMUNITY_COLORS.border,
   },
   chipText: {
-    fontSize: 15,
+    fontSize: 16,
   },
   chipTextActive: {
     color: COMMUNITY_COLORS.white,

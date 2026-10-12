@@ -8,7 +8,12 @@ import type { PostCategory } from "./types";
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
 export const COMMUNITY_COLORS = {
-  primary: "#2C3E50", // 深藍主色：發文鍵、送出留言鍵
+  // 主色改用家屬端既有的品牌紫（原型的深藍 #2C3E50 已淘汰），
+  // 讓社群頁的按鈕、強調色與家屬端其他畫面同調
+  primary: "#4F59D5",
+  // header 色底：延續家屬端「每個功能一個色系」的作法，
+  // 社群／知識分享取品牌紫的淺色調（與通知頁同系列，都屬資訊交流型畫面）
+  headerBg: "#D9D4F3",
   background: "#FFFFFF",
   surface: "#F9FAFB",
   text: "#1F2937",

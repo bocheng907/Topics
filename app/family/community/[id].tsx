@@ -41,8 +41,9 @@ export default function PostDetailScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={8}>
-            <Ionicons name="chevron-back" size={26} color={COMMUNITY_COLORS.text} />
+          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+            <Ionicons name="chevron-back" size={24} color="#111827" />
+            <Text style={styles.backText}>返回</Text>
           </Pressable>
         </View>
         <View style={styles.missingWrap}>
@@ -100,8 +101,9 @@ export default function PostDetailScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={8}>
-          <Ionicons name="chevron-back" size={26} color={COMMUNITY_COLORS.text} />
+        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+          <Ionicons name="chevron-back" size={24} color="#111827" />
+          <Text style={styles.backText}>返回</Text>
         </Pressable>
         <Pressable onPress={() => setReportVisible(true)} style={styles.iconBtn} hitSlop={8}>
           <Ionicons name="ellipsis-horizontal" size={24} color={COMMUNITY_COLORS.text} />
@@ -234,10 +236,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingTop: 54,
-    paddingBottom: 12,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COMMUNITY_COLORS.borderLight,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    backgroundColor: COMMUNITY_COLORS.headerBg,
+  },
+  backBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  backText: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
   },
   iconBtn: {
     padding: 6,
@@ -254,8 +265,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   title: {
-    fontSize: 22,
-    lineHeight: 30,
+    fontSize: 24,
+    lineHeight: 33,
     fontWeight: "800",
     color: COMMUNITY_COLORS.text,
     letterSpacing: 0.3,
@@ -268,7 +279,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   authorName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
     color: COMMUNITY_COLORS.text,
     marginBottom: 2,
@@ -279,8 +290,8 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   content: {
-    fontSize: 17,
-    lineHeight: 27,
+    fontSize: 18,
+    lineHeight: 29,
     color: "#374151",
   },
   divider: {
@@ -308,7 +319,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "600",
     color: COMMUNITY_COLORS.textSecondary,
   },
@@ -328,13 +339,13 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   commentsTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "800",
     color: COMMUNITY_COLORS.text,
     marginBottom: 18,
   },
   noComment: {
-    fontSize: 15,
+    fontSize: 16,
     color: COMMUNITY_COLORS.textLight,
     paddingBottom: 12,
   },
@@ -355,7 +366,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   commentAuthor: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
     color: COMMUNITY_COLORS.text,
   },
@@ -364,8 +375,8 @@ const styles = StyleSheet.create({
     color: COMMUNITY_COLORS.textLight,
   },
   commentContent: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 24,
     color: "#374151",
   },
   inputBar: {
@@ -381,14 +392,14 @@ const styles = StyleSheet.create({
   },
   commentInput: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 44,
     maxHeight: 110,
     backgroundColor: COMMUNITY_COLORS.inputBg,
     borderRadius: 21,
     paddingHorizontal: 16,
     paddingTop: 11,
     paddingBottom: 11,
-    fontSize: 15,
+    fontSize: 16,
     color: COMMUNITY_COLORS.text,
   },
   sendBtn: {
@@ -409,7 +420,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   missingText: {
-    fontSize: 17,
+    fontSize: 18,
     color: COMMUNITY_COLORS.textSecondary,
     fontWeight: "600",
   },

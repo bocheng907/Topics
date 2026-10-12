@@ -101,8 +101,8 @@ const styles = StyleSheet.create({
   },
   hotTitle: {
     marginTop: 10,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 17,
+    lineHeight: 24,
     fontWeight: "700",
     color: COMMUNITY_COLORS.text,
   },
@@ -122,19 +122,19 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   timeText: {
-    fontSize: 13,
+    fontSize: 14,
     color: COMMUNITY_COLORS.textLight,
     fontWeight: "500",
   },
   listTitle: {
-    fontSize: 17,
-    lineHeight: 23,
+    fontSize: 18,
+    lineHeight: 25,
     fontWeight: "700",
     color: COMMUNITY_COLORS.text,
   },
   listPreview: {
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 16,
+    lineHeight: 23,
     color: COMMUNITY_COLORS.textSecondary,
   },
   listFooter: {
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   },
   authorName: {
     flexShrink: 1,
-    fontSize: 14,
+    fontSize: 15,
     color: COMMUNITY_COLORS.textSecondary,
     fontWeight: "500",
   },
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   metaText: {
-    fontSize: 13,
+    fontSize: 14,
     color: COMMUNITY_COLORS.textSecondary,
     fontWeight: "500",
   },
