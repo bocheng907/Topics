@@ -29,6 +29,19 @@ exports.joinCareTarget = onCall({region: "us-central1"},
   careTargetAccess.joinCareTarget);
 exports.manageInvitation = onCall({region: "us-central1"},
   careTargetAccess.manageInvitation);
+const agencyReportAccess =
+  require("./agencyReportAccess")
+      .createAgencyReportService(db);
+
+exports.getAgencyReportContext = onCall(
+    {region: "us-central1"},
+    agencyReportAccess.getAgencyReportContext,
+);
+
+exports.createAgencyReport = onCall(
+    {region: "us-central1"},
+    agencyReportAccess.createAgencyReport,
+);
 const audit = require("./auditLog").createAuditService(db);
 exports.recordSessionAudit = onCall({region: "us-central1"},
   audit.recordSession);

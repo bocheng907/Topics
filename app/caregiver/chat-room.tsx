@@ -36,12 +36,15 @@ import {
 } from "@/src/i18n/dynamicTranslation";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { chatMessageCollection } from "@/src/chat/rooms";
+import { getUserDocSnapshotByUid } from "@/src/user/getUserDocRefByUid";
 
 export default function CaregiverChatRoomScreen() {
   const [inputText, setInputText] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [senderProfile, setSenderProfile] = useState({ displayName: "", avatarUrl: "" });
   const chatScrollRef = useRef<ScrollView>(null);
   const shouldScrollToEndRef = useRef(true);
 
@@ -51,7 +54,29 @@ export default function CaregiverChatRoomScreen() {
   const { language } = useLanguage();
   const t = translations[language];
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!user?.uid) return;
+      try {
+        const snap = await getUserDocSnapshotByUid(user.uid);
+        if (!mounted || !snap) return;
+        const data = snap.data() as any;
+        setSenderProfile({
+          displayName: String(data.displayName ?? "").trim(),
+          avatarUrl: String(data.avatarUrl ?? "").trim(),
+        });
+      } catch (error) {
+        console.log("load chat sender profile failed:", error);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [user?.uid]);
+
   const targetId = patientId || activePatientId;
+  // Caregivers only use the direct caregiver-family room. Family group is family-only.
+  const roomType = "caregiver" as const;
+  const messageCollection = chatMessageCollection(roomType);
 
   const generateCustomId = (pId: string) => {
     const now = new Date();
@@ -79,7 +104,7 @@ export default function CaregiverChatRoomScreen() {
     }
 
     const q = query(
-      collection(db, "chats", targetId, "messages"),
+      collection(db, "chats", targetId, messageCollection),
       orderBy("createdAt", "asc")
     );
 
@@ -98,7 +123,7 @@ export default function CaregiverChatRoomScreen() {
     );
 
     return () => unsubscribe();
-  }, [targetId]);
+  }, [targetId, messageCollection]);
 
   useEffect(() => {
     if (!targetId || language === "zh") return;
@@ -106,7 +131,7 @@ export default function CaregiverChatRoomScreen() {
     messages.forEach((msg) => {
       if (!msg.text) return;
       void ensureFirestoreTranslations(
-        doc(db, "chats", targetId, "messages", msg.id),
+        doc(db, "chats", targetId, messageCollection, msg.id),
         msg,
         language,
         [{ baseName: "text", sourceKeys: ["text", "text_original"] }]
@@ -115,7 +140,7 @@ export default function CaregiverChatRoomScreen() {
           current.map(item => item.id === msg.id ? {...item, ...translated} : item));
       }).catch(() => console.warn("Chat translation unavailable"));
     });
-  }, [messages, targetId, language]);
+  }, [messages, targetId, language, messageCollection]);
 
   const pickImageAndSend = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -144,7 +169,10 @@ export default function CaregiverChatRoomScreen() {
       const blob = await response.blob();
       const filename = createImageUploadFilename();
       const storageRef = ref(storage, `chats/${targetId}/images/${filename}`);
-      const uploadTask = uploadBytesResumable(storageRef, blob);
+      const uploadTask = uploadBytesResumable(storageRef, blob, {
+        contentType: blob.type || "image/jpeg",
+        customMetadata: { uploaderUid: user.uid, patientId: targetId },
+      });
 
       uploadTask.on(
         "state_changed",
@@ -157,9 +185,11 @@ export default function CaregiverChatRoomScreen() {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           const customId = generateCustomId(targetId) + "_" + randomUUID();
 
-          await setDoc(doc(db, "chats", targetId, "messages", customId), {
+          await setDoc(doc(db, "chats", targetId, messageCollection, customId), {
             imageUrl: downloadURL,
             senderId: user.uid,
+            senderName: senderProfile.displayName || t.caregiver,
+            senderAvatarUrl: senderProfile.avatarUrl,
             createdAt: serverTimestamp(),
           });
 
@@ -178,11 +208,13 @@ export default function CaregiverChatRoomScreen() {
     try {
       const customId = generateCustomId(targetId) + "_" + randomUUID();
 
-      await setDoc(doc(db, "chats", targetId, "messages", customId), {
+      await setDoc(doc(db, "chats", targetId, messageCollection, customId), {
         text: inputText,
         text_zh: inputText,
         text_original: inputText,
         senderId: user.uid,
+        senderName: senderProfile.displayName || t.caregiver,
+        senderAvatarUrl: senderProfile.avatarUrl,
         createdAt: serverTimestamp(),
       });
 
@@ -223,7 +255,9 @@ export default function CaregiverChatRoomScreen() {
         <ScrollView contentContainerStyle={styles.emptyContainer}>
           <Ionicons name="chatbubbles-outline" size={80} color="#C4C4C4" style={styles.emptyIcon} />
           <Text style={styles.emptyText}>{t.noConversation}</Text>
-          <Text style={styles.emptySubText}>{t.sendFirstMessage}</Text>
+          <Text style={styles.emptySubText}>
+            {t.sendFirstMessage}
+          </Text>
         </ScrollView>
       ) : (
         <ScrollView
@@ -251,7 +285,19 @@ export default function CaregiverChatRoomScreen() {
                 key={msg.id}
                 style={[styles.bubbleWrapper, isMe ? styles.myWrapper : styles.otherWrapper]}
               >
-                <View style={[styles.bubble, isMe ? styles.myBubble : styles.otherBubble]}>
+                <View style={[styles.identityRow, isMe && styles.identityRowMe]}>
+                  {!isMe && (msg.senderAvatarUrl ? (
+                    <Image source={{ uri: msg.senderAvatarUrl }} style={styles.senderAvatar} />
+                  ) : (
+                    <View style={[styles.senderAvatar, styles.senderAvatarFallback]}>
+                      <Text style={styles.senderAvatarInitial}>{String(msg.senderName || t.caregiver).trim().slice(0, 1) || "?"}</Text>
+                    </View>
+                  ))}
+                  <View style={styles.messageColumn}>
+                    <Text style={[styles.senderName, isMe && styles.senderNameMe]} numberOfLines={1}>
+                      {String(msg.senderName || t.caregiver).trim() || t.caregiver}{isMe ? ` · ${t.chatYouLabel}` : ""}
+                    </Text>
+                    <View style={[styles.bubble, isMe ? styles.myBubble : styles.otherBubble]}>
                   {msg.imageUrl ? (
                     <Image source={{ uri: msg.imageUrl }} style={styles.sentImage} resizeMode="cover" />
                   ) : showOriginal ? (
@@ -263,15 +309,24 @@ export default function CaregiverChatRoomScreen() {
                   ) : (
                     <Text style={[styles.mainText, isMe && { color: "#FFF" }]}>{localizedText || originalText}</Text>
                   )}
+                    </View>
+                    <Text style={[styles.timeText, { alignSelf: isMe ? "flex-end" : "flex-start" }]}>
+                      {msg.createdAt
+                        ? new Date(msg.createdAt.toMillis()).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : ""}
+                    </Text>
+                  </View>
+                  {isMe && (msg.senderAvatarUrl ? (
+                    <Image source={{ uri: msg.senderAvatarUrl }} style={styles.senderAvatar} />
+                  ) : (
+                    <View style={[styles.senderAvatar, styles.senderAvatarFallback]}>
+                      <Text style={styles.senderAvatarInitial}>{String(msg.senderName || t.caregiver).trim().slice(0, 1) || "?"}</Text>
+                    </View>
+                  ))}
                 </View>
-                <Text style={[styles.timeText, { alignSelf: isMe ? "flex-end" : "flex-start" }]}>
-                  {msg.createdAt
-                    ? new Date(msg.createdAt.toMillis()).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : ""}
-                </Text>
               </View>
             );
           })}
@@ -346,9 +401,17 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 20, fontWeight: "700", color: "#333" },
   emptySubText: { fontSize: 16, color: "#999", textAlign: "center", marginTop: 10 },
 
-  bubbleWrapper: { marginBottom: 15, maxWidth: "85%" },
+  bubbleWrapper: { marginBottom: 15, maxWidth: "92%" },
   myWrapper: { alignSelf: "flex-end" },
   otherWrapper: { alignSelf: "flex-start" },
+  identityRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+  identityRowMe: { justifyContent: "flex-end" },
+  messageColumn: { maxWidth: "82%", minWidth: 60 },
+  senderName: { fontSize: 12, fontWeight: "700", color: "#6B7280", marginBottom: 4, marginLeft: 4 },
+  senderNameMe: { textAlign: "right", marginLeft: 0, marginRight: 4 },
+  senderAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#EDE9FE" },
+  senderAvatarFallback: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#D8D3F2" },
+  senderAvatarInitial: { fontSize: 13, fontWeight: "800", color: "#7164C6" },
   bubble: {
     padding: 12,
     borderRadius: 16,

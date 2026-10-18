@@ -53,12 +53,13 @@ export default function FamilyConditionScreen() {
     
     const q = query(
       collection(db, 'abnormal_records'),
-      where('patientId', '==', activePatientId),
-      orderBy('createdAt', 'desc')
+      where('patientId', '==', activePatientId)
     );
     
     const unsub = onSnapshot(q, (snap) => {
-      const fetchedRecords = snap.docs.map(doc => {
+      const fetchedRecords = [...snap.docs]
+        .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+        .map(doc => {
         const data = doc.data();
         const dateObj = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
         const dateStr = `${dateObj.getFullYear()}年 ${dateObj.getMonth() + 1}月 ${dateObj.getDate()}日`;

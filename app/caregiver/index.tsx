@@ -6,7 +6,7 @@ import {
   doc,
   onSnapshot,
   query,
-  runTransaction,
+  setDoc,
   serverTimestamp,
   where,
 } from "firebase/firestore";
@@ -154,7 +154,6 @@ export default function CaregiverHomeScreen() {
     if (!activePatient || !activePatientId) {
       setTarget(null);
       setLoading(false);
-      router.replace("/care-target/join");
       return;
     }
 
@@ -349,42 +348,35 @@ export default function CaregiverHomeScreen() {
         logId
       );
 
-      const created = await runTransaction(db, async (transaction) => {
-        const existingLog = await transaction.get(logRef);
-        if (existingLog.exists()) return false;
-
-        transaction.set(logRef, {
-          logId,
-          reminderId: primaryReminder.id,
-          reminderIds: slotReminders.map((reminder) => reminder.id),
-          prescriptionId: primaryReminder.prescriptionId ?? "",
-          prescriptionIds: [
-            ...new Set(
-              slotReminders
-                .map((reminder) => reminder.prescriptionId ?? "")
-                .filter(Boolean)
-            ),
-          ],
-          patientId: activePatientId,
-          patientsId: activePatient?.patientsId ?? "",
-          medicineName: primaryReminder.medicineName,
-          medicineNames: slotReminders.map((reminder) => reminder.medicineName),
-          doseText: primaryReminder.doseText,
-          scheduleTime: activeSlot.scheduleTime,
-          status: "taken",
-          confirmedBy: user.uid,
-          takenAt: serverTimestamp(),
-          dateKey: todayKey,
-          createdAt: serverTimestamp(),
-        });
-
-        return true;
+      // Do not read the deterministic log document before creating it.
+      // Firestore rules intentionally deny reads for a non-existent medication log,
+      // so a transaction.get() here turns a valid first-time DONE into permission-denied.
+      await setDoc(logRef, {
+        logId,
+        reminderId: primaryReminder.id,
+        reminderIds: slotReminders.map((reminder) => reminder.id),
+        prescriptionId: primaryReminder.prescriptionId ?? "",
+        prescriptionIds: [
+          ...new Set(
+            slotReminders
+              .map((reminder) => reminder.prescriptionId ?? "")
+              .filter(Boolean)
+          ),
+        ],
+        patientId: activePatientId,
+        patientsId: activePatient?.patientsId ?? "",
+        medicineName: primaryReminder.medicineName,
+        medicineNames: slotReminders.map((reminder) => reminder.medicineName),
+        doseText: primaryReminder.doseText,
+        scheduleTime: activeSlot.scheduleTime,
+        status: "taken",
+        confirmedBy: user.uid,
+        takenAt: serverTimestamp(),
+        dateKey: todayKey,
+        createdAt: serverTimestamp(),
       });
 
-      Alert.alert(
-        t.alreadyDone,
-        created ? t.doneRecorded : t.reminderAlreadyDone
-      );
+      Alert.alert(t.alreadyDone, t.doneRecorded);
     } catch (error) {
       console.log("done error:", error);
       Alert.alert(t.resultErrorTitle, t.recordFailed);
@@ -402,6 +394,62 @@ export default function CaregiverHomeScreen() {
 
   if (!hasLoadedOnce && !isFullyLoaded) {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
+  }
+
+  if (!activePatientId || !activePatient) {
+    return (
+      <View style={styles.noTargetContainer}>
+        <View style={styles.noTargetCard}>
+          <Ionicons
+            name="person-add-outline"
+            size={54}
+            color="#4F59D5"
+          />
+
+          <Text style={styles.noTargetTitle}>
+            尚未綁定照護對象
+          </Text>
+
+          <Text style={styles.noTargetDescription}>
+            你可以先加入照護對象，也可以先綁定所屬仲介
+          </Text>
+
+          <Pressable
+            style={styles.primarySetupButton}
+            onPress={() =>
+              router.push("/care-target/join" as any)
+            }
+          >
+            <Ionicons
+              name="people-outline"
+              size={22}
+              color="#FFF"
+            />
+            <Text style={styles.primarySetupButtonText}>
+              綁定照護對象
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.secondarySetupButton}
+            onPress={() =>
+              router.push(
+                "/caregiver/agency-binding" as any
+              )
+            }
+          >
+            <Ionicons
+              name="business-outline"
+              size={22}
+              color="#4F59D5"
+            />
+            <Text style={styles.secondarySetupButtonText}>
+              綁定仲介
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -547,6 +595,73 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FFFFFF",
   },
+  noTargetContainer: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+
+  noTargetCard: {
+    backgroundColor: "#F8F9FC",
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    alignItems: "center",
+    gap: 14,
+  },
+
+  noTargetTitle: {
+    marginTop: 6,
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#111827",
+    textAlign: "center",
+  },
+
+  noTargetDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+
+  primarySetupButton: {
+    width: "100%",
+    minHeight: 56,
+    borderRadius: 16,
+    backgroundColor: "#4F59D5",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  primarySetupButtonText: {
+    color: "#FFF",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+
+  secondarySetupButton: {
+    width: "100%",
+    minHeight: 56,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#4F59D5",
+    backgroundColor: "#FFF",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  secondarySetupButtonText: {
+    color: "#4F59D5",
+    fontSize: 17,
+    fontWeight: "800",
+  },
   scrollContent: {
     paddingBottom: 190, // 避開懸浮的緊急撥號鍵與底部導覽列（兩者皆為浮動疊層，不會自動讓出空間）
     paddingTop: 80, // 稍微加大上方的 Padding，閃開共用導覽列的漢堡按鈕
@@ -577,6 +692,7 @@ const styles = StyleSheet.create({
   reminderTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 12,
     marginBottom: 12,
     width: "100%",
@@ -586,14 +702,17 @@ const styles = StyleSheet.create({
     fontSize: 36,
   },
   reminderTitle: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: "bold",
     color: "#000",
-    letterSpacing: 1,
+    letterSpacing: 0.4,
+    textAlign: "center",
+    flexShrink: 1,
   },
   reminderSubRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
     marginBottom: 24,
     width: "100%",
@@ -603,9 +722,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   reminderSubText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "600",
     color: "#000",
+    textAlign: "center",
+    flexShrink: 1,
   },
   doneBtn: {
     width: 110,
@@ -695,6 +816,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   gridGroup: {
+    width: "100%",
+    paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
@@ -707,9 +830,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   gridText: {
-    width: "92%",
-    fontSize: 17,
-    lineHeight: 20,
+    width: "100%",
+    paddingHorizontal: 2,
+    fontSize: 15,
+    lineHeight: 19,
     fontWeight: "bold",
     color: "#111827",
     letterSpacing: 0.2,

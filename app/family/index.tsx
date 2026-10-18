@@ -1,7 +1,6 @@
 // app/family/index.tsx
 import { db } from "@/firebase/firebaseConfig";
 import { invitationCopy } from "@/src/care-target/invitationCopy";
-import { usePrimaryFamily } from "@/src/care-target/usePrimaryFamily";
 import { router } from "expo-router";
 import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
@@ -23,7 +22,6 @@ type SugarVital = { val: number; type: string; ts: number } | null;
 export default function FamilyHomeScreen() {
   const { ready, activePatient, activePatientId, linkedCareTargets, setActivePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
-  const isPrimaryFamily = usePrimaryFamily(activePatientId);
   const t = translations[language];
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
@@ -57,9 +55,7 @@ export default function FamilyHomeScreen() {
 
     const q = query(
       collection(db, "health_records"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc"),
-      limit(10)
+      where("patientId", "==", activePatientId)
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -69,7 +65,10 @@ export default function FamilyHomeScreen() {
       let sugar: SugarVital = null;
       let hasAnyData = false;
 
-      snap.docs.forEach(doc => {
+      const newestDocs = [...snap.docs]
+        .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+        .slice(0, 10);
+      newestDocs.forEach(doc => {
         const d = doc.data();
         const ts = d.createdAt?.toMillis ? d.createdAt.toMillis() : Date.now();
         hasAnyData = true;
@@ -256,9 +255,6 @@ export default function FamilyHomeScreen() {
           </Pressable>
         </View>
 
-        {isPrimaryFamily && <Pressable onPress={() => router.push("/family/camera" as any)} style={{padding: 18, margin: 16, backgroundColor: "#e8f2ff", borderRadius: 12}}>
-          <Text style={{fontSize: 18, fontWeight: "700"}}>📷 {t.scanPrescription}</Text>
-        </Pressable>}
         <View style={styles.medCard}>
           <Text style={styles.medTitle}>{t.todayMedicationProgress}</Text>
           {stats.total > 0 ? (

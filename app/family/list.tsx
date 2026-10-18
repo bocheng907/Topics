@@ -171,7 +171,7 @@ function getMemoText(value: any): string {
 }
 
 async function deletePrescriptionCascade(prescriptionId: string) {
-  if (!await canEditPrescription(prescriptionId)) throw new Error("Primary family required");
+  if (!await canEditPrescription(prescriptionId)) throw new Error("Prescription management permission required");
   const parent = await getDoc(doc(db, "prescriptions", prescriptionId));
   const patientId = parent.data()?.patientId;
   if (!patientId) throw new Error("Patient unavailable");
@@ -235,15 +235,16 @@ export default function FamilyListScreen() {
 
     const prescriptionsQuery = query(
       collection(db, "prescriptions"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc")
+      where("patientId", "==", activePatientId)
     );
 
     const unsubscribe = onSnapshot(
       prescriptionsQuery,
       async (snapshot) => {
         try {
-          const rows: PrescriptionRow[] = snapshot.docs.map((document) => {
+          const rows: PrescriptionRow[] = [...snapshot.docs]
+            .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+            .map((document) => {
             const data = document.data() as any;
 
             return {

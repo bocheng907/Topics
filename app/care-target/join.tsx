@@ -124,27 +124,34 @@ export default function CareTargetJoinScreen() {
 
       <Pressable
         onPress={async () => {
+          // Caregivers may skip binding a care target for now (e.g. they only
+          // bind an agency first). Family keeps the old "back to login" flow.
+          if (user?.role === "caregiver") {
+            router.replace("/caregiver");
+            return;
+          }
           try {
-            // 1. 強制登出 Firebase Auth 帳號
-            await signOut(auth); 
-            
-            // 2. 清除登入頁面之前的歷史堆疊，強制回到登入頁
-            // 💡 根據你的目錄結構，路徑應為 "/(auth)/login"
-            router.replace("/(auth)/login"); 
+            await signOut(auth);
           } catch (error) {
             console.error("登出失敗:", error);
-            // 即使登出 API 失敗，通常也建議強制跳轉回登入頁以防卡死
-            router.replace("/(auth)/login");
           }
+          router.replace("/(auth)/login");
         }}
         style={({ pressed }) => ({
           marginTop: 10,
           padding: 12,
-          opacity: pressed ? 0.6 : 1, // 加入簡單的點擊回饋
+          opacity: pressed ? 0.6 : 1,
         })}
       >
-        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700", fontSize: 16 }}>
-          {t.backToLoginPage}
+        <Text
+          style={{
+            color: "#666",
+            textAlign: "center",
+            fontWeight: "700",
+            fontSize: 16,
+          }}
+        >
+          {user?.role === "caregiver" ? "稍後再綁定" : t.backToLoginPage}
         </Text>
       </Pressable>
     </ScrollView>

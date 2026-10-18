@@ -3,6 +3,7 @@ import { exportCopy } from "@/src/export/exportCopy";
 import AuditMenuLink from "@/src/audit/AuditMenuLink";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { useSyncCaregiverServices } from "@/src/agency/useSyncCaregiverServices";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,17 +11,19 @@ import { Stack, router, useSegments } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import { doc, getDoc } from "firebase/firestore";
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Dimensions, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Animated, Dimensions, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const DRAWER_WIDTH = SCREEN_WIDTH * 0.55;
+const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.66, 300);
 
 export default function CaregiverLayout() {
   const segments = useSegments() as string[];
   const currentPage = segments[segments.length - 1];
   const insets = useSafeAreaInsets();
   const { language, setLanguage } = useLanguage();
+
+  useSyncCaregiverServices();
 
   const hideBottomNavRoutes = [
     "chat-room",
@@ -35,6 +38,8 @@ export default function CaregiverLayout() {
     "notebook",
     "handbook",
     "notification-detail",
+    "account-settings",
+    "agency-binding",
     "result",
   ];
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
@@ -118,7 +123,28 @@ export default function CaregiverLayout() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Web 測試
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "確定要登出目前帳號嗎？"
+      );
+
+      if (!confirmed) return;
+
+      try {
+        await signOut(auth);
+        setIsSidebarOpen(false);
+        router.replace("/");
+      } catch (error) {
+        console.log("登出失敗:", error);
+        window.alert("登出失敗，請稍後再試");
+      }
+
+      return;
+    }
+
+    //手機版
     Alert.alert("登出系統", "確定要登出目前帳號嗎？", [
       { text: "取消", style: "cancel" },
       {
@@ -164,7 +190,7 @@ export default function CaregiverLayout() {
         </Pressable>
       )}
 
-      {!hideBottomNav && (
+      {!hideBottomNav && !!activePatientId && (
         <View style={styles.footerWrapper} pointerEvents="box-none">
           <View style={styles.fabContainer} pointerEvents="box-none">
             <Pressable style={styles.fabButton} onPress={onEmergencyCall}>
@@ -257,6 +283,26 @@ export default function CaregiverLayout() {
             }}
           >
             <Text style={styles.menuItemText}>{translations[language].handbook}</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/account-settings" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>帳號設定</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/caregiver/agency-binding" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>綁定仲介</Text>
           </Pressable>
 
           <Pressable style={styles.menuItem} onPress={() => Alert.alert("警告", "確定要解除連結嗎？")}>
@@ -400,8 +446,11 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     color: "#000",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
   languageOptions: {
     marginTop: 10,
@@ -411,13 +460,19 @@ const styles = StyleSheet.create({
     color: "#555",
     fontSize: 16,
     fontWeight: "700",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 22,
   },
   languageOptionActive: {
     color: "#007AFF",
   },
   menuItemTextDanger: {
     color: "#E33B3B",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
 });

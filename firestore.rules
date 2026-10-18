@@ -391,7 +391,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-  match /users/{userDocId} {
+    match /users/{userDocId} {
       allow read: if isOwnUserDoc();
 
       allow create: if isOwnIncomingUserDoc()
@@ -405,9 +405,8 @@ service cloud.firestore {
         && request.resource.data.role in ["family", "caregiver", "agency"]
         && request.resource.data.activePatientId is string
         && request.resource.data.email is string
-        && boundedString(request.resource.data.displayName, 120)
-        && request.resource.data.displayName.size() > 0
-        && boundedString(request.resource.data.avatarUrl, 4096)
+        && boundedString(request.resource.data.get('displayName', ''), 120)
+        && boundedString(request.resource.data.get('avatarUrl', ''), 4096)
         && request.resource.data.emergencyPhone1 is string
         && request.resource.data.emergencyPhone2 is string;
 

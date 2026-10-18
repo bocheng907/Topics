@@ -50,6 +50,8 @@ export default function CaregiverChatListScreen() {
     return () => unsub();
   }, [activePatientId]);
 
+
+
   return (
     <View style={styles.container}>
       <View style={styles.headerSpacer} />
@@ -104,7 +106,6 @@ export default function CaregiverChatListScreen() {
           </View>
         </Pressable>
 
-        <View style={styles.divider} />
       </ScrollView>
     </View>
   );
@@ -160,10 +161,5 @@ const styles = StyleSheet.create({
   lastMsgText: {
     fontSize: 16,
     color: "#666",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#EEE",
-    marginHorizontal: 20,
   },
 });

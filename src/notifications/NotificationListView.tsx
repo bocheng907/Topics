@@ -71,15 +71,16 @@ export function NotificationListView({ detailRoute }: Props) {
 
     const q = query(
       collection(db, NOTIFICATIONS_COLLECTION),
-      where("recipientUid", "==", currentUser.uid),
-      orderBy("createdAt", "desc")
+      where("recipientUid", "==", currentUser.uid)
     );
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         setNotifications(
-          snap.docs.map((docSnap) => ({
+          [...snap.docs]
+            .sort((a, b) => ((b.data() as any).createdAt?.toMillis?.() ?? 0) - ((a.data() as any).createdAt?.toMillis?.() ?? 0))
+            .map((docSnap) => ({
             id: docSnap.id,
             ...(docSnap.data() as NotificationDocument),
           })) as NotificationRow[]

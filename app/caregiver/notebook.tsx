@@ -295,7 +295,7 @@ export default function CaregiverNotebookScreen() {
     }
   };
 
-  const patientName = activePatient?.name || "陳柏丞";
+  const patientName = activePatient?.name || "陳爺爺";
 
   if (!ready || loading) {
     return (

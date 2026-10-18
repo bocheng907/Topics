@@ -305,7 +305,11 @@ export default function FamilyVoiceScreen() {
       const blob = await response.blob();
       const storageRef = ref(storage, `voice_messages/${activePatientId}/${fileName}`);
       
-      await uploadBytes(storageRef, blob);
+      // Metadata + explicit content type are required by storage.rules (voice_messages).
+      await uploadBytes(storageRef, blob, {
+        contentType: 'audio/mp4',
+        customMetadata: { uploaderUid: user.uid, patientId: activePatientId },
+      });
       const downloadUrl = await getDownloadURL(storageRef);
 
       const docRef = doc(db, 'voice_records', customDocId);

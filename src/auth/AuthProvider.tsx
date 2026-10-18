@@ -21,7 +21,10 @@ import { reportSession, signOut } from "./auditSession";
 import { isValidRegistrationPassword } from "./passwordPolicy";
 import { assertPrivacyConsent, PRIVACY_POLICY_VERSION, type PrivacyConsent } from "@/src/privacy/consent";
 
-export type Role = "caregiver" | "family";
+export type Role =
+  | "caregiver"
+  | "family"
+  | "agency";
 
 export type AuthUser = {
   uid: string;
@@ -33,6 +36,7 @@ export type AuthUser = {
 
 type RegisterExtra = {
   privacyConsent?: PrivacyConsent;
+  displayName?: string;
   emergencyPhone1?: string;
   emergencyPhone2?: string;
 };
@@ -129,6 +133,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
+      const displayName = (extra?.displayName ?? "").normalize("NFKC").trim();
+      // Display name is optional at registration (can be set later in Account Settings).
+      if (displayName.length > 120) {
+        throw new Error("名稱最多 120 個字元");
+      }
+
       const emergencyPhone1 = (extra?.emergencyPhone1 ?? "").trim();
       const emergencyPhone2 = (extra?.emergencyPhone2 ?? "").trim();
 
@@ -172,6 +182,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           activePatientId: "",
           emergencyPhone1: role === "family" ? emergencyPhone1 : "",
           emergencyPhone2: role === "family" ? emergencyPhone2 : "",
+          displayName,
+          avatarUrl: "",
           privacyConsent: {
             accepted: true,
             version: PRIVACY_POLICY_VERSION,

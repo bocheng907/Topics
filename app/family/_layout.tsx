@@ -10,11 +10,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, router, useSegments } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Animated, Dimensions, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const DRAWER_WIDTH = SCREEN_WIDTH * 0.55;
+const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.74, 340);
 
 export default function FamilyLayout() {
   const segments = useSegments() as string[];
@@ -34,7 +34,9 @@ export default function FamilyLayout() {
     "voice",
     "handbook",
     "notification-detail",
+    "account-settings",
     "emergency-contacts",
+    "report-care-issue",
   ];
   // 照顧者交流是巢狀路由（community/index、community/[id]、community/new-post），
   // 整個區塊都不顯示底部導覽列，避免遮住發文浮動鍵
@@ -62,7 +64,28 @@ export default function FamilyLayout() {
     outputRange: [0, 1],
   });
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Web 測試
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "確定要登出目前帳號嗎？"
+      );
+
+      if (!confirmed) return;
+
+      try {
+        await signOut(auth);
+        setIsSidebarOpen(false);
+        router.replace("/");
+      } catch (error) {
+        console.log("登出失敗:", error);
+        window.alert("登出失敗，請稍後再試");
+      }
+
+      return;
+    }
+
+    //手機版
     Alert.alert(t.logout, t.logoutMessage, [
       { text: t.cancel, style: "cancel" },
       {
@@ -150,6 +173,23 @@ export default function FamilyLayout() {
           <Pressable style={styles.menuItem} onPress={() => { setIsSidebarOpen(false); router.push("/care-target/invitations" as any); }}>
             <Text style={styles.menuItemText}>{invitationCopy[language].title}</Text>
           </Pressable>
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/family/report-care-issue" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>
+              {language === "zh"
+                ? "回報照護問題"
+                : language === "en"
+                  ? "Report Care Issue"
+                  : language === "vi"
+                    ? "Báo cáo vấn đề chăm sóc"
+                    : "Laporkan Masalah Perawatan"}
+            </Text>
+          </Pressable>
           <View style={styles.menuItem}>
             <Text style={styles.menuItemText}>{t.language}</Text>
             <View style={styles.languageOptions}>
@@ -203,6 +243,16 @@ export default function FamilyLayout() {
             }}
           >
             <Text style={styles.menuItemText}>{t.emergencyPhoneSettings}</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/account-settings" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>帳號設定</Text>
           </Pressable>
 
           <Pressable style={styles.menuItem} onPress={() => Alert.alert(t.warning, t.unlinkConfirm)}>
@@ -313,8 +363,11 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     color: "#000",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
   languageOptions: {
     marginTop: 10,
@@ -324,13 +377,19 @@ const styles = StyleSheet.create({
     color: "#555",
     fontSize: 16,
     fontWeight: "700",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 22,
   },
   languageOptionActive: {
     color: "#007AFF",
   },
   menuItemTextDanger: {
     color: "#E33B3B",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
 });

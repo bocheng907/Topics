@@ -5,7 +5,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "./useActiveCareTarget";
-import { primaryFamilyUid, canCreatePrescriptionForPatient } from "./permissions";
+import { canCreatePrescriptionForPatient } from "./permissions";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { invitationCopy } from "./invitationCopy";
 
@@ -31,9 +31,17 @@ export default function PrescriptionWriteGuard({ children }: { children: React.R
       deny();
       if (!patientId || typeof patientId !== "string") return;
       patientUnsubscribe = onSnapshot(doc(db, "patients", patientId), snap => {
-        setPermission({ key, allowed: snap.exists() && (creating
-          ? canCreatePrescriptionForPatient(snap.data(), uid)
-          : primaryFamilyUid(snap.data()) === uid) });
+        if (!snap.exists()) {
+          deny();
+          return;
+        }
+        const data = snap.data() as Record<string, any>;
+        const canManage =
+          (Array.isArray(data.families) && data.families.includes(uid)) ||
+          (Array.isArray(data.caregivers) && data.caregivers.includes(uid));
+        setPermission({ key, allowed: creating
+          ? canCreatePrescriptionForPatient(data, uid)
+          : canManage });
       }, deny);
     };
     const unsubscribe = typeof id === "string" && id
