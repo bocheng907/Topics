@@ -143,7 +143,7 @@ function CameraScreen() {
       console.log("[1] activePatientId =", activePatientId);
       console.log("[1] local imageUri =", imageUri);
 
-      const downloadURL = await uploadPrescriptionImage(imageUri, user.uid);
+      const downloadURL = await uploadPrescriptionImage(imageUri, user.uid, activePatientId);
       console.log("[1] downloadURL:", downloadURL);
 
       console.log("[2] analyzing prescription...");

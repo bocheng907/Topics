@@ -11,18 +11,25 @@ import { createImageUploadFilename } from "./uploadFilename";
  */
 export async function uploadPrescriptionImage(
   imageUri: string,
-  uid: string
+  uid: string,
+  patientId: string
 ): Promise<string> {
   // 1️⃣ 將本地圖片 URI 轉成 Blob
   const response = await fetch(imageUri);
   const blob = await response.blob();
 
   // 2️⃣ Firebase Storage 路徑（老師會看這個結構）
-  const filePath = `prescriptions/${uid}/${createImageUploadFilename()}`;
+  const filePath = `prescriptions/${patientId}/${uid}/${createImageUploadFilename()}`;
   const imageRef = ref(storage, filePath);
 
   // 3️⃣ 上傳圖片
-  await uploadBytes(imageRef, blob);
+  await uploadBytes(imageRef, blob, {
+    contentType: blob.type || "image/jpeg",
+    customMetadata: {
+      uploaderUid: uid,
+      patientId,
+    },
+  });
 
   // 4️⃣ 取得 download URL
   const downloadURL = await getDownloadURL(imageRef);
