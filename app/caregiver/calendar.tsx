@@ -240,10 +240,13 @@ function formatEventDateKey(date: Date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-function makeCalendarEventDocId(eventDate: string, activePatientId?: string | null) {
+// Readable and unique per save: {eventDate}_{HH-mm-ss-SSS}_{patient suffix}.
+// (A date-only ID made every new event on the same day overwrite the previous one.)
+function makeCalendarEventDocId(eventDate: string, activePatientId?: string | null, now = new Date()) {
   const patientSuffix = activePatientId?.trim().slice(-4);
   if (!patientSuffix) return "";
-  return `${eventDate}_${patientSuffix}`;
+  const timePart = `${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}-${String(now.getMilliseconds()).padStart(3, "0")}`;
+  return `${eventDate}_${timePart}_${patientSuffix}`;
 }
 
 function makeLegacyTopLevelDailyChecklistDocIds(
@@ -957,7 +960,7 @@ export default function CaregiverCalendarScreen() {
 
     const startDate = buildEventDate(selectedDate, formHour, formMinute, formPeriod);
     const eventDate = formatEventDateKey(startDate);
-    const calendarEventDocId = makeCalendarEventDocId(eventDate, activePatientId);
+    const calendarEventDocId = editingEventId || makeCalendarEventDocId(eventDate, activePatientId);
     if (!calendarEventDocId) return;
 
     const eventRef = doc(db, CALENDAR_EVENTS_COLLECTION, calendarEventDocId);
@@ -990,24 +993,22 @@ export default function CaregiverCalendarScreen() {
     };
 
     try {
-      await setDoc(eventRef, createPayload);
-    } catch (createError) {
-      try {
+      if (editingEventId) {
         await updateDoc(eventRef, mutablePayload);
-      } catch (updateError) {
-        console.log("save calendar event failed:", {
-          calendarEventDocId,
-          eventRefPath: eventRef.path,
-          createErrorCode: getErrorCode(createError),
-          updateErrorCode: getErrorCode(updateError),
-          createPayloadKeys: Object.keys(createPayload),
-          mutablePayloadKeys: Object.keys(mutablePayload),
-          authCurrentUserUid: auth.currentUser?.uid,
-          createError,
-          updateError,
-        });
-        return;
+      } else {
+        await setDoc(eventRef, createPayload);
       }
+    } catch (saveError) {
+      console.log("save calendar event failed:", {
+        calendarEventDocId,
+        eventRefPath: eventRef.path,
+        editing: Boolean(editingEventId),
+        errorCode: getErrorCode(saveError),
+        payloadKeys: Object.keys(editingEventId ? mutablePayload : createPayload),
+        authCurrentUserUid: auth.currentUser?.uid,
+        saveError,
+      });
+      return;
     }
 
     setFormOpen(false);
