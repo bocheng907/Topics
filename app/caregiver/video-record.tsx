@@ -197,7 +197,11 @@ export default function AbnormalRecordScreen() {
     const fileName = `${timeStr}_abnormal_${shortId}.${extension}`;
     
     const storageRef = ref(storage, `abnormal_media/${activePatientId}/${fileName}`);
-    await uploadBytes(storageRef, blob);
+    // Metadata + explicit content type are required by storage.rules (abnormal_media).
+    await uploadBytes(storageRef, blob, {
+      contentType: mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
+      customMetadata: { uploaderUid: user?.uid ?? '', patientId: activePatientId },
+    });
     return await getDownloadURL(storageRef);
   };
 
