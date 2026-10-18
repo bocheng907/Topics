@@ -1171,9 +1171,9 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role;
     }
 
-    // 只有家屬能存取社群；看護完全讀寫不到
-    function isFamilyUser() {
-      return roleDocExists() && currentUserRole() == 'family';
+    // 家屬與仲介／機構能存取社群；看護完全讀寫不到
+    function isCommunityUser() {
+      return roleDocExists() && currentUserRole() in ['family', 'agency'];
     }
 
     // 角色對照表：本人可讀可建，但建立後不得自行變更角色
@@ -1262,7 +1262,7 @@ service cloud.firestore {
           && unchangedNumber('commentCount') && unchangedNumber('reportCount');
       }
 
-      // 以下三種是「任何家屬都可以做」的計數器變動，
+      // 以下三種是「任何社群使用者都可以做」的計數器變動，
       // 每一種都嚴格限制只能動一個計數器、且只能 ±1，避免被拿去改內容或亂灌數字
       function viewBump() {
         return changedKeys().hasOnly(['viewCount'])
@@ -1292,14 +1292,14 @@ service cloud.firestore {
               && request.resource.data.reportCount >= 3));
       }
 
-      allow read: if isFamilyUser();
-      allow create: if isFamilyUser() && validNewPost(request.resource.data);
-      allow update: if isFamilyUser() && (
+      allow read: if isCommunityUser();
+      allow create: if isCommunityUser() && validNewPost(request.resource.data);
+      allow update: if isCommunityUser() && (
           (isPostAuthor() && authorEdit())
           || viewBump() || likeBump() || commentBump() || reportBump()
         );
       // 只有作者能刪自己的文章
-      allow delete: if isFamilyUser() && isPostAuthor();
+      allow delete: if isCommunityUser() && isPostAuthor();
 
       match /comments/{commentId} {
         function validComment(data) {
@@ -1316,27 +1316,27 @@ service cloud.firestore {
             && data.likeCount == 0;
         }
 
-        allow read: if isFamilyUser();
-        allow create: if isFamilyUser() && validComment(request.resource.data);
+        allow read: if isCommunityUser();
+        allow create: if isCommunityUser() && validComment(request.resource.data);
         // 留言送出後不可編輯，只能由留言者本人刪除
         allow update: if false;
-        allow delete: if isFamilyUser() && resource.data.authorUid == request.auth.uid;
+        allow delete: if isCommunityUser() && resource.data.authorUid == request.auth.uid;
       }
 
       // 按讚：文件 ID 就是 uid，一人一讚由結構保證，也只能動自己那一份
       match /likes/{likeUid} {
-        allow read: if isFamilyUser() && request.auth.uid == likeUid;
-        allow create: if isFamilyUser() && request.auth.uid == likeUid
+        allow read: if isCommunityUser() && request.auth.uid == likeUid;
+        allow create: if isCommunityUser() && request.auth.uid == likeUid
           && request.resource.data.keys().hasOnly(['createdAt'])
           && request.resource.data.createdAt == request.time;
-        allow delete: if isFamilyUser() && request.auth.uid == likeUid;
+        allow delete: if isCommunityUser() && request.auth.uid == likeUid;
         allow update: if false;
       }
 
       // 觀看紀錄：只能讀寫自己那一份，用於 24 小時去重
       match /views/{viewUid} {
-        allow read: if isFamilyUser() && request.auth.uid == viewUid;
-        allow create, update: if isFamilyUser() && request.auth.uid == viewUid
+        allow read: if isCommunityUser() && request.auth.uid == viewUid;
+        allow create, update: if isCommunityUser() && request.auth.uid == viewUid
           && request.resource.data.keys().hasOnly(['lastViewedAt'])
           && request.resource.data.lastViewedAt == request.time;
         allow delete: if false;
@@ -1346,7 +1346,7 @@ service cloud.firestore {
     // 檢舉紀錄：使用者只能新增，連自己送出的都讀不到（避免互相探查檢舉來源）
     match /reports/{reportId} {
       allow read: if false;
-      allow create: if isFamilyUser()
+      allow create: if isCommunityUser()
         && request.resource.data.keys().hasOnly([
             'postId', 'reporterUid', 'reason', 'detail', 'createdAt'
           ])
