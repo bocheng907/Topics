@@ -10,8 +10,7 @@ export function primaryFamilyUid(data: Record<string, any>): string | null {
 }
 
 export function canCreatePrescriptionForPatient(data: Record<string, any>, uid: string): boolean {
-  return primaryFamilyUid(data) === uid ||
-    (Array.isArray(data.caregivers) && data.caregivers.includes(uid));
+  return Array.isArray(data.caregivers) && data.caregivers.includes(uid);
 }
 
 export async function canEditPrescription(id: string): Promise<boolean> {
@@ -20,5 +19,13 @@ export async function canEditPrescription(id: string): Promise<boolean> {
   const prescription = await getDoc(doc(db, "prescriptions", id));
   if (!prescription.exists()) return false;
   const patient = await getDoc(doc(db, "patients", prescription.data().patientId));
-  return auth.currentUser?.uid === uid && patient.exists() && primaryFamilyUid(patient.data()) === uid;
+  if (!patient.exists()) return false;
+  const data = patient.data() as Record<string, any>;
+  const isFamily = Array.isArray(data.families) && data.families.includes(uid);
+  const isCaregiver = Array.isArray(data.caregivers) && data.caregivers.includes(uid);
+  return auth.currentUser?.uid === uid && (isFamily || isCaregiver);
+}
+
+export async function canDeletePrescription(id: string): Promise<boolean> {
+  return canEditPrescription(id);
 }

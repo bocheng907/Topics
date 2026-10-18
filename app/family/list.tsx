@@ -171,7 +171,7 @@ function getMemoText(value: any): string {
 }
 
 async function deletePrescriptionCascade(prescriptionId: string) {
-  if (!await canEditPrescription(prescriptionId)) throw new Error("Primary family required");
+  if (!await canEditPrescription(prescriptionId)) throw new Error("Prescription management permission required");
   const parent = await getDoc(doc(db, "prescriptions", prescriptionId));
   const patientId = parent.data()?.patientId;
   if (!patientId) throw new Error("Patient unavailable");

@@ -46,6 +46,12 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId;
     }
 
+    function canDeletePrescription(prescriptionId) {
+      let prescription = get(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data;
+      return prescription.patientId is string
+        && isLinkedToPatient(prescription.patientId);
+    }
+
     // Caregivers may create a new prescription, its items and reminders in ONE
     // atomic batch. Existing prescriptions cannot be extended or edited by them.
     function isCreatingOwnPrescription(prescriptionId, patientId) {
@@ -839,20 +845,19 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.patientId is string
-        && (isPrimaryFamily(request.resource.data.patientId)
-          || (isCaregiverMember(request.resource.data.patientId)
-            && request.resource.data.createdAt == request.time));
+        && isCaregiverMember(request.resource.data.patientId)
+        && request.resource.data.createdAt == request.time;
 
       allow update: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId)
+        && isLinkedToPatient(resource.data.patientId)
         && request.resource.data.patientId == resource.data.patientId
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt;
 
       allow delete: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId);
+        && isLinkedToPatient(resource.data.patientId);
 
       match /items/{itemId} {
         allow read: if signedIn()
@@ -860,13 +865,18 @@ service cloud.firestore {
           && isLinkedToPatient(prescriptionPatientId(prescriptionId));
 
         allow create: if signedIn() && (
-          isPrimaryFamily(getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId)
+          (exists(/databases/$(database)/documents/prescriptions/$(prescriptionId))
+            && prescriptionPatientId(prescriptionId) is string
+            && isLinkedToPatient(prescriptionPatientId(prescriptionId)))
           || isCreatingOwnPrescription(prescriptionId,
             getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId));
 
-        allow update, delete: if signedIn()
+        allow update: if signedIn()
           && prescriptionPatientId(prescriptionId) is string
-          && isPrimaryFamily(prescriptionPatientId(prescriptionId));
+          && isLinkedToPatient(prescriptionPatientId(prescriptionId));
+
+        allow delete: if signedIn()
+          && canDeletePrescription(prescriptionId);
       }
     }
 
@@ -877,24 +887,16 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.resource.data.patientId is string
-        && (isPrimaryFamily(request.resource.data.patientId)
-          || (request.resource.data.prescriptionId is string
-            && isCreatingOwnPrescription(request.resource.data.prescriptionId,
-              request.resource.data.patientId)
-            && request.resource.data.createdAt == request.time
-            && request.resource.data.notifyUserIds is list
-            && request.resource.data.notifyUserIds.toSet() ==
-              patientDoc(request.resource.data.patientId).data.families.concat(
-                patientDoc(request.resource.data.patientId).data.caregivers).toSet()));
+        && isLinkedToPatient(request.resource.data.patientId);
 
       allow update: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId)
+        && isLinkedToPatient(resource.data.patientId)
         && request.resource.data.patientId == resource.data.patientId;
 
       allow delete: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId);
+        && isLinkedToPatient(resource.data.patientId);
     }
 
     match /medication_logs/{logId} {
