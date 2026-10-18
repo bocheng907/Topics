@@ -699,6 +699,7 @@ const styles = StyleSheet.create({
   reminderTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 12,
     marginBottom: 12,
     width: "100%",
@@ -708,14 +709,17 @@ const styles = StyleSheet.create({
     fontSize: 36,
   },
   reminderTitle: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: "bold",
     color: "#000",
-    letterSpacing: 1,
+    letterSpacing: 0.4,
+    textAlign: "center",
+    flexShrink: 1,
   },
   reminderSubRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
     marginBottom: 24,
     width: "100%",
@@ -725,9 +729,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   reminderSubText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "600",
     color: "#000",
+    textAlign: "center",
+    flexShrink: 1,
   },
   doneBtn: {
     width: 110,
@@ -817,6 +823,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   gridGroup: {
+    width: "100%",
+    paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
@@ -829,9 +837,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   gridText: {
-    width: "92%",
-    fontSize: 17,
-    lineHeight: 20,
+    width: "100%",
+    paddingHorizontal: 2,
+    fontSize: 15,
+    lineHeight: 19,
     fontWeight: "bold",
     color: "#111827",
     letterSpacing: 0.2,

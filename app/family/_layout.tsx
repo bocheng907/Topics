@@ -14,7 +14,7 @@ import { Alert, Animated, Dimensions, Platform, Pressable, StyleSheet, Text, Vie
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const DRAWER_WIDTH = SCREEN_WIDTH * 0.55;
+const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.74, 340);
 
 export default function FamilyLayout() {
   const segments = useSegments() as string[];
@@ -352,8 +352,11 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     color: "#000",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
   languageOptions: {
     marginTop: 10,
@@ -363,13 +366,19 @@ const styles = StyleSheet.create({
     color: "#555",
     fontSize: 16,
     fontWeight: "700",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 22,
   },
   languageOptionActive: {
     color: "#007AFF",
   },
   menuItemTextDanger: {
     color: "#E33B3B",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
 });

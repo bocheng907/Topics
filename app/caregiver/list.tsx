@@ -386,14 +386,14 @@ export default function CaregiverListScreen() {
             onPress={() => setTab("records")}
             style={[styles.tab, tab === "records" && styles.activeTab]}
           >
-            <Text style={styles.tabText}>藥單紀錄</Text>
+            <Text style={styles.tabText} adjustsFontSizeToFit minimumFontScale={0.72}>{t.prescriptionRecords}</Text>
           </Pressable>
 
           <Pressable
             onPress={() => setTab("meds")}
             style={[styles.tab, tab === "meds" && styles.activeTab]}
           >
-            <Text style={styles.tabText}>用藥列表</Text>
+            <Text style={styles.tabText} adjustsFontSizeToFit minimumFontScale={0.72}>{t.medicationList}</Text>
           </Pressable>
         </View>
       </View>
@@ -464,10 +464,10 @@ export default function CaregiverListScreen() {
                   color="#2F80ED"
                 />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.summaryLabel}>目前持續服用中</Text>
+                  <Text style={styles.summaryLabel}>{t.currentMedications}</Text>
                   <Text style={styles.summaryCount}>
-                    共 <Text style={styles.summaryNumber}>{medications.length}</Text>{" "}
-                    種藥物
+                    {t.medicationCountPrefix} <Text style={styles.summaryNumber}>{medications.length}</Text>{" "}
+                    {t.medicationCountSuffix}
                   </Text>
                 </View>
               </View>
@@ -476,14 +476,14 @@ export default function CaregiverListScreen() {
             <View style={styles.warningBox}>
               <Ionicons name="warning" size={40} color="#ebb120" />
               <Text style={styles.warningText}>
-                用藥資訊僅供參考，請以醫師或藥師指示為準
+                {t.medicationDisclaimer}
               </Text>
             </View>
 
             {medications.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="medical-outline" size={60} color="#CCC" />
-                <Text style={styles.emptyText}>目前尚無用藥資料</Text>
+                <Text style={styles.emptyText}>{t.noMedicationData}</Text>
               </View>
             ) : (
               medications.map((medication) => (
@@ -503,7 +503,7 @@ export default function CaregiverListScreen() {
                       </Text>
 
                       <View style={styles.purposeRow}>
-                        <Text style={styles.purposeLabel}>常見用途</Text>
+                        <Text style={styles.purposeLabel}>{t.commonUses}</Text>
 
                         {medication.purposes.length > 0 ? (
                           medication.purposes.slice(0, 2).map((purpose) => (
@@ -515,18 +515,18 @@ export default function CaregiverListScreen() {
                           ))
                         ) : (
                           <View style={styles.noPurposeTag}>
-                            <Text style={styles.noPurposeText}>無</Text>
+                            <Text style={styles.noPurposeText}>{t.none}</Text>
                           </View>
                         )}
                       </View>
 
                       <Text style={styles.sourceText}>
-                        資料來源：{medication.sourceLabel || "藥單辨識"}
+                        {t.dataSource}：{medication.sourceLabel || t.prescriptionRecognition}
                       </Text>
 
                       {medication.sourceLabel === "AI 補充" ? (
                         <Text style={styles.aiHint}>
-                          ※ 此資訊僅供參考，請勿自行停藥或更改用藥
+                          {t.aiMedicationHint}
                         </Text>
                       ) : null}
                     </View>
@@ -536,7 +536,7 @@ export default function CaregiverListScreen() {
 
                   <View style={styles.medFooter}>
                     <Text style={styles.recordCount}>
-                      共 {medication.count} 筆紀錄
+                      {t.recordsCountPrefix} {medication.count} {t.recordsCountSuffix}
                     </Text>
                     <Ionicons
                       name="chevron-forward"
@@ -594,9 +594,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#DCCF00",
   },
   tabText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "900",
     color: "#222",
+    textAlign: "center",
+    flexShrink: 1,
+    paddingHorizontal: 8,
   },
   scrollContent: {
     padding: 20,
@@ -636,6 +639,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#333",
     marginBottom: 4,
+    flexShrink: 1,
   },
   recordDate: {
     fontSize: 14,
@@ -643,11 +647,12 @@ const styles = StyleSheet.create({
   },
   recordFooter: {
     flexDirection: "row",
+    flexWrap: "wrap",
     borderTopWidth: 1,
     borderTopColor: "#EEE",
     paddingTop: 10,
     marginTop: 10,
-    gap: 20,
+    gap: 16,
   },
   detailText: {
     color: "#007AFF",
@@ -671,6 +676,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
+    flexWrap: "wrap",
   },
   summaryLabel: {
     fontSize: 18,
@@ -679,10 +685,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   summaryCount: {
-    fontSize: 30,
+    fontSize: 26,
     color: "#111",
     fontWeight: "900",
-    lineHeight: 38,
+    lineHeight: 34,
+    flexShrink: 1,
   },
   summaryNumber: {
     color: "#E53935",
@@ -729,10 +736,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   medName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
     color: "#111",
     marginBottom: 8,
+    flexShrink: 1,
   },
   purposeRow: {
     flexDirection: "row",
@@ -754,9 +762,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   purposeTagText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "900",
     color: "#555",
+    flexShrink: 1,
   },
   noPurposeTag: {
     backgroundColor: "#E5E5E5",
@@ -790,10 +799,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 10,
   },
   recordCount: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "900",
     color: "#111",
+    flex: 1,
+    flexShrink: 1,
   },
 });
