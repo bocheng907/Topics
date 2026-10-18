@@ -6,7 +6,7 @@ import {
   doc,
   onSnapshot,
   query,
-  runTransaction,
+  setDoc,
   serverTimestamp,
   where,
 } from "firebase/firestore";
@@ -348,42 +348,35 @@ export default function CaregiverHomeScreen() {
         logId
       );
 
-      const created = await runTransaction(db, async (transaction) => {
-        const existingLog = await transaction.get(logRef);
-        if (existingLog.exists()) return false;
-
-        transaction.set(logRef, {
-          logId,
-          reminderId: primaryReminder.id,
-          reminderIds: slotReminders.map((reminder) => reminder.id),
-          prescriptionId: primaryReminder.prescriptionId ?? "",
-          prescriptionIds: [
-            ...new Set(
-              slotReminders
-                .map((reminder) => reminder.prescriptionId ?? "")
-                .filter(Boolean)
-            ),
-          ],
-          patientId: activePatientId,
-          patientsId: activePatient?.patientsId ?? "",
-          medicineName: primaryReminder.medicineName,
-          medicineNames: slotReminders.map((reminder) => reminder.medicineName),
-          doseText: primaryReminder.doseText,
-          scheduleTime: activeSlot.scheduleTime,
-          status: "taken",
-          confirmedBy: user.uid,
-          takenAt: serverTimestamp(),
-          dateKey: todayKey,
-          createdAt: serverTimestamp(),
-        });
-
-        return true;
+      // Do not read the deterministic log document before creating it.
+      // Firestore rules intentionally deny reads for a non-existent medication log,
+      // so a transaction.get() here turns a valid first-time DONE into permission-denied.
+      await setDoc(logRef, {
+        logId,
+        reminderId: primaryReminder.id,
+        reminderIds: slotReminders.map((reminder) => reminder.id),
+        prescriptionId: primaryReminder.prescriptionId ?? "",
+        prescriptionIds: [
+          ...new Set(
+            slotReminders
+              .map((reminder) => reminder.prescriptionId ?? "")
+              .filter(Boolean)
+          ),
+        ],
+        patientId: activePatientId,
+        patientsId: activePatient?.patientsId ?? "",
+        medicineName: primaryReminder.medicineName,
+        medicineNames: slotReminders.map((reminder) => reminder.medicineName),
+        doseText: primaryReminder.doseText,
+        scheduleTime: activeSlot.scheduleTime,
+        status: "taken",
+        confirmedBy: user.uid,
+        takenAt: serverTimestamp(),
+        dateKey: todayKey,
+        createdAt: serverTimestamp(),
       });
 
-      Alert.alert(
-        t.alreadyDone,
-        created ? t.doneRecorded : t.reminderAlreadyDone
-      );
+      Alert.alert(t.alreadyDone, t.doneRecorded);
     } catch (error) {
       console.log("done error:", error);
       Alert.alert(t.resultErrorTitle, t.recordFailed);
