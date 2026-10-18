@@ -87,6 +87,104 @@ service cloud.firestore {
       );
     }
 
+    // ==========================================
+    // Agency profile
+    // ==========================================
+    match /agencies/{agencyUid} {
+      allow read: if signedIn()
+        && request.auth.uid == agencyUid;
+
+      allow create: if signedIn()
+        && request.auth.uid == agencyUid
+        && request.resource.data.keys().hasOnly([
+          "agencyUid",
+          "email",
+          "inviteCode",
+          "createdAt"
+        ])
+        && request.resource.data.agencyUid == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.inviteCode is string
+        && request.resource.data.inviteCode.size() == 6
+        && request.resource.data.createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+
+
+    // ==========================================
+    // Agency invite codes
+    // ==========================================
+    match /agency_invites/{inviteCode} {
+      // 看護之後需要用邀請碼查這一筆
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "inviteCode",
+          "agencyUid",
+          "agencyEmail",
+          "active",
+          "createdAt"
+        ])
+        && request.resource.data.inviteCode == inviteCode
+        && request.resource.data.inviteCode.size() == 6
+        && request.resource.data.agencyUid == request.auth.uid
+        && request.resource.data.agencyEmail is string
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+    // ==========================================
+    // Agency ↔ Caregiver membership
+    // ==========================================
+    match /agency_memberships/{caregiverUid} {
+
+      // 看護可以讀自己的綁定資料
+      // 仲介可以讀屬於自己的看護綁定資料
+      allow read: if signedIn() && (
+        request.auth.uid == caregiverUid
+        || resource.data.agencyUid == request.auth.uid
+      );
+
+      // 看護只能替自己建立一筆綁定
+      // 並且必須使用有效、啟用中的仲介邀請碼
+      allow create: if signedIn()
+        && request.auth.uid == caregiverUid
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "caregiverEmail",
+          "agencyUid",
+          "agencyInviteCode",
+          "createdAt"
+        ])
+        && request.resource.data.caregiverUid == request.auth.uid
+        && request.resource.data.caregiverEmail is string
+        && request.resource.data.agencyUid is string
+        && request.resource.data.agencyInviteCode is string
+        && request.resource.data.agencyInviteCode.size() == 6
+        && request.resource.data.createdAt == request.time
+
+        // 邀請碼文件必須存在
+        && exists(
+          /databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode)
+        )
+
+        // 邀請碼必須啟用
+        && get(
+          /databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode)
+        ).data.active == true
+
+        // 邀請碼所屬仲介必須與送進來的 agencyUid 相同
+        && get(
+          /databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode)
+        ).data.agencyUid == request.resource.data.agencyUid;
+
+      // MVP：綁定後暫時不允許自行換仲介或解除
+      allow update, delete: if false;
+    }
+
     match /users/{userDocId} {
       allow read: if isOwnUserDoc();
 
@@ -96,11 +194,13 @@ service cloud.firestore {
         && request.resource.data.privacyConsent.acceptedAt == request.time
         && request.resource.data.keys().hasOnly([
           "uid", "email", "role", "createdAt", "activePatientId",
-          "emergencyPhone1", "emergencyPhone2", "privacyConsent"
+          "emergencyPhone1", "emergencyPhone2", "displayName", "avatarUrl", "privacyConsent"
         ])
-        && request.resource.data.role in ["family", "caregiver"]
+        && request.resource.data.role in ["family", "caregiver", "agency"]
         && request.resource.data.activePatientId is string
         && request.resource.data.email is string
+        && boundedString(request.resource.data.get('displayName', ''), 120)
+        && boundedString(request.resource.data.get('avatarUrl', ''), 4096)
         && request.resource.data.emergencyPhone1 is string
         && request.resource.data.emergencyPhone2 is string;
 
@@ -110,7 +210,7 @@ service cloud.firestore {
         && isOwnIncomingUserDoc()
         && request.resource.data.keys().hasOnly([
           "uid", "email", "role", "createdAt", "activePatientId",
-          "emergencyPhone1", "emergencyPhone2", "accountStatus",
+          "emergencyPhone1", "emergencyPhone2", "displayName", "avatarUrl", "accountStatus",
           "deletionRequestedAt", "deletionScheduledFor", "privacyConsent"
         ])
         && request.resource.data.uid == resource.data.uid
@@ -123,6 +223,8 @@ service cloud.firestore {
         && request.resource.data.activePatientId is string
         && request.resource.data.emergencyPhone1 is string
         && request.resource.data.emergencyPhone2 is string
+        && boundedString(request.resource.data.get('displayName', ''), 120)
+        && boundedString(request.resource.data.get('avatarUrl', ''), 4096)
         && (
           request.resource.data.activePatientId == "" ||
           isLinkedToPatient(request.resource.data.activePatientId)
