@@ -12,6 +12,7 @@ export default function CommunityLayout() {
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="[id]" />
+      <Stack.Screen name="my-posts" />
       {/* 發文頁用由下往上的動畫，符合原型的 slideUp 效果 */}
       <Stack.Screen name="new-post" options={{ presentation: "modal", animation: "slide_from_bottom" }} />
     </Stack>

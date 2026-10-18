@@ -16,6 +16,7 @@ import {
   where,
 } from "firebase/firestore";
 import { auth, db } from "@/firebase/firebaseConfig";
+import { syncUserRole } from "./userRole";
 import { reportSession, signOut } from "./auditSession";
 import { isValidRegistrationPassword } from "./passwordPolicy";
 import { assertPrivacyConsent, PRIVACY_POLICY_VERSION, type PrivacyConsent } from "@/src/privacy/consent";
@@ -74,11 +75,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!snap.empty) {
           const data = snap.docs[0].data() as any;
+          const resolvedRole = (data.role as Role) ?? "family";
+
+          // 補寫 user_roles/{uid}，讓 Security Rules 能判斷角色。
+          // 既有帳號沒有這份文件，重新登入一次就會自動補上。
+          void syncUserRole(fbUser.uid, resolvedRole).catch((error) =>
+            console.log("[AuthProvider] syncUserRole failed:", error)
+          );
 
           setUser({
             uid: fbUser.uid,
             email: fbUser.email ?? "",
-            role: (data.role as Role) ?? "family",
+            role: resolvedRole,
             accountStatus: data.accountStatus === "pending_deletion" ?
               "pending_deletion" : "active",
             deletionScheduledFor: data.deletionScheduledFor?.toDate?.(),
@@ -173,6 +181,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const docRef = doc(db, "users", customDocId);
         await setDoc(docRef, payload);
+
+        // 同步角色對照表，讓 Security Rules 從註冊當下就能判斷角色
+        await syncUserRole(fbUser.uid, role);
 
         setUser({
           uid: fbUser.uid,

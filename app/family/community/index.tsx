@@ -1,12 +1,14 @@
 // 照顧者知識共享 — 主頁
 // 結構：Header → 搜尋列 → 本週熱門（橫向）→ 分類切換 → 文章列表 → 發文浮動鍵
-// 第一階段使用假資料，第四階段改接 Firestore
+// 資料來自 Firestore 的 posts 集合
 
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,51 +18,71 @@ import {
 
 import PostCard from "@/src/community/components/PostCard";
 import CategoryTabs from "@/src/community/components/CategoryTabs";
-import { MOCK_POSTS } from "@/src/community/mockPosts";
+import ProfileButton from "@/src/community/components/ProfileButton";
+import { getHotPosts, getPosts } from "@/src/community/api";
 import { COMMUNITY_COLORS } from "@/src/community/theme";
 import type { CategoryFilter, Post } from "@/src/community/types";
 
 /** 本週熱門顯示的篇數上限（規劃書：過去 7 天觀看數前 5 名） */
 const HOT_POST_LIMIT = 5;
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export default function CommunityHomeScreen() {
   const [category, setCategory] = useState<CategoryFilter>("全部");
   const [keyword, setKeyword] = useState("");
 
-  /** 只顯示未被隱藏的文章 */
-  const visiblePosts = useMemo(
-    () => MOCK_POSTS.filter((post) => post.status === "published"),
-    []
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
+  const [hotPosts, setHotPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [errorText, setErrorText] = useState("");
+
+  /** 從 Firestore 讀取文章與本週熱門 */
+  const loadPosts = useCallback(async () => {
+    try {
+      setErrorText("");
+      const [posts, hot] = await Promise.all([getPosts(), getHotPosts(HOT_POST_LIMIT)]);
+      setAllPosts(posts);
+      setHotPosts(hot);
+    } catch (error) {
+      console.log("[community] load posts failed:", error);
+      setErrorText("讀取文章失敗，請確認網路後下拉重新整理");
+    }
+  }, []);
+
+  // 每次回到這個畫面都重新讀取，發文或看完文章回來才會看到最新的數字
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        setLoading(true);
+        await loadPosts();
+        if (alive) setLoading(false);
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [loadPosts])
   );
 
-  /** 掛載時固定一次「七天前」的時間基準，避免每次渲染都重新取現在時間 */
-  const [hotSince] = useState(() => Date.now() - SEVEN_DAYS_MS);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadPosts();
+    setRefreshing(false);
+  }, [loadPosts]);
 
-  /** 本週熱門：過去 7 天內、依觀看數取前 5 名；不足 5 篇就顯示現有的 */
-  const hotPosts = useMemo(
-    () =>
-      visiblePosts
-        .filter((post) => post.createdAt >= hotSince)
-        .sort((a, b) => b.viewCount - a.viewCount)
-        .slice(0, HOT_POST_LIMIT),
-    [visiblePosts, hotSince]
-  );
-
-  /** 列表：先套分類與關鍵字，再依觀看數由高到低排序（預設排序） */
+  /** 列表：套分類與關鍵字（排序已由 Firestore 依觀看數處理） */
   const listPosts = useMemo(() => {
     const trimmedKeyword = keyword.trim();
 
-    return visiblePosts
+    return allPosts
       .filter((post) => (category === "全部" ? true : post.category === category))
       .filter((post) => {
         if (!trimmedKeyword) return true;
         return (
           post.title.includes(trimmedKeyword) || post.content.includes(trimmedKeyword)
         );
-      })
-      .sort((a, b) => b.viewCount - a.viewCount);
-  }, [visiblePosts, category, keyword]);
+      });
+  }, [allPosts, category, keyword]);
 
   const openPost = (post: Post) => {
     router.push(`/family/community/${post.id}` as any);
@@ -74,7 +96,13 @@ export default function CommunityHomeScreen() {
           <Ionicons name="chevron-back" size={24} color="#111827" />
           <Text style={styles.backText}>返回</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>照顧者交流</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          照顧者交流
+        </Text>
+        {/* 右上角頭像：進入「我的文章」 */}
+        <View style={styles.headerRight}>
+          <ProfileButton onPress={() => router.push("/family/community/my-posts" as any)} />
+        </View>
       </View>
 
       <ScrollView
@@ -82,6 +110,13 @@ export default function CommunityHomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={COMMUNITY_COLORS.primary}
+          />
+        }
       >
         {/* 搜尋列 */}
         <View style={styles.searchWrap}>
@@ -129,7 +164,18 @@ export default function CommunityHomeScreen() {
         </View>
 
         {/* 文章列表 */}
-        {listPosts.length === 0 ? (
+        {loading ? (
+          <View style={styles.emptyWrap}>
+            <ActivityIndicator size="large" color={COMMUNITY_COLORS.primary} />
+            <Text style={styles.emptyHint}>載入中...</Text>
+          </View>
+        ) : errorText !== "" ? (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="cloud-offline-outline" size={48} color="#D1D5DB" />
+            <Text style={styles.emptyTitle}>讀取失敗</Text>
+            <Text style={styles.emptyHint}>{errorText}</Text>
+          </View>
+        ) : listPosts.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Ionicons name="document-text-outline" size={48} color="#D1D5DB" />
             <Text style={styles.emptyTitle}>
@@ -184,6 +230,11 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
     color: "#111827",
+  },
+  headerRight: {
+    marginLeft: "auto",
+    // 頭像比返回文字高，抵銷多出的高度，讓 header 與家屬端其他頁面同高
+    marginVertical: -8,
   },
   headerTitle: {
     flexShrink: 1,

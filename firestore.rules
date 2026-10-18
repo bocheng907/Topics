@@ -46,6 +46,12 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId;
     }
 
+    function canDeletePrescription(prescriptionId) {
+      let prescription = get(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data;
+      return prescription.patientId is string
+        && isLinkedToPatient(prescription.patientId);
+    }
+
     // Caregivers may create a new prescription, its items and reminders in ONE
     // atomic batch. Existing prescriptions cannot be extended or edited by them.
     function isCreatingOwnPrescription(prescriptionId, patientId) {
@@ -87,7 +93,305 @@ service cloud.firestore {
       );
     }
 
-    match /users/{userDocId} {
+
+    // ==========================================
+    // Agency invite codes
+    // ==========================================
+    match /agency_invites/{inviteCode} {
+      // 看護之後需要用邀請碼查這一筆
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "inviteCode",
+          "agencyUid",
+          "agencyEmail",
+          "active",
+          "createdAt"
+        ])
+        && request.resource.data.inviteCode == inviteCode
+        && request.resource.data.inviteCode.size() == 6
+        && request.resource.data.agencyUid == request.auth.uid
+        && request.resource.data.agencyEmail is string
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+    // ==========================================
+    // Agency ↔ Caregiver membership
+    // ==========================================
+    match /agency_memberships/{caregiverUid} {
+
+      // 看護可以讀自己的綁定資料
+      // 仲介可以讀屬於自己的看護綁定資料
+      allow read: if signedIn() && (
+        request.auth.uid == caregiverUid
+        || resource.data.agencyUid == request.auth.uid
+      );
+
+      // 看護只能替自己建立一筆綁定
+      // 並且必須使用有效、啟用中的仲介邀請碼
+      allow create: if signedIn()
+        && request.auth.uid == caregiverUid
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "caregiverEmail",
+          "agencyUid",
+          "agencyInviteCode",
+          "createdAt"
+        ])
+        && request.resource.data.caregiverUid == request.auth.uid
+        && request.resource.data.caregiverEmail is string
+        && request.resource.data.agencyUid is string
+        && request.resource.data.agencyInviteCode is string
+        && request.resource.data.agencyInviteCode.size() == 6
+        && request.resource.data.createdAt == request.time
+
+        // 邀請碼文件必須存在
+        && exists(
+          /databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode)
+        )
+
+        // 邀請碼必須啟用
+        && get(
+          /databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode)
+        ).data.active == true
+
+        // 邀請碼所屬仲介必須與送進來的 agencyUid 相同
+        && get(
+          /databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode)
+        ).data.agencyUid == request.resource.data.agencyUid;
+
+      // MVP：綁定後暫時不允許自行換仲介或解除
+      allow update, delete: if false;
+    }
+
+    // ==========================================
+    // Caregiver profile
+    // 看護本人維護，已綁定仲介可讀取
+    // ==========================================
+    match /caregiver_profiles/{caregiverUid} {
+
+      // 看護本人可以看
+      // 與此看護綁定的仲介也可以看
+      allow read: if signedIn() && (
+        request.auth.uid == caregiverUid
+        || (
+          exists(
+            /databases/$(database)/documents/agency_memberships/$(caregiverUid)
+          )
+          &&
+          get(
+            /databases/$(database)/documents/agency_memberships/$(caregiverUid)
+          ).data.agencyUid == request.auth.uid
+        )
+      );
+
+      // 只有看護本人可以建立自己的基本資料
+      allow create: if signedIn()
+        && request.auth.uid == caregiverUid
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "displayName",
+          "email",
+          "phone",
+          "avatarUrl",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.caregiverUid == request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 120
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 320
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 64
+        && request.resource.data.avatarUrl is string
+        && request.resource.data.avatarUrl.size() <= 4096
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      // 只有看護本人可以修改
+      allow update: if signedIn()
+        && request.auth.uid == caregiverUid
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "displayName",
+          "email",
+          "phone",
+          "avatarUrl",
+          "createdAt",
+          "updatedAt"
+        ])
+
+        // 建立後不可修改
+        && request.resource.data.caregiverUid
+          == resource.data.caregiverUid
+        && request.resource.data.email
+          == resource.data.email
+        && request.resource.data.createdAt
+          == resource.data.createdAt
+
+        // 只允許改姓名、電話、頭像、updatedAt
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            "displayName",
+            "phone",
+            "avatarUrl",
+            "updatedAt"
+          ])
+
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 120
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 64
+        && request.resource.data.avatarUrl is string
+        && request.resource.data.avatarUrl.size() <= 4096
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+
+    // ==========================================
+    // Caregiver service summaries
+    // 看護維護自己的照護對象摘要，所屬仲介可讀
+    // ==========================================
+    match /caregiver_service_summaries/{caregiverUid}/patients/{patientId} {
+
+      // 看護本人或所屬仲介可以讀
+      allow read: if signedIn() && (
+        request.auth.uid == caregiverUid
+        || (
+          exists(
+            /databases/$(database)/documents/agency_memberships/$(caregiverUid)
+          )
+          &&
+          get(
+            /databases/$(database)/documents/agency_memberships/$(caregiverUid)
+          ).data.agencyUid == request.auth.uid
+        )
+      );
+
+      // 看護只能替自己、且是真的照護對象建立摘要
+      allow create: if signedIn()
+        && request.auth.uid == caregiverUid
+        && isCaregiverMember(patientId)
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "patientId",
+          "patientName",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.caregiverUid == caregiverUid
+        && request.resource.data.patientId == patientId
+        && request.resource.data.patientName is string
+        && request.resource.data.patientName.size() > 0
+        && request.resource.data.patientName.size() <= 200
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedIn()
+        && request.auth.uid == caregiverUid
+        && isCaregiverMember(patientId)
+        && request.resource.data.keys().hasOnly([
+          "caregiverUid",
+          "patientId",
+          "patientName",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.caregiverUid
+          == resource.data.caregiverUid
+        && request.resource.data.patientId
+          == resource.data.patientId
+        && request.resource.data.createdAt
+          == resource.data.createdAt
+        && request.resource.data.patientName is string
+        && request.resource.data.patientName.size() > 0
+        && request.resource.data.patientName.size() <= 200
+        && request.resource.data.updatedAt == request.time;
+
+      // 看護可以清除自己的服務摘要
+      allow delete: if signedIn()
+        && request.auth.uid == caregiverUid
+        && resource.data.caregiverUid == caregiverUid;
+    }
+
+
+    // ==========================================
+    // Agency reports
+    // Cloud Function 建立，所屬仲介讀取與處理
+    // ==========================================
+    match /agency_reports/{reportId} {
+
+      // 只有這筆回報所屬的仲介可以讀
+      allow read: if signedIn()
+        && resource.data.agencyUid == request.auth.uid;
+
+      // 回報只能透過受信任的 Cloud Function 建立
+      allow create: if false;
+
+      // 仲介只能更新處理相關欄位
+      allow update: if signedIn()
+        && resource.data.agencyUid == request.auth.uid
+
+        // 回報歸屬不可被修改
+        && request.resource.data.agencyUid
+          == resource.data.agencyUid
+        && request.resource.data.caregiverUid
+          == resource.data.caregiverUid
+        && request.resource.data.patientId
+          == resource.data.patientId
+        && request.resource.data.reporterUid
+          == resource.data.reporterUid
+        && request.resource.data.createdAt
+          == resource.data.createdAt
+
+        // 只允許修改這些處理欄位
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            "level",
+            "status",
+            "handlingNote",
+            "updatedAt",
+            "handledAt",
+            "handledBy"
+          ])
+
+        && request.resource.data.level in [
+          "normal",
+          "pending",
+          "attention"
+        ]
+
+        && request.resource.data.status in [
+          "open",
+          "resolved"
+        ]
+
+        && request.resource.data.handlingNote is string
+        && request.resource.data.handlingNote.size() <= 3000
+
+        && request.resource.data.updatedAt is timestamp
+
+        && (
+          request.resource.data.handledAt == null
+          || request.resource.data.handledAt is timestamp
+        )
+
+        && request.resource.data.handledBy is string
+        && (
+          request.resource.data.handledBy == ""
+          || request.resource.data.handledBy == request.auth.uid
+        );
+
+      allow delete: if false;
+    }
+
+  match /users/{userDocId} {
       allow read: if isOwnUserDoc();
 
       allow create: if isOwnIncomingUserDoc()
@@ -96,11 +400,14 @@ service cloud.firestore {
         && request.resource.data.privacyConsent.acceptedAt == request.time
         && request.resource.data.keys().hasOnly([
           "uid", "email", "role", "createdAt", "activePatientId",
-          "emergencyPhone1", "emergencyPhone2", "privacyConsent"
+          "emergencyPhone1", "emergencyPhone2", "displayName", "avatarUrl", "privacyConsent"
         ])
-        && request.resource.data.role in ["family", "caregiver"]
+        && request.resource.data.role in ["family", "caregiver", "agency"]
         && request.resource.data.activePatientId is string
         && request.resource.data.email is string
+        && boundedString(request.resource.data.displayName, 120)
+        && request.resource.data.displayName.size() > 0
+        && boundedString(request.resource.data.avatarUrl, 4096)
         && request.resource.data.emergencyPhone1 is string
         && request.resource.data.emergencyPhone2 is string;
 
@@ -110,7 +417,7 @@ service cloud.firestore {
         && isOwnIncomingUserDoc()
         && request.resource.data.keys().hasOnly([
           "uid", "email", "role", "createdAt", "activePatientId",
-          "emergencyPhone1", "emergencyPhone2", "accountStatus",
+          "emergencyPhone1", "emergencyPhone2", "displayName", "avatarUrl", "accountStatus",
           "deletionRequestedAt", "deletionScheduledFor", "privacyConsent"
         ])
         && request.resource.data.uid == resource.data.uid
@@ -123,6 +430,8 @@ service cloud.firestore {
         && request.resource.data.activePatientId is string
         && request.resource.data.emergencyPhone1 is string
         && request.resource.data.emergencyPhone2 is string
+        && boundedString(request.resource.data.get('displayName', ''), 120)
+        && boundedString(request.resource.data.get('avatarUrl', ''), 4096)
         && (
           request.resource.data.activePatientId == "" ||
           isLinkedToPatient(request.resource.data.activePatientId)
@@ -185,7 +494,7 @@ service cloud.firestore {
           'patientsId', 'name', 'notes', 'note', 'inviteCode', 'caregivers',
           'families', 'createdAt', 'createdBy', 'updatedAt',
           'primaryFamilyUid', 'invitationVersion',
-          'emergencyPhone1', 'emergencyPhone2'
+          'emergencyPhone1', 'emergencyPhone2', 'familyGroupId'
         ])
         && boundedString(data.patientsId, 128)
         && boundedString(data.name, 200) && data.name.size() > 0
@@ -194,6 +503,7 @@ service cloud.firestore {
         && boundedString(data.createdBy, 128)
         && boundedString(data.emergencyPhone1, 64)
         && boundedString(data.emergencyPhone2, 64)
+        && boundedString(data.get('familyGroupId', ''), 256)
         && data.createdAt is timestamp
         && (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
@@ -233,7 +543,8 @@ service cloud.firestore {
         && validPatientProfile(request.resource.data)
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           "patientsId", "createdAt", "createdBy", "inviteCode",
-          "families", "caregivers", "primaryFamilyUid", "invitationVersion"
+          "families", "caregivers", "primaryFamilyUid", "invitationVersion",
+          "familyGroupId"
         ]);
       allow delete: if signedIn() && isPrimaryFamily(patientId);
 
@@ -535,20 +846,19 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.patientId is string
-        && (isPrimaryFamily(request.resource.data.patientId)
-          || (isCaregiverMember(request.resource.data.patientId)
-            && request.resource.data.createdAt == request.time));
+        && isCaregiverMember(request.resource.data.patientId)
+        && request.resource.data.createdAt == request.time;
 
       allow update: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId)
+        && isLinkedToPatient(resource.data.patientId)
         && request.resource.data.patientId == resource.data.patientId
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt;
 
       allow delete: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId);
+        && isLinkedToPatient(resource.data.patientId);
 
       match /items/{itemId} {
         allow read: if signedIn()
@@ -556,13 +866,18 @@ service cloud.firestore {
           && isLinkedToPatient(prescriptionPatientId(prescriptionId));
 
         allow create: if signedIn() && (
-          isPrimaryFamily(getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId)
+          (exists(/databases/$(database)/documents/prescriptions/$(prescriptionId))
+            && prescriptionPatientId(prescriptionId) is string
+            && isLinkedToPatient(prescriptionPatientId(prescriptionId)))
           || isCreatingOwnPrescription(prescriptionId,
             getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId));
 
-        allow update, delete: if signedIn()
+        allow update: if signedIn()
           && prescriptionPatientId(prescriptionId) is string
-          && isPrimaryFamily(prescriptionPatientId(prescriptionId));
+          && isLinkedToPatient(prescriptionPatientId(prescriptionId));
+
+        allow delete: if signedIn()
+          && canDeletePrescription(prescriptionId);
       }
     }
 
@@ -573,24 +888,16 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.resource.data.patientId is string
-        && (isPrimaryFamily(request.resource.data.patientId)
-          || (request.resource.data.prescriptionId is string
-            && isCreatingOwnPrescription(request.resource.data.prescriptionId,
-              request.resource.data.patientId)
-            && request.resource.data.createdAt == request.time
-            && request.resource.data.notifyUserIds is list
-            && request.resource.data.notifyUserIds.toSet() ==
-              patientDoc(request.resource.data.patientId).data.families.concat(
-                patientDoc(request.resource.data.patientId).data.caregivers).toSet()));
+        && isLinkedToPatient(request.resource.data.patientId);
 
       allow update: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId)
+        && isLinkedToPatient(resource.data.patientId)
         && request.resource.data.patientId == resource.data.patientId;
 
       allow delete: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId);
+        && isLinkedToPatient(resource.data.patientId);
     }
 
     match /medication_logs/{logId} {
@@ -817,11 +1124,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /chats/{patientId}/messages/{messageId} {
+    // A care target owns exactly two fixed rooms: the existing caregiver room
+    // and the family care group. Membership always comes from the patient;
+    // clients cannot create arbitrary rooms or maintain a second member list.
+    match /chats/{patientId}/{roomId}/{messageId} {
       function validMessage(data) {
-        return data.keys().hasOnly(['senderId', 'createdAt', 'text', 'text_zh', 'text_original', 'imageUrl'])
+        return data.keys().hasOnly(['senderId', 'senderName', 'senderAvatarUrl', 'createdAt', 'text', 'text_zh', 'text_original', 'imageUrl'])
           && data.senderId is string && data.senderId == request.auth.uid
           && data.senderId.size() <= 128
+          && (!('senderName' in data) || (data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 120))
+          && (!('senderAvatarUrl' in data) || (data.senderAvatarUrl is string && data.senderAvatarUrl.size() <= 4096))
           && data.createdAt is timestamp && data.createdAt == request.time
           && (('text' in data && data.text is string && data.text.size() > 0
             && data.text.size() <= 10000 && !('imageUrl' in data))
@@ -830,9 +1142,226 @@ service cloud.firestore {
           && (!('text_zh' in data) || (data.text_zh is string && data.text_zh.size() <= 10000))
           && (!('text_original' in data) || (data.text_original is string && data.text_original.size() <= 10000));
       }
-      allow read: if signedIn() && isLinkedToPatient(patientId);
-      allow create: if signedIn() && isLinkedToPatient(patientId) && validMessage(request.resource.data);
+      allow read: if signedIn() && (
+          (roomId == 'messages' && isLinkedToPatient(patientId)) ||
+          (roomId == 'familyMessages' && isFamilyMember(patientId))
+        );
+      allow create: if signedIn() && validMessage(request.resource.data) && (
+          (roomId == 'messages' && isLinkedToPatient(patientId)) ||
+          (roomId == 'familyMessages' && isFamilyMember(patientId))
+        );
       // Client messages are immutable. Readers keep translations locally.
+      allow update, delete: if false;
+    }
+
+    // ─────────────────────────────────────────
+    // 照顧者知識共享（社群）
+    //
+    // 角色判斷依賴 user_roles/{uid} 這份以 uid 為鍵的對照表，因為 users 集合
+    // 的文件 ID 是自訂格式、只能用查詢取得，而規則無法下查詢。
+    // ─────────────────────────────────────────
+
+    // 字串長度上限以位元組為準放寬（中文一字 3 位元組），實際字數限制由 UI 控制
+
+    function roleDocExists() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/user_roles/$(request.auth.uid));
+    }
+
+    function currentUserRole() {
+      return get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role;
+    }
+
+    // 只有家屬能存取社群；看護完全讀寫不到
+    function isFamilyUser() {
+      return roleDocExists() && currentUserRole() == 'family';
+    }
+
+    // 角色對照表：本人可讀可建，但建立後不得自行變更角色
+    match /user_roles/{roleUid} {
+      function validRoleDoc(data) {
+        return data.keys().hasOnly(['uid', 'role', 'updatedAt'])
+          && data.uid == roleUid
+          && data.role in ['family', 'caregiver']
+          && data.updatedAt is timestamp;
+      }
+
+      allow read: if signedIn() && request.auth.uid == roleUid;
+      allow create: if signedIn() && request.auth.uid == roleUid
+        && validRoleDoc(request.resource.data);
+      // 允許更新 updatedAt（每次登入會重寫），但角色本身不可變更
+      allow update: if signedIn() && request.auth.uid == roleUid
+        && validRoleDoc(request.resource.data)
+        && request.resource.data.role == resource.data.role;
+      allow delete: if false;
+    }
+
+    match /posts/{postId} {
+      function isPostAuthor() {
+        return signedIn() && resource.data.authorUid == request.auth.uid;
+      }
+
+      function validNewPost(data) {
+        return data.keys().hasOnly([
+            'category', 'title', 'content', 'preview',
+            'authorUid', 'authorName', 'createdAt', 'updatedAt',
+            'viewCount', 'commentCount', 'likeCount', 'reportCount',
+            'status', 'imageUrls'
+          ])
+          && data.category in ['照護技巧', '用品資源', '經驗交流']
+          && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+          && data.content is string && data.content.size() > 0 && data.content.size() <= 20000
+          && data.preview is string && data.preview.size() <= 400
+          && data.authorUid == request.auth.uid
+          && data.authorName is string && data.authorName.size() > 0
+          && data.authorName.size() <= 360
+          && data.createdAt == request.time
+          && data.updatedAt == request.time
+          && data.viewCount == 0 && data.commentCount == 0
+          && data.likeCount == 0 && data.reportCount == 0
+          && data.status == 'published'
+          && validImageUrls(data.imageUrls);
+      }
+
+      // 圖片網址：最多 4 張，實際檔案存在 Storage 的 community_posts/{uid}/{postId}/ 底下
+      function validImageUrls(urls) {
+        return urls is list && urls.size() <= 4;
+      }
+
+      function changedKeys() {
+        return request.resource.data.diff(resource.data).affectedKeys();
+      }
+
+      function unchangedNumber(field) {
+        return request.resource.data.get(field, 0) == resource.data.get(field, 0);
+      }
+
+      function statusUntouched() {
+        return !changedKeys().hasAny(['status']);
+      }
+
+      // 作者本人編輯：只能動內容相關欄位，計數器、作者資訊與狀態不可改
+      // （status 不開放作者修改，否則被檢舉隱藏的文章可以被作者自己解除隱藏）
+      function authorEdit() {
+        return changedKeys().hasOnly([
+            'category', 'title', 'content', 'preview', 'updatedAt', 'imageUrls'
+          ])
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.preview is string
+          && request.resource.data.preview.size() <= 400
+          && validImageUrls(request.resource.data.imageUrls)
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.content is string
+          && request.resource.data.content.size() > 0
+          && request.resource.data.content.size() <= 20000
+          && request.resource.data.category in ['照護技巧', '用品資源', '經驗交流']
+          && unchangedNumber('viewCount') && unchangedNumber('likeCount')
+          && unchangedNumber('commentCount') && unchangedNumber('reportCount');
+      }
+
+      // 以下三種是「任何家屬都可以做」的計數器變動，
+      // 每一種都嚴格限制只能動一個計數器、且只能 ±1，避免被拿去改內容或亂灌數字
+      function viewBump() {
+        return changedKeys().hasOnly(['viewCount'])
+          && request.resource.data.viewCount == resource.data.viewCount + 1;
+      }
+
+      function likeBump() {
+        return changedKeys().hasOnly(['likeCount'])
+          && (request.resource.data.likeCount == resource.data.likeCount + 1
+            || request.resource.data.likeCount == resource.data.likeCount - 1);
+      }
+
+      function commentBump() {
+        return changedKeys().hasOnly(['commentCount'])
+          && (request.resource.data.commentCount == resource.data.commentCount + 1
+            || request.resource.data.commentCount == resource.data.commentCount - 1);
+      }
+
+      // 檢舉：次數 +1，且只有在累積滿 3 次時才允許一併轉為 hidden
+      function reportBump() {
+        return changedKeys().hasOnly(['reportCount', 'status'])
+          && request.resource.data.reportCount == resource.data.reportCount + 1
+          && unchangedNumber('viewCount') && unchangedNumber('likeCount')
+          && unchangedNumber('commentCount')
+          && (statusUntouched()
+            || (request.resource.data.status == 'hidden'
+              && request.resource.data.reportCount >= 3));
+      }
+
+      allow read: if isFamilyUser();
+      allow create: if isFamilyUser() && validNewPost(request.resource.data);
+      allow update: if isFamilyUser() && (
+          (isPostAuthor() && authorEdit())
+          || viewBump() || likeBump() || commentBump() || reportBump()
+        );
+      // 只有作者能刪自己的文章
+      allow delete: if isFamilyUser() && isPostAuthor();
+
+      match /comments/{commentId} {
+        function validComment(data) {
+          return data.keys().hasOnly([
+              'postId', 'content', 'authorUid', 'authorName', 'createdAt', 'likeCount'
+            ])
+            && data.postId == postId
+            && data.authorUid == request.auth.uid
+            && data.authorName is string && data.authorName.size() > 0
+            && data.authorName.size() <= 360
+            && data.content is string && data.content.size() > 0
+            && data.content.size() <= 4000
+            && data.createdAt == request.time
+            && data.likeCount == 0;
+        }
+
+        allow read: if isFamilyUser();
+        allow create: if isFamilyUser() && validComment(request.resource.data);
+        // 留言送出後不可編輯，只能由留言者本人刪除
+        allow update: if false;
+        allow delete: if isFamilyUser() && resource.data.authorUid == request.auth.uid;
+      }
+
+      // 按讚：文件 ID 就是 uid，一人一讚由結構保證，也只能動自己那一份
+      match /likes/{likeUid} {
+        allow read: if isFamilyUser() && request.auth.uid == likeUid;
+        allow create: if isFamilyUser() && request.auth.uid == likeUid
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.createdAt == request.time;
+        allow delete: if isFamilyUser() && request.auth.uid == likeUid;
+        allow update: if false;
+      }
+
+      // 觀看紀錄：只能讀寫自己那一份，用於 24 小時去重
+      match /views/{viewUid} {
+        allow read: if isFamilyUser() && request.auth.uid == viewUid;
+        allow create, update: if isFamilyUser() && request.auth.uid == viewUid
+          && request.resource.data.keys().hasOnly(['lastViewedAt'])
+          && request.resource.data.lastViewedAt == request.time;
+        allow delete: if false;
+      }
+    }
+
+    // 檢舉紀錄：使用者只能新增，連自己送出的都讀不到（避免互相探查檢舉來源）
+    match /reports/{reportId} {
+      allow read: if false;
+      allow create: if isFamilyUser()
+        && request.resource.data.keys().hasOnly([
+            'postId', 'reporterUid', 'reason', 'detail', 'createdAt'
+          ])
+        && request.resource.data.postId is string
+        && request.resource.data.postId.size() > 0
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.reason in [
+            '廣告或垃圾訊息', '攻擊性言論', '醫療謠言或錯誤資訊', '涉及個人隱私', '其他'
+          ]
+        && request.resource.data.detail is string
+        && request.resource.data.detail.size() <= 2000
+        && request.resource.data.createdAt == request.time;
+      // 不可修改或刪除；同一人重複檢舉會因為 update 被禁而整批失敗，
+      // 達到「一人對一篇只能檢舉一次」的效果
       allow update, delete: if false;
     }
   }

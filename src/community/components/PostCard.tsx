@@ -3,6 +3,7 @@
 // variant="hot"：主頁「本週熱門」橫向卡片用（分類色底、標題、觀看數）
 
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { formatRelativeTime, formatViewCount } from "../format";
 import { COMMUNITY_COLORS, getCategoryStyle } from "../theme";
@@ -14,9 +15,11 @@ type Props = {
   post: Post;
   variant?: "list" | "hot";
   onPress: (post: Post) => void;
+  /** 列表卡片底部分隔線；「我的文章」底下還有操作列，會關掉改由外層畫 */
+  divider?: boolean;
 };
 
-export default function PostCard({ post, variant = "list", onPress }: Props) {
+export default function PostCard({ post, variant = "list", onPress, divider = true }: Props) {
   if (variant === "hot") {
     const categoryStyle = getCategoryStyle(post.category);
 
@@ -46,19 +49,45 @@ export default function PostCard({ post, variant = "list", onPress }: Props) {
   return (
     <Pressable
       onPress={() => onPress(post)}
-      style={({ pressed }) => [styles.listCard, pressed && styles.pressedList]}
+      style={({ pressed }) => [
+        styles.listCard,
+        !divider && styles.noDivider,
+        pressed && styles.pressedList,
+      ]}
     >
       <View style={styles.listHeader}>
         <CategoryTag category={post.category} />
         <Text style={styles.timeText}>{formatRelativeTime(post.createdAt)}</Text>
       </View>
 
-      <Text style={styles.listTitle} numberOfLines={2}>
-        {post.title}
-      </Text>
-      <Text style={styles.listPreview} numberOfLines={2}>
-        {post.preview}
-      </Text>
+      <View style={styles.listBody}>
+        <View style={styles.listTextCol}>
+          <Text style={styles.listTitle} numberOfLines={2}>
+            {post.title}
+          </Text>
+          <Text style={styles.listPreview} numberOfLines={2}>
+            {post.preview}
+          </Text>
+        </View>
+
+        {/* 有附圖時顯示第一張縮圖，多張時標示張數 */}
+        {post.imageUrls.length > 0 ? (
+          <View style={styles.thumbWrap}>
+            <Image
+              source={{ uri: post.imageUrls[0] }}
+              style={styles.thumb}
+              contentFit="cover"
+              transition={150}
+            />
+            {post.imageUrls.length > 1 ? (
+              <View style={styles.thumbBadge}>
+                <Ionicons name="images-outline" size={11} color={COMMUNITY_COLORS.white} />
+                <Text style={styles.thumbBadgeText}>{post.imageUrls.length}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
 
       <View style={styles.listFooter}>
         <View style={styles.authorRow}>
@@ -115,6 +144,9 @@ const styles = StyleSheet.create({
     borderBottomColor: COMMUNITY_COLORS.borderLight,
     gap: 6,
   },
+  noDivider: {
+    borderBottomWidth: 0,
+  },
   listHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -125,6 +157,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COMMUNITY_COLORS.textLight,
     fontWeight: "500",
+  },
+  listBody: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  listTextCol: {
+    flex: 1,
+    gap: 6,
+  },
+  thumbWrap: {
+    width: 76,
+    height: 76,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: COMMUNITY_COLORS.inputBg,
+  },
+  thumb: {
+    width: "100%",
+    height: "100%",
+  },
+  thumbBadge: {
+    position: "absolute",
+    right: 4,
+    bottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  thumbBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COMMUNITY_COLORS.white,
   },
   listTitle: {
     fontSize: 18,

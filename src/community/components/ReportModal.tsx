@@ -2,7 +2,7 @@
 // 原型是網頁的絕對定位遮罩，這裡改用 React Native 的 Modal
 
 import { useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { COMMUNITY_COLORS } from "../theme";
 import type { ReportReason } from "../types";
 
@@ -22,6 +22,9 @@ const REASONS: ReportReason[] = [
   "其他",
 ];
 
+/** 檢舉說明長度上限 */
+const DETAIL_MAX_LENGTH = 200;
+
 export default function ReportModal({ visible, onClose, onSubmit, submitting = false }: Props) {
   const [selectedReason, setSelectedReason] = useState<ReportReason | "">("");
   const [otherText, setOtherText] = useState("");
@@ -29,23 +32,34 @@ export default function ReportModal({ visible, onClose, onSubmit, submitting = f
   const needsDetail = selectedReason === "其他";
   const canSubmit = selectedReason !== "" && (!needsDetail || otherText.trim() !== "");
 
-  /** 關閉時清空選擇，避免下次打開還留著上次的狀態 */
+  // 彈窗關閉後才清空選擇：送出失敗時彈窗還開著，使用者不必重選
+  // （依 React 建議在 render 期間比對前一次的 visible，而不是用 effect）
+  const [prevVisible, setPrevVisible] = useState(visible);
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (!visible) {
+      setSelectedReason("");
+      setOtherText("");
+    }
+  }
+
   const handleClose = () => {
-    setSelectedReason("");
-    setOtherText("");
+    if (submitting) return;
     onClose();
   };
 
   const handleSubmit = () => {
     if (!canSubmit || submitting) return;
     onSubmit(selectedReason as ReportReason, otherText.trim());
-    setSelectedReason("");
-    setOtherText("");
   };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
-      <View style={styles.overlay}>
+      {/* 選「其他」要打字時，避免鍵盤蓋住輸入框與按鈕 */}
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <View style={styles.card}>
           <Text style={styles.title}>檢舉這篇文章</Text>
           <Text style={styles.subtitle}>請選擇檢舉原因：</Text>
@@ -80,6 +94,7 @@ export default function ReportModal({ visible, onClose, onSubmit, submitting = f
               onChangeText={setOtherText}
               multiline
               textAlignVertical="top"
+              maxLength={DETAIL_MAX_LENGTH}
             />
           ) : null}
 
@@ -103,7 +118,7 @@ export default function ReportModal({ visible, onClose, onSubmit, submitting = f
             </Pressable>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

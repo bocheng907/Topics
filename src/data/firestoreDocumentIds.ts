@@ -178,3 +178,30 @@ export function makeNotificationDocumentId(params: {
 
   return `${params.dateKey}_notification_${type}_${sourceCollection}_${sourceId}_to_${recipientSuffix}`;
 }
+
+// ─────────────────────────────────────────
+// 照顧者知識共享（社群）
+// 社群內容不隸屬於特定長輩，因此 ID 以「時間 + 發文者尾碼」組成
+// ─────────────────────────────────────────
+
+/** 文章 ID：2026-10-12_14-30-05-123_post_a1b2c3d4 */
+export function makeCommunityPostDocumentId(authorUid: string, date = new Date()) {
+  const uid = normalizeIdSegment(authorUid, "community post author UID");
+  return `${makeLocalDateTimePart(date, "community post")}_post_${uid.slice(-8)}`;
+}
+
+/** 留言 ID：2026-10-12_14-31-02-456_comment_a1b2c3d4 */
+export function makeCommunityCommentDocumentId(authorUid: string, date = new Date()) {
+  const uid = normalizeIdSegment(authorUid, "community comment author UID");
+  return `${makeLocalDateTimePart(date, "community comment")}_comment_${uid.slice(-8)}`;
+}
+
+/**
+ * 檢舉 ID：{postId}_{檢舉人尾碼}
+ * 用組合鍵當文件 ID，天然防止同一人重複檢舉同一篇文章
+ */
+export function makeCommunityReportDocumentId(postId: string, reporterUid: string) {
+  const post = normalizeIdSegment(postId, "community report post ID");
+  const uid = normalizeIdSegment(reporterUid, "community report reporter UID");
+  return `${post}_by_${uid.slice(-8)}`;
+}

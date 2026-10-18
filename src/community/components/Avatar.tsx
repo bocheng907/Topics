@@ -2,11 +2,14 @@
 // 原型用外部假頭像服務（i.pravatar.cc），真實使用者沒有頭像欄位，
 // 因此改用「姓名首字 + 依名字決定的底色」，與家屬端主畫面切換長輩的頭像作法一致
 
+// 有頭像網址（users.avatarUrl）時改顯示圖片
+import { Image } from "expo-image";
 import { StyleSheet, Text, View } from "react-native";
 
 type Props = {
   name: string;
   size?: number;
+  uri?: string;
 };
 
 /** 依名字決定底色，讓同一個人每次顯示的顏色固定 */
@@ -21,8 +24,19 @@ function pickColor(name: string): string {
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }
 
-export default function Avatar({ name, size = 32 }: Props) {
+export default function Avatar({ name, size = 32, uri }: Props) {
   const initial = name?.trim()?.charAt(0) || "?";
+
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{ width: size, height: size, borderRadius: size / 2 }}
+        contentFit="cover"
+        transition={150}
+      />
+    );
+  }
 
   return (
     <View
