@@ -9,8 +9,9 @@ import React, { useRef, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { createCareTarget } from "@/src/care-target/careTargetApi";
+import { createCareTarget, joinCareTarget } from "@/src/care-target/careTargetApi";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { invitationCopy } from "@/src/care-target/invitationCopy";
 
 export default function CareTargetCreateScreen() {
   const { user } = useAuth();
@@ -20,6 +21,8 @@ export default function CareTargetCreateScreen() {
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [joining, setJoining] = useState(false);
   const created = useRef<{uid: string; patientId: string; inviteCode: string} | null>(null);
   const submitting = useRef(false);
 
@@ -77,6 +80,33 @@ export default function CareTargetCreateScreen() {
     }
   };
 
+
+  const onJoinByInvite = async () => {
+    if (!user || joining) return;
+    const code = inviteCode.trim().toUpperCase();
+    if (code.length < 4 || code.length > 8) {
+      Alert.alert(t.prompt, t.inviteCodePlaceholder);
+      return;
+    }
+    setJoining(true);
+    try {
+      const { data: result } = await joinCareTarget({ code });
+      if (result.status === "approved" || result.alreadyJoined) {
+        await setActivePatientId(result.patientId);
+        Alert.alert(t.joinSuccess, t.selectCareTarget, [
+          { text: t.startUse, onPress: () => router.replace("/family") },
+        ]);
+      } else {
+        Alert.alert(t.prompt, invitationCopy[language].submitted);
+      }
+    } catch (e: any) {
+      console.log("join by invite from create screen failed:", e);
+      Alert.alert(t.joinFailed, t.checkInviteCode);
+    } finally {
+      setJoining(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 90, gap: 20 }}>
       <Text style={{ fontSize: 28, fontWeight: "900" }}>{t.createCareTarget}</Text>
@@ -121,6 +151,32 @@ export default function CareTargetCreateScreen() {
             textAlignVertical: "top",
           }}
         />
+      </View>
+
+      <View style={{ marginTop: 8, paddingTop: 20, borderTopWidth: 1, borderTopColor: "#E5E5EA", gap: 10 }}>
+        <Text style={{ fontSize: 20, fontWeight: "900", color: "#333" }}>{t.joinByInviteCode}</Text>
+        <Text style={{ fontSize: 14, color: "#666", lineHeight: 20 }}>{t.askInviteCode}</Text>
+        <TextInput
+          value={inviteCode}
+          onChangeText={setInviteCode}
+          maxLength={8}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          placeholder={t.inviteCodePlaceholder}
+          style={{
+            borderWidth: 1, borderColor: "#007AFF", borderRadius: 12, padding: 16,
+            fontSize: 22, fontWeight: "800", textAlign: "center", letterSpacing: 3, backgroundColor: "#F9FBFF",
+          }}
+        />
+        <Pressable
+          onPress={onJoinByInvite}
+          disabled={joining || inviteCode.trim().length < 4}
+          style={{ backgroundColor: !joining && inviteCode.trim().length >= 4 ? "#34A853" : "#CCC", padding: 16, borderRadius: 12 }}
+        >
+          <Text style={{ color: "#FFF", textAlign: "center", fontWeight: "900", fontSize: 17 }}>
+            {joining ? "…" : t.joinNow}
+          </Text>
+        </Pressable>
       </View>
 
       <Pressable

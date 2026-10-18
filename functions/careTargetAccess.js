@@ -117,6 +117,26 @@ function createCareTargetService(db, clock = () => Date.now()) {
         invite.issuedAt : data.createdAt};
       const decision = joinDecision(effectiveData, uid, user.data().role, clock());
       if (!decision.alreadyJoined) {
+        // Family members join immediately with a valid invite code.
+        // Caregivers keep the existing approval flow.
+        if (user.data().role === "family") {
+          tx.update(patient.ref, {
+            families: FieldValue.arrayUnion(uid),
+            invitationVersion: 2,
+          });
+          tx.set(db.doc("_invite_codes/" + code), {reserved: true});
+          tx.set(inviteRef, {
+            code,
+            status: "used",
+            applicantUid: uid,
+            applicantProfileId: user.id,
+            role: "family",
+            approvedAt: Timestamp.fromMillis(clock()),
+            issuedAt: effectiveData.createdAt,
+          });
+          return {patientId: patient.id, alreadyJoined: false, status: "approved"};
+        }
+
         const requestRef = user.ref.collection("join_requests").doc();
         const pending = {status: "pending", patientId: patient.id,
           applicantUid: uid, role: user.data().role,
