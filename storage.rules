@@ -137,6 +137,20 @@ service firebase.storage {
       allow delete: if signedIn() && (ownExistingUpload() || isFamily(patientId));
     }
 
+    // Community post images: community_posts/{uid}/{postId}/{uuid}.{ext}
+    // Any signed-in user may view; only the author uploads/deletes their own files.
+    match /community_posts/{uid}/{postId}/{fileName} {
+      allow read: if signedIn();
+      allow create: if resource == null && signedIn()
+        && request.auth.uid == uid
+        && uuidFile(fileName, 'jpg|png|webp|gif|heic')
+        && request.resource.size > 0 && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.metadata.uploaderUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

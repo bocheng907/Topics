@@ -1,16 +1,7 @@
 // 照顧者知識共享 — 文章圖片上傳
 // Storage 路徑：community_posts/{uid}/{postId}/{uuid}.{ext}
-// 這個 repo 沒有 storage.rules，Firebase Console 的 Storage 規則需加上：
-//
-//   match /community_posts/{uid}/{postId}/{fileName} {
-//     allow read: if request.auth != null;
-//     allow create: if request.auth != null && request.auth.uid == uid
-//       && request.resource.size < 10 * 1024 * 1024
-//       && request.resource.contentType.matches('image/.*')
-//       && request.resource.metadata.uploaderUid == request.auth.uid;
-//     allow update: if false;
-//     allow delete: if request.auth != null && request.auth.uid == uid;
-//   }
+// 對應的 Storage 規則在 storage.rules 的 match /community_posts/{uid}/{postId}/{fileName}
+// （作者本人上傳、需帶 uploaderUid metadata、僅限圖片且 <= 10MB）
 
 import { storage } from "@/firebase/firebaseConfig";
 import { randomUUID } from "expo-crypto";

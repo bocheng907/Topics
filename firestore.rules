@@ -1181,7 +1181,7 @@ service cloud.firestore {
       function validRoleDoc(data) {
         return data.keys().hasOnly(['uid', 'role', 'updatedAt'])
           && data.uid == roleUid
-          && data.role in ['family', 'caregiver']
+          && data.role in ['family', 'caregiver', 'agency']
           && data.updatedAt is timestamp;
       }
 

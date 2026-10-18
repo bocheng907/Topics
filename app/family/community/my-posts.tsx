@@ -138,6 +138,16 @@ export default function MyPostsScreen() {
               {loading ? "讀取中..." : `共 ${posts.length} 篇文章`}
             </Text>
           </View>
+          <Pressable
+            style={styles.editProfileBtn}
+            onPress={() => router.push("/account-settings" as any)}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel="編輯個人資料"
+          >
+            <Ionicons name="person-circle-outline" size={18} color={COMMUNITY_COLORS.primary} />
+            <Text style={styles.editProfileText}>編輯個人資料</Text>
+          </Pressable>
         </View>
 
         <View style={styles.sectionGap} />
@@ -277,6 +287,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "500",
     color: COMMUNITY_COLORS.textSecondary,
+  },
+  editProfileBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COMMUNITY_COLORS.primary,
+  },
+  editProfileText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COMMUNITY_COLORS.primary,
   },
   sectionGap: {
     height: 8,
