@@ -94,14 +94,23 @@ service cloud.firestore {
     }
 
 
+    // Role from user_roles/{uid}; that doc is cross-checked against users/{id}.role.
+    function hasRole(role) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/user_roles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role == role;
+    }
+
     // ==========================================
     // Agency invite codes
     // ==========================================
     match /agency_invites/{inviteCode} {
-      // 看護之後需要用邀請碼查這一筆
-      allow read: if signedIn();
+      // 看護之後需要用邀請碼查這一筆（單筆 get）；
+      // 列表查詢只限仲介查自己的邀請碼，避免列舉所有仲介 email
+      allow get: if signedIn();
+      allow list: if signedIn() && resource.data.agencyUid == request.auth.uid;
 
-      allow create: if signedIn()
+      allow create: if hasRole("agency")
         && request.resource.data.keys().hasOnly([
           "inviteCode",
           "agencyUid",
@@ -132,7 +141,7 @@ service cloud.firestore {
 
       // 看護只能替自己建立一筆綁定
       // 並且必須使用有效、啟用中的仲介邀請碼
-      allow create: if signedIn()
+      allow create: if hasRole("caregiver")
         && request.auth.uid == caregiverUid
         && request.resource.data.keys().hasOnly([
           "caregiverUid",
@@ -189,7 +198,7 @@ service cloud.firestore {
       );
 
       // 只有看護本人可以建立自己的基本資料
-      allow create: if signedIn()
+      allow create: if hasRole("caregiver")
         && request.auth.uid == caregiverUid
         && request.resource.data.keys().hasOnly([
           "caregiverUid",
@@ -394,6 +403,11 @@ service cloud.firestore {
     match /users/{userDocId} {
       allow read: if isOwnUserDoc();
 
+      // Registration writes users/{customId} and user_roles/{uid} in ONE batch.
+      // user_roles/{uid} can be created only once, so this also guarantees at
+      // most one profile per account: a second users doc (e.g. a caregiver
+      // trying to mint a "family" profile) is rejected because the role doc
+      // already exists.
       allow create: if isOwnIncomingUserDoc()
         && validUserConsent(request.resource.data)
         && request.resource.data.privacyConsent.version == '2026-09-12.v1'
@@ -403,12 +417,18 @@ service cloud.firestore {
           "emergencyPhone1", "emergencyPhone2", "displayName", "avatarUrl", "privacyConsent"
         ])
         && request.resource.data.role in ["family", "caregiver", "agency"]
-        && request.resource.data.activePatientId is string
-        && request.resource.data.email is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.activePatientId == ""
+        && boundedString(request.resource.data.email, 320)
         && boundedString(request.resource.data.get('displayName', ''), 120)
         && boundedString(request.resource.data.get('avatarUrl', ''), 4096)
-        && request.resource.data.emergencyPhone1 is string
-        && request.resource.data.emergencyPhone2 is string;
+        && boundedString(request.resource.data.emergencyPhone1, 64)
+        && boundedString(request.resource.data.emergencyPhone2, 64)
+        && !exists(/databases/$(database)/documents/user_roles/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role
+          == request.resource.data.role
+        && getAfter(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.userDocId
+          == userDocId;
 
       allow update: if signedIn()
         && validUserConsent(request.resource.data)
@@ -417,23 +437,37 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "uid", "email", "role", "createdAt", "activePatientId",
           "emergencyPhone1", "emergencyPhone2", "displayName", "avatarUrl", "accountStatus",
-          "deletionRequestedAt", "deletionScheduledFor", "privacyConsent"
+          "deletionRequestedAt", "deletionScheduledFor", "privacyConsent", "agencyInviteCode"
         ])
-        && request.resource.data.uid == resource.data.uid
-        && request.resource.data.email == resource.data.email
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.createdAt == resource.data.createdAt
+        // Identity fields are immutable (get() tolerates legacy docs missing them).
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          "uid", "email", "role", "createdAt",
           "accountStatus", "deletionRequestedAt", "deletionScheduledFor", "privacyConsent"
         ])
-        && request.resource.data.activePatientId is string
-        && request.resource.data.emergencyPhone1 is string
-        && request.resource.data.emergencyPhone2 is string
+        && request.resource.data.get('activePatientId', '') is string
+        && boundedString(request.resource.data.get('emergencyPhone1', ''), 64)
+        && boundedString(request.resource.data.get('emergencyPhone2', ''), 64)
         && boundedString(request.resource.data.get('displayName', ''), 120)
         && boundedString(request.resource.data.get('avatarUrl', ''), 4096)
+        // Only re-check membership when activePatientId itself changes, so a
+        // stale pointer (user removed from a care target) never blocks
+        // unrelated profile edits such as the display name or avatar.
         && (
-          request.resource.data.activePatientId == "" ||
-          isLinkedToPatient(request.resource.data.activePatientId)
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(["activePatientId"])
+          || request.resource.data.activePatientId == ""
+          || isLinkedToPatient(request.resource.data.activePatientId)
+        )
+        // Agency invite code: set once, by an agency, pointing at its own invite.
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(["agencyInviteCode"])
+          || (
+            resource.data.get('role', '') == "agency"
+            && resource.data.get('agencyInviteCode', '') == ""
+            && request.resource.data.agencyInviteCode is string
+            && request.resource.data.agencyInviteCode.size() == 6
+            && getAfter(/databases/$(database)/documents/agency_invites/$(request.resource.data.agencyInviteCode))
+              .data.agencyUid == request.auth.uid
+          )
         );
 
       allow delete: if false;
@@ -546,6 +580,35 @@ service cloud.firestore {
           "familyGroupId"
         ]);
       allow delete: if signedIn() && isPrimaryFamily(patientId);
+
+      // 照護手冊：單一文件 main；所有已連結成員可讀，家屬維護內容
+      match /care_handbook/{handbookId} {
+        function validHandbook(data) {
+          return handbookId == 'main'
+            && data.keys().hasOnly([
+              'patientId', 'dailyRoutine', 'medicationNotes', 'dietNotes',
+              'mobilityNotes', 'hygieneNotes', 'sleepNotes', 'communicationNotes',
+              'emergencyNotes', 'otherNotes', 'updatedAt', 'updatedBy'
+            ])
+            && data.patientId == patientId
+            && boundedString(data.get('dailyRoutine', ''), 20000)
+            && boundedString(data.get('medicationNotes', ''), 20000)
+            && boundedString(data.get('dietNotes', ''), 20000)
+            && boundedString(data.get('mobilityNotes', ''), 20000)
+            && boundedString(data.get('hygieneNotes', ''), 20000)
+            && boundedString(data.get('sleepNotes', ''), 20000)
+            && boundedString(data.get('communicationNotes', ''), 20000)
+            && boundedString(data.get('emergencyNotes', ''), 20000)
+            && boundedString(data.get('otherNotes', ''), 20000)
+            && data.updatedAt == request.time
+            && data.updatedBy == request.auth.uid;
+        }
+
+        allow read: if signedIn() && isLinkedToPatient(patientId);
+        allow create, update: if signedIn() && isFamilyMember(patientId)
+          && validHandbook(request.resource.data);
+        allow delete: if false;
+      }
 
       match /care_notes/{noteId} {
         allow read: if signedIn() && isLinkedToPatient(patientId);
@@ -937,8 +1000,11 @@ service cloud.firestore {
     }
 
     match /health_thresholds/{thresholdId} {
+      // A missing document reveals nothing; allowing it keeps the client's
+      // snapshot listener alive until a family member saves thresholds.
       allow read: if signedIn() && (
-        isLinkedToPatient(thresholdId)
+        resource == null
+        || isLinkedToPatient(thresholdId)
         || (
           resource.data.patientDocId is string
           && isLinkedToPatient(resource.data.patientDocId)
@@ -1066,6 +1132,10 @@ service cloud.firestore {
           "description_en",
           "description_vi",
           "description_id",
+          "name_zh",
+          "title_zh",
+          "description_zh",
+          "location_zh",
           "location",
           "location_en",
           "location_vi",
@@ -1176,22 +1246,43 @@ service cloud.firestore {
       return roleDocExists() && currentUserRole() in ['family', 'agency'];
     }
 
+    // 選填的作者身分標籤（家屬／仲介），必須等於發文者自己的角色
+    function validAuthorRole(data) {
+      return !('authorRole' in data) || data.authorRole == currentUserRole();
+    }
+
     // 角色對照表：本人可讀可建，但建立後不得自行變更角色
+    // 角色必須與 users/{userDocId}.role 一致（userDocId 指向本人的 users 文件）。
+    // 註冊時 users 與 user_roles 在同一個 batch 寫入，所以用 getAfter。
     match /user_roles/{roleUid} {
       function validRoleDoc(data) {
-        return data.keys().hasOnly(['uid', 'role', 'updatedAt'])
+        return data.keys().hasOnly(['uid', 'role', 'updatedAt', 'userDocId'])
           && data.uid == roleUid
           && data.role in ['family', 'caregiver', 'agency']
-          && data.updatedAt is timestamp;
+          && data.updatedAt == request.time;
+      }
+
+      function matchesUserProfile(data) {
+        return data.userDocId is string
+          && data.userDocId.size() > 0
+          && data.userDocId.size() <= 200
+          && getAfter(/databases/$(database)/documents/users/$(data.userDocId)).data.uid == request.auth.uid
+          && getAfter(/databases/$(database)/documents/users/$(data.userDocId)).data.role == data.role;
       }
 
       allow read: if signedIn() && request.auth.uid == roleUid;
       allow create: if signedIn() && request.auth.uid == roleUid
-        && validRoleDoc(request.resource.data);
-      // 允許更新 updatedAt（每次登入會重寫），但角色本身不可變更
+        && validRoleDoc(request.resource.data)
+        && matchesUserProfile(request.resource.data);
+      // 允許更新 updatedAt（每次登入會重寫），但角色本身不可變更；
+      // 舊文件補上 userDocId 時同樣要指向本人且角色一致的 users 文件
       allow update: if signedIn() && request.auth.uid == roleUid
         && validRoleDoc(request.resource.data)
-        && request.resource.data.role == resource.data.role;
+        && request.resource.data.role == resource.data.role
+        && (
+          request.resource.data.get('userDocId', '') == resource.data.get('userDocId', '')
+          || matchesUserProfile(request.resource.data)
+        );
       allow delete: if false;
     }
 
@@ -1205,7 +1296,7 @@ service cloud.firestore {
             'category', 'title', 'content', 'preview',
             'authorUid', 'authorName', 'createdAt', 'updatedAt',
             'viewCount', 'commentCount', 'likeCount', 'reportCount',
-            'status', 'imageUrls'
+            'status', 'imageUrls', 'authorRole'
           ])
           && data.category in ['照護技巧', '用品資源', '經驗交流']
           && data.title is string && data.title.size() > 0 && data.title.size() <= 200
@@ -1219,12 +1310,25 @@ service cloud.firestore {
           && data.viewCount == 0 && data.commentCount == 0
           && data.likeCount == 0 && data.reportCount == 0
           && data.status == 'published'
+          && validAuthorRole(data)
           && validImageUrls(data.imageUrls);
       }
 
       // 圖片網址：最多 4 張，實際檔案存在 Storage 的 community_posts/{uid}/{postId}/ 底下
       function validImageUrls(urls) {
-        return urls is list && urls.size() <= 4;
+        return urls is list && urls.size() <= 4
+          && (urls.size() < 1 || (urls[0] is string && urls[0].size() <= 2048))
+          && (urls.size() < 2 || (urls[1] is string && urls[1].size() <= 2048))
+          && (urls.size() < 3 || (urls[2] is string && urls[2].size() <= 2048))
+          && (urls.size() < 4 || (urls[3] is string && urls[3].size() <= 2048));
+      }
+
+      function likePath() {
+        return /databases/$(database)/documents/posts/$(postId)/likes/$(request.auth.uid);
+      }
+
+      function reportPath() {
+        return /databases/$(database)/documents/reports/$(postId + '_by_' + request.auth.uid);
       }
 
       function changedKeys() {
@@ -1264,15 +1368,21 @@ service cloud.firestore {
 
       // 以下三種是「任何社群使用者都可以做」的計數器變動，
       // 每一種都嚴格限制只能動一個計數器、且只能 ±1，避免被拿去改內容或亂灌數字
+      // 觀看數 +1 必須同一批寫入自己的觀看紀錄
       function viewBump() {
         return changedKeys().hasOnly(['viewCount'])
-          && request.resource.data.viewCount == resource.data.viewCount + 1;
+          && request.resource.data.viewCount == resource.data.viewCount + 1
+          && getAfter(/databases/$(database)/documents/posts/$(postId)/views/$(request.auth.uid))
+            .data.lastViewedAt == request.time;
       }
 
+      // 按讚數 ±1 必須同一批新增／移除自己的按讚紀錄
       function likeBump() {
         return changedKeys().hasOnly(['likeCount'])
-          && (request.resource.data.likeCount == resource.data.likeCount + 1
-            || request.resource.data.likeCount == resource.data.likeCount - 1);
+          && ((request.resource.data.likeCount == resource.data.likeCount + 1
+              && !exists(likePath()) && existsAfter(likePath()))
+            || (request.resource.data.likeCount == resource.data.likeCount - 1
+              && exists(likePath()) && !existsAfter(likePath())));
       }
 
       function commentBump() {
@@ -1285,6 +1395,8 @@ service cloud.firestore {
       function reportBump() {
         return changedKeys().hasOnly(['reportCount', 'status'])
           && request.resource.data.reportCount == resource.data.reportCount + 1
+          // 必須同一批建立自己這一篇的檢舉紀錄（一人一篇一次）
+          && !exists(reportPath()) && existsAfter(reportPath())
           && unchangedNumber('viewCount') && unchangedNumber('likeCount')
           && unchangedNumber('commentCount')
           && (statusUntouched()
@@ -1304,9 +1416,11 @@ service cloud.firestore {
       match /comments/{commentId} {
         function validComment(data) {
           return data.keys().hasOnly([
-              'postId', 'content', 'authorUid', 'authorName', 'createdAt', 'likeCount'
+              'postId', 'content', 'authorUid', 'authorName', 'createdAt', 'likeCount',
+              'authorRole'
             ])
             && data.postId == postId
+            && validAuthorRole(data)
             && data.authorUid == request.auth.uid
             && data.authorName is string && data.authorName.size() > 0
             && data.authorName.size() <= 360
@@ -1347,6 +1461,8 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow read: if false;
       allow create: if isCommunityUser()
+        && reportId == request.resource.data.postId + '_by_'
+          + request.auth.uid
         && request.resource.data.keys().hasOnly([
             'postId', 'reporterUid', 'reason', 'detail', 'createdAt'
           ])

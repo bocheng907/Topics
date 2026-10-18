@@ -12,11 +12,11 @@ import {
   getDocs,
   query,
   serverTimestamp,
-  setDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "@/firebase/firebaseConfig";
-import { syncUserRole } from "./userRole";
+import { addUserRoleToBatch, syncUserRole } from "./userRole";
 import { reportSession, signOut } from "./auditSession";
 import { isValidRegistrationPassword } from "./passwordPolicy";
 import { assertPrivacyConsent, PRIVACY_POLICY_VERSION, type PrivacyConsent } from "@/src/privacy/consent";
@@ -83,9 +83,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           // 補寫 user_roles/{uid}，讓 Security Rules 能判斷角色。
           // 既有帳號沒有這份文件，重新登入一次就會自動補上。
-          void syncUserRole(fbUser.uid, resolvedRole).catch((error) =>
-            console.log("[AuthProvider] syncUserRole failed:", error)
-          );
+          // 先等它寫完再進入畫面，避免仲介邀請碼、看護綁定、社群等
+          // 依賴角色的規則在第一次登入時因為還沒有 user_roles 而失敗。
+          try {
+            await syncUserRole(fbUser.uid, resolvedRole, snap.docs[0].id);
+          } catch (error) {
+            console.log("[AuthProvider] syncUserRole failed:", error);
+          }
+          if (epoch !== authEpoch.current || registrationInProgress.current) return;
 
           setUser({
             uid: fbUser.uid,
@@ -191,11 +196,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
         };
 
-        const docRef = doc(db, "users", customDocId);
-        await setDoc(docRef, payload);
-
-        // 同步角色對照表，讓 Security Rules 從註冊當下就能判斷角色
-        await syncUserRole(fbUser.uid, role);
+        // users 文件與角色對照表 user_roles/{uid} 必須同一個 batch 寫入：
+        // Security Rules 用 getAfter 互相核對兩邊的 role，也藉此保證一個帳號只有一份 users 文件
+        const batch = writeBatch(db);
+        batch.set(doc(db, "users", customDocId), payload);
+        addUserRoleToBatch(batch, fbUser.uid, role, customDocId);
+        await batch.commit();
 
         setUser({
           uid: fbUser.uid,

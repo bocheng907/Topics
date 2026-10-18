@@ -8,21 +8,34 @@
 // 能夠成立的唯一方式（除了 Cloud Functions 寫 custom claims）。
 
 import { db } from "@/firebase/firebaseConfig";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc, type WriteBatch } from "firebase/firestore";
 import type { Role } from "./AuthProvider";
 
 export const USER_ROLES_COLLECTION = "user_roles";
 
 /**
- * 寫入／更新目前使用者的角色對照
- * 在註冊完成與每次登入時各呼叫一次，既有帳號只要重新登入就會自動補上
+ * user_roles/{uid} 的內容。userDocId 指向本人的 users 文件，
+ * Security Rules 會用它確認 role 與 users 文件上的 role 一致（防止自行宣稱身分）
  */
-export async function syncUserRole(uid: string, role: Role): Promise<void> {
-  if (!uid) return;
+export function userRolePayload(uid: string, role: Role, userDocId: string) {
+  return { uid, role, userDocId, updatedAt: serverTimestamp() };
+}
+
+/** 註冊時與 users 文件放在同一個 batch 寫入 */
+export function addUserRoleToBatch(batch: WriteBatch, uid: string, role: Role, userDocId: string) {
+  batch.set(doc(db, USER_ROLES_COLLECTION, uid), userRolePayload(uid, role, userDocId));
+}
+
+/**
+ * 寫入／更新目前使用者的角色對照（登入時呼叫），
+ * 既有帳號只要重新登入就會自動補上
+ */
+export async function syncUserRole(uid: string, role: Role, userDocId: string): Promise<void> {
+  if (!uid || !userDocId) return;
 
   await setDoc(
     doc(db, USER_ROLES_COLLECTION, uid),
-    { uid, role, updatedAt: serverTimestamp() },
+    userRolePayload(uid, role, userDocId),
     { merge: true }
   );
 }

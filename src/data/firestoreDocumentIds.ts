@@ -197,11 +197,13 @@ export function makeCommunityCommentDocumentId(authorUid: string, date = new Dat
 }
 
 /**
- * 檢舉 ID：{postId}_{檢舉人尾碼}
- * 用組合鍵當文件 ID，天然防止同一人重複檢舉同一篇文章
+ * 檢舉 ID：{postId}_by_{檢舉人 uid}
+ * 用組合鍵當文件 ID，天然防止同一人重複檢舉同一篇文章；
+ * Security Rules 會用同樣的組合確認檢舉次數 +1 時確實寫了自己的檢舉紀錄
+ * （使用完整 uid，避免兩個帳號尾碼相同時互相擋住）
  */
 export function makeCommunityReportDocumentId(postId: string, reporterUid: string) {
   const post = normalizeIdSegment(postId, "community report post ID");
   const uid = normalizeIdSegment(reporterUid, "community report reporter UID");
-  return `${post}_by_${uid.slice(-8)}`;
+  return `${post}_by_${uid}`;
 }

@@ -137,11 +137,20 @@ service firebase.storage {
       allow delete: if signedIn() && (ownExistingUpload() || isFamily(patientId));
     }
 
+    // Community users only (family / agency), from the user_roles mapping that
+    // Firestore rules cross-check against users/{id}.role.
+    function isCommunityUser() {
+      // A missing user_roles doc makes get() fail, which denies the request.
+      return signedIn()
+        && firestore.get(/databases/(default)/documents/user_roles/$(request.auth.uid))
+          .data.role in ['family', 'agency'];
+    }
+
     // Community post images: community_posts/{uid}/{postId}/{uuid}.{ext}
-    // Any signed-in user may view; only the author uploads/deletes their own files.
+    // Community users may view; only the author uploads/deletes their own files.
     match /community_posts/{uid}/{postId}/{fileName} {
-      allow read: if signedIn();
-      allow create: if resource == null && signedIn()
+      allow read: if isCommunityUser();
+      allow create: if resource == null && isCommunityUser()
         && request.auth.uid == uid
         && uuidFile(fileName, 'jpg|png|webp|gif|heic')
         && request.resource.size > 0 && request.resource.size <= 10 * 1024 * 1024
