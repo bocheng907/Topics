@@ -487,7 +487,7 @@ service cloud.firestore {
           'patientsId', 'name', 'notes', 'note', 'inviteCode', 'caregivers',
           'families', 'createdAt', 'createdBy', 'updatedAt',
           'primaryFamilyUid', 'invitationVersion',
-          'emergencyPhone1', 'emergencyPhone2'
+          'emergencyPhone1', 'emergencyPhone2', 'familyGroupId'
         ])
         && boundedString(data.patientsId, 128)
         && boundedString(data.name, 200) && data.name.size() > 0
@@ -496,6 +496,7 @@ service cloud.firestore {
         && boundedString(data.createdBy, 128)
         && boundedString(data.emergencyPhone1, 64)
         && boundedString(data.emergencyPhone2, 64)
+        && boundedString(data.get('familyGroupId', ''), 256)
         && data.createdAt is timestamp
         && (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
@@ -535,7 +536,8 @@ service cloud.firestore {
         && validPatientProfile(request.resource.data)
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           "patientsId", "createdAt", "createdBy", "inviteCode",
-          "families", "caregivers", "primaryFamilyUid", "invitationVersion"
+          "families", "caregivers", "primaryFamilyUid", "invitationVersion",
+          "familyGroupId"
         ]);
       allow delete: if signedIn() && isPrimaryFamily(patientId);
 
@@ -1119,11 +1121,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /chats/{patientId}/messages/{messageId} {
+    // A care target owns exactly two fixed rooms: the existing caregiver room
+    // and the family care group. Membership always comes from the patient;
+    // clients cannot create arbitrary rooms or maintain a second member list.
+    match /chats/{patientId}/{roomId}/{messageId} {
       function validMessage(data) {
-        return data.keys().hasOnly(['senderId', 'createdAt', 'text', 'text_zh', 'text_original', 'imageUrl'])
+        return data.keys().hasOnly(['senderId', 'senderName', 'senderAvatarUrl', 'createdAt', 'text', 'text_zh', 'text_original', 'imageUrl'])
           && data.senderId is string && data.senderId == request.auth.uid
           && data.senderId.size() <= 128
+          && (!('senderName' in data) || (data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 120))
+          && (!('senderAvatarUrl' in data) || (data.senderAvatarUrl is string && data.senderAvatarUrl.size() <= 4096))
           && data.createdAt is timestamp && data.createdAt == request.time
           && (('text' in data && data.text is string && data.text.size() > 0
             && data.text.size() <= 10000 && !('imageUrl' in data))
@@ -1132,8 +1139,14 @@ service cloud.firestore {
           && (!('text_zh' in data) || (data.text_zh is string && data.text_zh.size() <= 10000))
           && (!('text_original' in data) || (data.text_original is string && data.text_original.size() <= 10000));
       }
-      allow read: if signedIn() && isLinkedToPatient(patientId);
-      allow create: if signedIn() && isLinkedToPatient(patientId) && validMessage(request.resource.data);
+      allow read: if signedIn() && (
+          (roomId == 'messages' && isLinkedToPatient(patientId)) ||
+          (roomId == 'familyMessages' && isFamilyMember(patientId))
+        );
+      allow create: if signedIn() && validMessage(request.resource.data) && (
+          (roomId == 'messages' && isLinkedToPatient(patientId)) ||
+          (roomId == 'familyMessages' && isFamilyMember(patientId))
+        );
       // Client messages are immutable. Readers keep translations locally.
       allow update, delete: if false;
     }

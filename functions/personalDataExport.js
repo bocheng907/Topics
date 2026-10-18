@@ -194,14 +194,17 @@ function createPersonalDataExportService({db, clock = () => Date.now(),
           });
     }
     for (const [patientId, patientRef] of patientRefs) {
-      await scan(db.doc("chats/" + patientId).collection("messages")
-          .where("senderId", "==", uid), async (doc) => {
-        if (doc.data().senderId === uid) {
-          add("messages", doc, [...TEXT, "senderId", "createdAt"]);
-          output.records.messages[output.records.messages.length - 1]
-              .patientId = patientId;
-        }
-      });
+      for (const [room, group] of [["messages", "messages"],
+        ["familyMessages", "family_group_messages"]]) {
+        await scan(db.doc("chats/" + patientId).collection(room)
+            .where("senderId", "==", uid), async (doc) => {
+          if (doc.data().senderId === uid) {
+            add(group, doc, [...TEXT, "senderId", "createdAt"]);
+            output.records[group][output.records[group].length - 1]
+                .patientId = patientId;
+          }
+        });
+      }
       await scan(patientRef.collection("care_notes")
           .where("createdBy", "==", uid), async (doc) => {
         if (doc.data().createdBy === uid &&

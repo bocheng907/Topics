@@ -220,11 +220,13 @@ async function purgeAccountData({db, auth, bucket, uid}) {
   for (const spec of USER_OWNED_COLLECTIONS) {
     await deleteMatchingDocuments(db, bucket, spec, uid);
   }
-  const messages = await db.collectionGroup("messages")
-    .where("senderId", "==", uid).get();
-  for (const message of messages.docs) {
-    await deleteStorageUrls(bucket, message.data(), ["imageUrl"]);
-    await db.recursiveDelete(message.ref);
+  for (const room of ["messages", "familyMessages"]) {
+    const messages = await db.collectionGroup(room)
+      .where("senderId", "==", uid).get();
+    for (const message of messages.docs) {
+      await deleteStorageUrls(bucket, message.data(), ["imageUrl"]);
+      await db.recursiveDelete(message.ref);
+    }
   }
   await unlinkOrDeletePatients(db, bucket, uid);
   const users = await db.collection("users").where("uid", "==", uid).get();

@@ -164,6 +164,9 @@ function createCareTargetService(db, clock = () => Date.now()) {
         tx.create(codeRef, {reserved: true});
         tx.create(ref, {
           patientsId, name, notes, inviteCode, families: [uid], caregivers: [],
+          // The group ID is deterministic: one care target, one fixed family room.
+          // Approved family/caregiver membership automatically grants room access.
+          familyGroupId: patientId,
           primaryFamilyUid: uid, invitationVersion: 2,
           createdBy: uid, createdAt: FieldValue.serverTimestamp(),
           emergencyPhone1: text(data.emergencyPhone1 || "", 64),
