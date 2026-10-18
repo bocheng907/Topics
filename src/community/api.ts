@@ -30,6 +30,7 @@ import { buildPreview } from "./format";
 import { deletePostImages, MAX_POST_IMAGES } from "./imageUpload";
 import type {
   CategoryFilter,
+  CommunityAuthorRole,
   Comment,
   Post,
   PostCategory,
@@ -67,6 +68,16 @@ function toMillis(value: unknown): number {
   return Date.now();
 }
 
+/** 只接受已知的身分值，舊資料或未知值一律視為沒有標籤 */
+function toAuthorRole(value: unknown): CommunityAuthorRole | undefined {
+  return value === "family" || value === "agency" ? value : undefined;
+}
+
+/** 依登入者角色決定要寫入的身分標籤（規則要求必須等於本人角色） */
+export function communityAuthorRole(role?: string | null): CommunityAuthorRole | undefined {
+  return toAuthorRole(role);
+}
+
 function toPost(id: string, data: Record<string, unknown>): Post {
   return {
     id,
@@ -77,6 +88,7 @@ function toPost(id: string, data: Record<string, unknown>): Post {
     author: {
       uid: String(data.authorUid ?? ""),
       name: String(data.authorName ?? "照顧者"),
+      role: toAuthorRole(data.authorRole),
     },
     createdAt: toMillis(data.createdAt),
     viewCount: Number(data.viewCount ?? 0),
@@ -95,6 +107,7 @@ function toComment(postId: string, id: string, data: Record<string, unknown>): C
     author: {
       uid: String(data.authorUid ?? ""),
       name: String(data.authorName ?? "照顧者"),
+      role: toAuthorRole(data.authorRole),
     },
     content: String(data.content ?? ""),
     createdAt: toMillis(data.createdAt),
@@ -114,6 +127,8 @@ export type CreatePostInput = {
   content: string;
   authorUid: string;
   authorName: string;
+  /** 發文者身分（家屬／仲介），選填 */
+  authorRole?: CommunityAuthorRole;
   imageUrls?: string[];
 };
 
@@ -141,6 +156,7 @@ export async function createPost(input: CreatePostInput): Promise<string> {
     reportCount: 0,
     status: "published",
     imageUrls: (input.imageUrls ?? []).slice(0, MAX_POST_IMAGES),
+    ...(input.authorRole ? { authorRole: input.authorRole } : {}),
   });
 
   return postId;
@@ -395,6 +411,8 @@ export type CreateCommentInput = {
   content: string;
   authorUid: string;
   authorName: string;
+  /** 留言者身分（家屬／仲介），選填 */
+  authorRole?: CommunityAuthorRole;
 };
 
 /** 新增留言，同時把文章的留言數 +1 */
@@ -411,6 +429,7 @@ export async function createComment(input: CreateCommentInput): Promise<string> 
       authorName: input.authorName,
       createdAt: serverTimestamp(),
       likeCount: 0,
+      ...(input.authorRole ? { authorRole: input.authorRole } : {}),
     }
   );
   batch.update(doc(db, POSTS_COLLECTION, input.postId), {
@@ -444,7 +463,7 @@ export type ReportPostResult = {
 
 /**
  * 檢舉文章
- * 文件 ID 為 {postId}_by_{uid 尾碼}，Security Rules 禁止更新既有的檢舉文件，
+ * 文件 ID 為 {postId}_by_{uid}，Security Rules 禁止更新既有的檢舉文件，
  * 所以同一人重複檢舉會讓整筆交易失敗、次數不會被重複累加
  * 累積達 AUTO_HIDE_REPORT_COUNT 次時，一併把文章轉為 hidden
  */

@@ -23,6 +23,7 @@ import {
 import { useAuth } from "@/src/auth/useAuth";
 import {
   AUTO_HIDE_REPORT_COUNT,
+  communityAuthorRole,
   createComment,
   deleteComment,
   deletePost,
@@ -33,6 +34,7 @@ import {
   reportPost,
   togglePostLike,
 } from "@/src/community/api";
+import AuthorRoleBadge from "@/src/community/components/AuthorRoleBadge";
 import Avatar from "@/src/community/components/Avatar";
 import CategoryTag from "@/src/community/components/CategoryTag";
 import ReportModal from "@/src/community/components/ReportModal";
@@ -170,6 +172,7 @@ export default function PostDetailScreen() {
         content: trimmed,
         authorUid: user.uid,
         authorName: profile.name,
+        authorRole: communityAuthorRole(user.role),
       });
 
       setCommentText("");
@@ -368,7 +371,10 @@ export default function PostDetailScreen() {
           <View style={styles.authorRow}>
             <Avatar name={post.author.name} size={40} />
             <View>
-              <Text style={styles.authorName}>{post.author.name}</Text>
+              <View style={styles.authorNameRow}>
+                <Text style={styles.authorName}>{post.author.name}</Text>
+                <AuthorRoleBadge role={post.author.role} />
+              </View>
               <Text style={styles.postTime}>{formatRelativeTime(post.createdAt)}</Text>
             </View>
           </View>
@@ -457,6 +463,7 @@ export default function PostDetailScreen() {
                   <View style={styles.commentBody}>
                     <View style={styles.commentHeader}>
                       <Text style={styles.commentAuthor}>{comment.author.name}</Text>
+                      <AuthorRoleBadge role={comment.author.role} />
                       <Text style={styles.commentTime}>
                         {formatRelativeTime(comment.createdAt)}
                       </Text>
@@ -636,6 +643,11 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 4,
     marginBottom: 8,
+  },
+  authorNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   authorName: {
     fontSize: 16,

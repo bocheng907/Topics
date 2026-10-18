@@ -21,7 +21,7 @@ import {
 } from "react-native";
 
 import { useAuth } from "@/src/auth/useAuth";
-import { createPost, getPostById, newPostId, updatePost } from "@/src/community/api";
+import { communityAuthorRole, createPost, getPostById, newPostId, updatePost } from "@/src/community/api";
 import { checkPostContent } from "@/src/community/contentFilter";
 import {
   MAX_POST_IMAGE_BYTES,
@@ -191,6 +191,7 @@ export default function NewPostScreen() {
           content,
           authorUid: uid,
           authorName: profile.name,
+          authorRole: communityAuthorRole(user?.role),
           imageUrls: finalUrls,
         });
       }

@@ -8,6 +8,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { formatRelativeTime, formatViewCount } from "../format";
 import { COMMUNITY_COLORS, getCategoryStyle } from "../theme";
 import type { Post } from "../types";
+import AuthorRoleBadge from "./AuthorRoleBadge";
 import Avatar from "./Avatar";
 import CategoryTag from "./CategoryTag";
 
@@ -95,6 +96,7 @@ export default function PostCard({ post, variant = "list", onPress, divider = tr
           <Text style={styles.authorName} numberOfLines={1}>
             {post.author.name}
           </Text>
+          <AuthorRoleBadge role={post.author.role} />
         </View>
 
         <View style={styles.statsRow}>

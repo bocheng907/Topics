@@ -7,10 +7,15 @@ export type PostCategory = "照護技巧" | "用品資源" | "經驗交流";
 /** 文章狀態：published 正常顯示、hidden 被檢舉滿 3 次後自動隱藏 */
 export type PostStatus = "published" | "hidden";
 
+/** 發文者身分標籤（家屬／仲介）；舊文章沒有這個欄位 */
+export type CommunityAuthorRole = "family" | "agency";
+
 /** 發文者的精簡資料，直接存在文章上，避免列表每一篇都要再讀一次 users */
 export type PostAuthor = {
   uid: string;
   name: string;
+  /** 舊文章、舊留言沒有存身分，顯示時就不出現標籤 */
+  role?: CommunityAuthorRole;
 };
 
 export type Post = {
