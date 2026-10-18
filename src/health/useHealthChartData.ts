@@ -162,9 +162,7 @@ export function useHealthChartData({
 
     const q = query(
       collection(db, "health_records"),
-      where("patientId", "==", patientId),
-      orderBy("createdAt", "desc"),
-      limit(300)
+      where("patientId", "==", patientId)
     );
 
     const unsub = onSnapshot(
@@ -172,7 +170,10 @@ export function useHealthChartData({
       (snap) => {
         const rangeStart = getRangeStart(chartTimeRange);
 
-        const raw: HealthRecordItem[] = snap.docs.map((docSnap) => {
+        const raw: HealthRecordItem[] = [...snap.docs]
+          .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+          .slice(0, 300)
+          .map((docSnap) => {
           const d = docSnap.data() as any;
           return {
             id: docSnap.id,

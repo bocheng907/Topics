@@ -55,9 +55,7 @@ export default function FamilyHomeScreen() {
 
     const q = query(
       collection(db, "health_records"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc"),
-      limit(10)
+      where("patientId", "==", activePatientId)
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -67,7 +65,10 @@ export default function FamilyHomeScreen() {
       let sugar: SugarVital = null;
       let hasAnyData = false;
 
-      snap.docs.forEach(doc => {
+      const newestDocs = [...snap.docs]
+        .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+        .slice(0, 10);
+      newestDocs.forEach(doc => {
         const d = doc.data();
         const ts = d.createdAt?.toMillis ? d.createdAt.toMillis() : Date.now();
         hasAnyData = true;

@@ -96,9 +96,7 @@ export default function FamilyDashboardScreen() {
 
     const q = query(
       collection(db, "health_records"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc"),
-      limit(20)
+      where("patientId", "==", activePatientId)
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -106,7 +104,10 @@ export default function FamilyDashboardScreen() {
       let sugarFasting: SingleVital = null; let sugarAfter: SingleVital = null;
       let hasAnyData = false; let hasFoundLatestSugar = false;
 
-      snap.docs.forEach((doc) => {
+      const newestDocs = [...snap.docs]
+        .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+        .slice(0, 20);
+      newestDocs.forEach((doc) => {
         const d = doc.data() as any;
         const ts = d.createdAt?.toMillis ? d.createdAt.toMillis() : Date.now();
         hasAnyData = true;

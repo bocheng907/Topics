@@ -566,15 +566,16 @@ export default function CaregiverCalendarScreen() {
 
     const q = query(
       collection(db, CALENDAR_EVENTS_COLLECTION),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc")
+      where("patientId", "==", activePatientId)
     );
 
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
         setEvents(
-          snap.docs.map((docSnap) => ({
+          [...snap.docs]
+            .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+            .map((docSnap) => ({
             id: docSnap.id,
             ...(docSnap.data() as Omit<CalendarEventRecord, "id">),
           }))
