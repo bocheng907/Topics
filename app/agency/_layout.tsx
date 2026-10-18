@@ -122,7 +122,7 @@ export default function AgencyLayout() {
       <Animated.View
         pointerEvents={isSidebarOpen ? "auto" : "none"}
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           styles.overlay,
           { opacity: overlayOpacity },
         ]}
