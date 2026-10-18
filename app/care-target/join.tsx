@@ -6,6 +6,8 @@ import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { signOut } from "@/src/auth/auditSession";
+import { auth } from "@/firebase/firebaseConfig";
 import { joinCareTarget } from "@/src/care-target/careTargetApi";
 import JoinRequests from "@/src/care-target/JoinRequests";
 import { invitationCopy } from "@/src/care-target/invitationCopy";
@@ -121,8 +123,19 @@ export default function CareTargetJoinScreen() {
       </Pressable>
 
       <Pressable
-          onPress={() => {
-          router.replace("/caregiver");
+        onPress={async () => {
+          // Caregivers may skip binding a care target for now (e.g. they only
+          // bind an agency first). Family keeps the old "back to login" flow.
+          if (user?.role === "caregiver") {
+            router.replace("/caregiver");
+            return;
+          }
+          try {
+            await signOut(auth);
+          } catch (error) {
+            console.error("登出失敗:", error);
+          }
+          router.replace("/(auth)/login");
         }}
         style={({ pressed }) => ({
           marginTop: 10,
@@ -138,7 +151,7 @@ export default function CareTargetJoinScreen() {
             fontSize: 16,
           }}
         >
-          稍後再綁定
+          {user?.role === "caregiver" ? "稍後再綁定" : t.backToLoginPage}
         </Text>
       </Pressable>
     </ScrollView>
