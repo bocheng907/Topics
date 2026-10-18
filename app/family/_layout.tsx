@@ -34,6 +34,7 @@ export default function FamilyLayout() {
     "voice",
     "handbook",
     "notification-detail",
+    "account-settings",
     "emergency-contacts",
     "report-care-issue",
   ];
@@ -242,6 +243,16 @@ export default function FamilyLayout() {
             }}
           >
             <Text style={styles.menuItemText}>{t.emergencyPhoneSettings}</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/account-settings" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>帳號設定</Text>
           </Pressable>
 
           <Pressable style={styles.menuItem} onPress={() => Alert.alert(t.warning, t.unlinkConfirm)}>

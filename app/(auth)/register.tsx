@@ -23,6 +23,7 @@ export default function RegisterScreen() {
   const t = translations[language];
   const privacy = privacyCopy[language];
 
+  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("caregiver");
@@ -37,7 +38,16 @@ export default function RegisterScreen() {
       Alert.alert(t.prompt, privacy.required);
       return;
     }
-    if (!email.trim() || !isValidRegistrationPassword(password)) {
+    const normalizedName = displayName.normalize("NFKC").trim();
+    // Optional: may be left blank and set later in Account Settings.
+    if (normalizedName.length > 120) {
+      Alert.alert(t.prompt, t.displayNameValidation);
+      return;
+    }
+
+    const normalizedEmail = email.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+    const emailLooksValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail);
+    if (!emailLooksValid || !isValidRegistrationPassword(password)) {
       Alert.alert(t.prompt, t.registerValidation);
       return;
     }
@@ -50,8 +60,9 @@ export default function RegisterScreen() {
     try {
       setLoading(true);
 
-      await register(email, password, role, {
+      await register(normalizedEmail, password, role, {
         privacyConsent: { accepted: privacyAccepted, version: PRIVACY_POLICY_VERSION },
+        displayName: normalizedName,
         emergencyPhone1,
         emergencyPhone2,
       });
@@ -183,6 +194,34 @@ export default function RegisterScreen() {
               </Text>
             </Pressable>
           </View>
+        </View>
+
+        <View style={{ gap: 8 }}>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: "800",
+              color: "#666",
+              marginLeft: 4,
+            }}
+          >
+            {t.displayName}
+          </Text>
+          <TextInput
+            placeholder={t.displayNamePlaceholder}
+            autoCapitalize="words"
+            value={displayName}
+            onChangeText={setDisplayName}
+            maxLength={120}
+            style={{
+              backgroundColor: "#F2F2F7",
+              borderRadius: 14,
+              padding: 16,
+              fontSize: 16,
+              borderWidth: 1,
+              borderColor: "#EEE",
+            }}
+          />
         </View>
 
         <View style={{ gap: 8 }}>
