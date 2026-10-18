@@ -157,7 +157,7 @@ function CameraScreen() {
       console.log("[3] draftTitle =", draftTitle);
 
       router.replace({
-        pathname: (user?.role === "family" ? "/family/scan-result" : "/caregiver/result") as any,
+        pathname: "/caregiver/result" as any,
         params: {
           imageUrl: encodeURIComponent(downloadURL),
           draftTitle,
