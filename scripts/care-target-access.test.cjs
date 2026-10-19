@@ -12,13 +12,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 // Never attach this synthetic test suite to a real project.
-if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8198') {
+const host = process.env.FIRESTORE_EMULATOR_HOST;
+if (host !== '127.0.0.1:18198' ||
+    (process.env.GCLOUD_PROJECT && process.env.GCLOUD_PROJECT !== 'demo-invite-expiry')) {
   throw new Error('Use firebase.privacy-test.json and the local emulator only');
 }
 const project = 'demo-invite-expiry';
 const app = initializeApp({projectId: project}, 'access-tests');
 const db = getFirestore(app);
-const base = 'http://127.0.0.1:8198/v1/projects/' + project + '/databases/(default)/documents';
+const base = 'http://' + host + '/v1/projects/' + project + '/databases/(default)/documents';
 after(async () => { await db.terminate(); await deleteApp(app); });
 function token(uid) {
   const enc = data => Buffer.from(JSON.stringify(data)).toString('base64url');
@@ -59,6 +61,7 @@ async function fixture() {
   let now = Date.now();
   const patient = {patientsId: id.toUpperCase(), name: 'Synthetic elder', notes: '',
     inviteCode, createdAt: Timestamp.fromMillis(now - 1000), createdBy: owner,
+    primaryFamilyUid: owner,
     families: [owner], caregivers: [care], emergencyPhone1: '', emergencyPhone2: ''};
   const health = {patientId, caregiverId: care, createdAt: Timestamp.now(), temperature: 36.5};
   const batch = db.batch();
@@ -74,7 +77,7 @@ async function fixture() {
 }
 const req = (uid, data) => ({auth: {uid}, data});
 
-test('primary role cannot be forged; secondary family and caregiver cannot mutate prescriptions', async () => {
+test('linked secondary family and caregivers edit prescriptions but cannot forge primary authority', async () => {
   const f = await fixture();
   await db.doc('patients/' + f.patientId).update({families: [f.owner, f.outsider]});
   await db.doc('users/profile-' + f.outsider).update({role: 'family'});
@@ -83,20 +86,20 @@ test('primary role cannot be forged; secondary family and caregiver cannot mutat
   await db.doc(path + '/items/i').set({drug_name: 'Synthetic'});
   for (const uid of [f.outsider, f.care]) {
     await rest('/' + path, uid, 200, null, 'GET');
-    await patchDoc(path, uid, {title: 'Forbidden'}, 403);
-    await patchDoc(path + '/items/i', uid, {drug_name: 'Forbidden'}, 403);
-    await rest('/' + path, uid, 403, null, 'DELETE');
+    await patchDoc(path, uid, {title: 'Allowed linked-member edit'}, 200);
+    await patchDoc(path + '/items/i', uid, {drug_name: 'Allowed'}, 200);
+    await patchDoc(path, uid, {createdBy: uid}, 403);
     await patchDoc('patients/' + f.patientId, uid, {primaryFamilyUid: uid}, 403);
     await assert.rejects(f.service.manageInvitation(req(uid, {patientId: f.patientId, action: 'regenerate'})), {code: 'permission-denied'});
   }
   await patchDoc(path, f.owner, {title: 'Allowed'}, 200);
   await patchDoc(path + '/items/i', f.owner, {drug_name: 'Allowed'}, 200);
   await db.doc('patients/' + f.patientId).update({primaryFamilyUid: ''});
-  await patchDoc(path, f.owner, {title: 'No fallback'}, 403);
+  await patchDoc(path, f.owner, {title: 'Still a linked member'}, 200);
   await assert.rejects(f.service.manageInvitation(req(f.owner, {patientId: f.patientId, action: 'get'})), {code: 'permission-denied'});
 });
 
-test('caregiver creates prescription, items and reminders atomically but cannot modify them later', async () => {
+test('caregiver creates and edits prescription batch; removed caregiver loses access', async () => {
   const f = await fixture();
   const name = p => `projects/${project}/databases/(default)/documents/${p}`;
   const str = value => ({stringValue: value});
@@ -112,13 +115,18 @@ test('caregiver creates prescription, items and reminders atomically but cannot 
   assert.equal((await db.doc(rx).get()).data().createdBy, f.care);
   assert.equal((await db.doc(reminder).get()).data().patientId, f.patientId);
   for (const p of [rx, rx + '/items/i', reminder]) {
-    await patchDoc(p, f.care, {title: 'Forbidden'}, 403);
-    await rest('/' + p, f.care, 403, null, 'DELETE');
+    await patchDoc(p, f.care, {title: 'Allowed linked-member edit'}, 200);
   }
-  await rest(':commit', f.care, 403, {writes: [write(rx + '/items/extra', {drug_name: str('Forbidden')})]});
-  await rest(':commit', f.care, 403, {writes: [write(reminder + '-extra', reminders, true)]});
+  await rest(':commit', f.care, 200, {writes: [write(rx + '/items/extra', {drug_name: str('Allowed')})]});
+  await rest(':commit', f.care, 200, {writes: [write(reminder + '-extra', reminders, true)]});
+  await rest('/' + rx + '/items/extra', f.care, 200, null, 'DELETE');
+  await rest('/' + reminder + '-extra', f.care, 200, null, 'DELETE');
   await patchDoc(rx, f.owner, {title: 'Primary edit'}, 200);
   await db.doc('patients/' + f.patientId).update({caregivers: []});
+  for (const p of [rx, rx + '/items/i', reminder]) {
+    await patchDoc(p, f.care, {title: 'Revoked'}, 403);
+    await rest('/' + p, f.care, 403, null, 'DELETE');
+  }
   await rest(':commit', f.care, 403, {writes: [write(rx + '-revoked', fields, true)]});
 });
 
@@ -240,6 +248,56 @@ test('direct self-join or owner-granted membership is denied', async () => {
   await patchDoc('patients/' + f.patientId, f.owner, {patientsId: 'FORGED'}, 403);
   await patchDoc('patients/' + f.patientId, f.owner, {emergencyPhone1: '123'}, 200);
 });
+test('secondary family cannot modify patient settings or health thresholds', async () => {
+  const f = await fixture();
+  const secondary = 'secondary-' + f.patientId;
+  await db.doc('patients/' + f.patientId).update({families: [f.owner, secondary]});
+  await db.doc('users/profile-' + secondary).set({uid: secondary, role: 'family',
+    emergencyPhone1: '', emergencyPhone2: ''});
+  await patchDoc('patients/' + f.patientId, secondary,
+    {emergencyPhone1: 'forbidden'}, 403);
+  const thresholdId = 'threshold_pat_' + f.patient.patientsId;
+  const threshold = {patientDocId: f.patientId,
+    patientsId: f.patient.patientsId, temperature: 'synthetic'};
+  await db.doc('health_thresholds/' + thresholdId).set(threshold);
+  await patchDoc('health_thresholds/' + thresholdId, secondary,
+    {temperature: 'forbidden'}, 403);
+  await patchDoc('health_thresholds/' + thresholdId, f.owner,
+    {temperature: 'allowed'}, 200);
+});
+test('primary transfer accepts only a current secondary family and is atomic', async () => {
+  const f = await fixture();
+  const secondary = 'secondary-' + f.patientId;
+  await db.doc('patients/' + f.patientId).update({families: [f.owner, secondary]});
+  await db.doc('users/profile-' + secondary).set({uid: secondary, role: 'family',
+    emergencyPhone1: '', emergencyPhone2: ''});
+  const manage = (uid, data) => f.service.manageInvitation(req(uid,
+    {patientId: f.patientId, ...data}));
+  const state = await manage(f.owner, {action: 'get'});
+  assert.deepEqual(state.secondaryFamilyUids, [secondary]);
+  await assert.rejects(manage(f.owner, {action: 'transfer', targetUid: f.care}),
+    {code: 'failed-precondition'});
+  await assert.rejects(manage(f.owner, {action: 'transfer', targetUid: f.outsider}),
+    {code: 'failed-precondition'});
+  await manage(f.owner, {action: 'transfer', targetUid: secondary});
+  assert.equal((await db.doc('patients/' + f.patientId).get())
+      .data().primaryFamilyUid, secondary);
+  await assert.rejects(manage(f.owner, {action: 'regenerate'}),
+    {code: 'permission-denied'});
+  assert.equal((await manage(secondary, {action: 'get'})).status, 'active');
+});
+test('primary transfer rejects a secondary account pending deletion', async () => {
+  const f = await fixture();
+  const secondary = 'secondary-' + f.patientId;
+  await db.doc('patients/' + f.patientId).update({families: [f.owner, secondary]});
+  await db.doc('users/profile-' + secondary).set({uid: secondary, role: 'family'});
+  await db.doc('_account_deletions/' + secondary).set({pending: true});
+  await assert.rejects(f.service.manageInvitation(req(f.owner,
+    {patientId: f.patientId, action: 'transfer', targetUid: secondary})),
+  {code: 'permission-denied'});
+  assert.equal((await db.doc('patients/' + f.patientId).get())
+      .data().primaryFamilyUid, f.owner);
+});
 test('health writer cannot change patient or author; current writer can edit reading', async () => {
   const f = await fixture();
   await patchDoc('health_records/' + f.recordId, f.care, {patientId: 'other'}, 403);
@@ -282,9 +340,9 @@ test('join validates code server-side, adds correct role, then unlocks reads', a
 test('family invitation uses trusted profile, not caller role', async () => {
   const f = await fixture();
   await db.doc('users/profile-' + f.outsider).update({role: 'family'});
-  await f.service.joinCareTarget(req(f.outsider, {code: f.inviteCode, role: 'caregiver'}));
-  const pending = await f.service.manageInvitation(req(f.owner, {patientId: f.patientId, action: 'get'}));
-  await f.service.manageInvitation(req(f.owner, {patientId: f.patientId, action: 'approve', requestId: pending.requestId}));
+  const joined = await f.service.joinCareTarget(req(f.outsider, {code: f.inviteCode, role: 'caregiver'}));
+  assert.equal(joined.status, 'approved');
+  assert.equal((await db.doc('patients/' + f.patientId + '/_invitation/current').get()).data().status, 'used');
   assert.deepEqual((await db.doc('patients/' + f.patientId).get()).data().families, [f.owner, f.outsider]);
 });
 test('expired or duplicate invite gives no patient data or membership', async () => {

@@ -1,11 +1,14 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 ﻿// app/caregiver/health-report.tsx
 import { db } from '@/firebase/firebaseConfig';
 import { router } from 'expo-router';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import React, { useState } from 'react';
+import { randomUUID } from 'expo-crypto';
+import React, { useEffect, useRef, useState } from 'react';
+import { saveHealthOnce, type HealthPayload } from '@/src/care-target/reliableWrites';
+import { reliabilityCopy } from '@/src/care-target/reliabilityCopy';
+import { AppAlert as Alert } from '@/src/ui/AppAlert';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -43,6 +46,25 @@ export default function HealthReportScreen() {
     bloodSugar: '',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
+  const pending = useRef<{ id: string; payload: HealthPayload } | null>(null);
+  const [retryNeeded, setRetryNeeded] = useState(false);
+  const scope = `${user?.uid}/${activePatientId}`;
+  const scopeRef = useRef(scope);
+  const generation = useRef(0);
+  const copy = reliabilityCopy[language];
+  const [previousScope, setPreviousScope] = useState(scope);
+  if (previousScope !== scope) {
+    setPreviousScope(scope); setIsSaving(false); setRetryNeeded(false);
+    setFormData({ temperature: '', heartRate: '', systolic: '', diastolic: '', bloodSugar: '' });
+  }
+  useEffect(() => {
+    generation.current += 1;
+    scopeRef.current = scope;
+    pending.current = null;
+    savingRef.current = false;
+    return () => { scopeRef.current = ''; generation.current += 1; };
+  }, [scope]);
 
   const [chartDataType, setChartDataType] = useState<ChartDataType>('體溫');
   const [chartTimeRange, setChartTimeRange] = useState<ChartTimeRange>('1周');
@@ -64,6 +86,7 @@ export default function HealthReportScreen() {
   });
 
   const handleInputChange = (field: keyof typeof formData, value: string) => {
+    if (savingRef.current || pending.current) return;
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -72,29 +95,30 @@ export default function HealthReportScreen() {
 
     if (formData.temperature) {
       const value = Number(formData.temperature);
-      if (value < 32 || value > 43) errorMsg += `• ${t.extremeTemperatureRange}\n`;
+      if (!Number.isFinite(value) || value < 32 || value > 43) errorMsg += `• ${t.extremeTemperatureRange}\n`;
     }
     if (formData.heartRate) {
       const value = Number(formData.heartRate);
-      if (value < 30 || value > 250) errorMsg += `• ${t.extremeHeartRateRange}\n`;
+      if (!Number.isFinite(value) || value < 30 || value > 250) errorMsg += `• ${t.extremeHeartRateRange}\n`;
     }
     if (formData.systolic) {
       const value = Number(formData.systolic);
-      if (value < 50 || value > 250) errorMsg += `• ${t.extremeSystolicRange}\n`;
+      if (!Number.isFinite(value) || value < 50 || value > 250) errorMsg += `• ${t.extremeSystolicRange}\n`;
     }
     if (formData.diastolic) {
       const value = Number(formData.diastolic);
-      if (value < 30 || value > 150) errorMsg += `• ${t.extremeDiastolicRange}\n`;
+      if (!Number.isFinite(value) || value < 30 || value > 150) errorMsg += `• ${t.extremeDiastolicRange}\n`;
     }
     if (formData.bloodSugar) {
       const value = Number(formData.bloodSugar);
-      if (value < 20 || value > 1000) errorMsg += `• ${t.extremeBloodSugarRange}\n`;
+      if (!Number.isFinite(value) || value < 20 || value > 1000) errorMsg += `• ${t.extremeBloodSugarRange}\n`;
     }
 
     return errorMsg;
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
     if (!user || !activePatientId) {
       Alert.alert(t.resultErrorTitle, t.noSelectedPatient);
       return;
@@ -115,25 +139,15 @@ export default function HealthReportScreen() {
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
+    const submittedScope = scope;
+    const submittedGeneration = generation.current;
 
     try {
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const hh = String(now.getHours()).padStart(2, '0');
-      const min = String(now.getMinutes()).padStart(2, '0');
-      const ss = String(now.getSeconds()).padStart(2, '0');
-
-      const timeString = `${yyyy}-${mm}-${dd}_${hh}-${min}-${ss}`;
-      const shortId = activePatientId.slice(-4);
-      const customDocId = `${timeString}_rec_${shortId}`;
-
-      const payload: any = {
+      const payload: HealthPayload = {
         patientId: activePatientId,
         caregiverId: user.uid,
-        createdAt: serverTimestamp(),
       };
 
       if (formData.temperature) payload.temperature = Number(formData.temperature);
@@ -146,8 +160,11 @@ export default function HealthReportScreen() {
         payload.bloodSugarType = mealTime === 'before' ? '空腹' : '餐後';
       }
 
-      const docRef = doc(db, 'health_records', customDocId);
-      await setDoc(docRef, payload);
+      pending.current ??= { id: randomUUID(), payload };
+      await saveHealthOnce(db, pending.current.id, pending.current.payload);
+      if (scopeRef.current !== submittedScope || generation.current !== submittedGeneration) return;
+      pending.current = null;
+      setRetryNeeded(false);
 
       Alert.alert(t.saveSuccessTitle, t.saveSuccessMessage);
 
@@ -161,16 +178,21 @@ export default function HealthReportScreen() {
 
       setActiveTab('history');
     } catch (error) {
+      if (scopeRef.current !== submittedScope || generation.current !== submittedGeneration) return;
       console.log('Save health record error:', error);
-      Alert.alert(t.resultSaveFailedTitle, t.uploadFailedMessage);
+      setRetryNeeded(true);
+      Alert.alert(t.resultSaveFailedTitle, copy.failed);
     } finally {
-      setIsSaving(false);
+      if (scopeRef.current === submittedScope && generation.current === submittedGeneration) {
+        savingRef.current = false;
+        setIsSaving(false);
+      }
     }
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.topContainer}>
+      <ScreenHeader style={styles.topContainer}>
         {/* 🌟 拿掉置中標題，恢復原本的寬鬆返回鍵排版 */}
         <View style={styles.headerRow}>
           <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
@@ -213,7 +235,7 @@ export default function HealthReportScreen() {
             </Text>
           </Pressable>
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {activeTab === 'today' ? (
@@ -224,6 +246,7 @@ export default function HealthReportScreen() {
                 style={styles.inputField}
                 keyboardType="numeric"
                 value={formData.temperature}
+                editable={!isSaving && !retryNeeded}
                 onChangeText={(val) => handleInputChange('temperature', val)}
                 placeholder="36.5"
                 placeholderTextColor="#CCC"
@@ -237,6 +260,7 @@ export default function HealthReportScreen() {
                 style={styles.inputField}
                 keyboardType="numeric"
                 value={formData.heartRate}
+                editable={!isSaving && !retryNeeded}
                 onChangeText={(val) => handleInputChange('heartRate', val)}
                 placeholder="80"
                 placeholderTextColor="#CCC"
@@ -254,6 +278,7 @@ export default function HealthReportScreen() {
                     placeholder={t.systolic}
                     placeholderTextColor="#999"
                     value={formData.systolic}
+                    editable={!isSaving && !retryNeeded}
                     onChangeText={(val) => handleInputChange('systolic', val)}
                   />
                   <Text style={styles.unitText}>mmhg</Text>
@@ -265,6 +290,7 @@ export default function HealthReportScreen() {
                     placeholder={t.diastolic}
                     placeholderTextColor="#999"
                     value={formData.diastolic}
+                    editable={!isSaving && !retryNeeded}
                     onChangeText={(val) => handleInputChange('diastolic', val)}
                   />
                   <Text style={styles.unitText}>mmhg</Text>
@@ -277,6 +303,7 @@ export default function HealthReportScreen() {
               <View style={styles.multiInputCol}>
                 <View style={styles.mealTimeRow}>
                   <Pressable
+                    disabled={isSaving || retryNeeded}
                     onPress={() => setMealTime('before')}
                     style={[
                       styles.mealBtn,
@@ -298,6 +325,7 @@ export default function HealthReportScreen() {
                     </Text>
                   </Pressable>
                   <Pressable
+                    disabled={isSaving || retryNeeded}
                     onPress={() => setMealTime('after')}
                     style={[
                       styles.mealBtn,
@@ -322,6 +350,7 @@ export default function HealthReportScreen() {
                     style={styles.inputField}
                     keyboardType="numeric"
                     value={formData.bloodSugar}
+                    editable={!isSaving && !retryNeeded}
                     onChangeText={(val) => handleInputChange('bloodSugar', val)}
                     placeholder="90"
                     placeholderTextColor="#CCC"
@@ -331,6 +360,7 @@ export default function HealthReportScreen() {
               </View>
             </View>
 
+            {retryNeeded && <Text accessibilityRole="alert" style={{ color: '#B42318', fontSize: 16 }}>{copy.failed}</Text>}
             <Pressable
               onPress={handleSave}
               disabled={isSaving}
@@ -417,11 +447,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAFAFA',
   },
-  topContainer: {
-    backgroundColor: '#F3CDAD',
-    paddingTop: 54,
-    zIndex: 10,
-  },
+  topContainer: { backgroundColor: '#F3CDAD', paddingTop: 12, zIndex: 10, minHeight: 56 },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'flex-start',
@@ -475,16 +501,8 @@ const styles = StyleSheet.create({
   formContainer: {
     gap: 24,
   },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  inputRowMulti: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: "wrap" },
+  inputRowMulti: { flexDirection: "column", alignItems: "stretch", gap: 12 },
   inputLabel: {
     flexShrink: 1,
     fontSize: 21,
@@ -494,17 +512,7 @@ const styles = StyleSheet.create({
     maxWidth: 130,
     letterSpacing: 0.2,
   },
-  inputField: {
-    flex: 1,
-    maxWidth: 140,
-    height: 55,
-    backgroundColor: '#EAEAEA',
-    borderRadius: 16,
-    textAlign: 'center',
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#000',
-  },
+  inputField: { flex: 1, maxWidth: 140, backgroundColor: '#EAEAEA', borderRadius: 16, textAlign: 'center', fontSize: 24, fontWeight: '600', color: '#000', minHeight: 55, paddingVertical: 8, minWidth: 64 },
   unitText: {
     fontSize: 22,
     fontWeight: '600',
@@ -523,13 +531,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
-  mealBtn: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 2,
-  },
+  mealBtn: { flex: 1, paddingHorizontal: 8, paddingVertical: 8, borderRadius: 12, borderWidth: 2, minWidth: 0 },
   mealBtnActive: {
     backgroundColor: '#F2A25B',
     borderColor: '#F2A25B',
@@ -561,13 +563,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 5,
   },
-  saveButtonText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFF',
-    letterSpacing: 8,
-    marginLeft: 8,
-  },
+  saveButtonText: { fontSize: 24, fontWeight: 'bold', color: '#FFF', letterSpacing: 0.3, marginLeft: 0, textAlign: "center", width: "100%" },
   historyContainer: {
     flex: 1,
     gap: 20,
@@ -592,10 +588,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderColor: '#000',
   },
-  filterBtnText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
+  filterBtnText: { fontSize: 18, fontWeight: 'bold', width: "100%", textAlign: "center" },
   filterTextActive: {
     color: '#000',
   },

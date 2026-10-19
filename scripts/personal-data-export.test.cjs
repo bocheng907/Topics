@@ -7,7 +7,8 @@ const requireFunctions = require('node:module').createRequire(
 const {initializeApp, deleteApp} = requireFunctions('firebase-admin/app');
 const {getFirestore, Timestamp} = requireFunctions('firebase-admin/firestore');
 const {createPersonalDataExportService} = require('../functions/personalDataExport');
-if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8198') {
+if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:18198' ||
+    (process.env.GCLOUD_PROJECT && process.env.GCLOUD_PROJECT !== 'demo-invite-expiry')) {
   throw new Error('Local demo emulator only');
 }
 const app = initializeApp({projectId: 'demo-invite-expiry'}, 'export-tests');
@@ -30,6 +31,15 @@ async function fixture(options = {}) {
   return {uid, other, patient, unlinked, profileRef, request,
     run: createPersonalDataExportService({db, pageSize: 2, ...options})};
 }
+test('family room export requires family membership, not just caregiver membership', async () => {
+  const f = await fixture();
+  await db.doc('chats/' + f.patient + '/familyMessages/' + randomUUID()).set({
+    senderId: f.uid, text: 'PRIVATE_FAMILY_MESSAGE', createdAt: Timestamp.now()});
+  assert.equal((await f.run(f.request)).counts.family_group_messages, 1);
+  await db.doc('patients/' + f.patient).update({families: [f.other], caregivers: [f.uid]});
+  assert.ok(!(await f.run(f.request)).json.includes('PRIVATE_FAMILY_MESSAGE'));
+});
+
 test('exports own profile and consent without other profiles or credentials', async () => {
   const f = await fixture();
   const result = await f.run(f.request);
@@ -41,6 +51,24 @@ test('exports own profile and consent without other profiles or credentials', as
     assert.ok(!result.json.includes(secret));
   }
   assert.match(result.filename, /^personal-data-[0-9a-f-]+\.json$/);
+});
+
+test('community export includes own accessible text only, never other replies or media', async () => {
+  const f = await fixture();
+  const own = db.doc('posts/own-' + f.uid), other = db.doc('posts/other-' + f.uid);
+  const hidden = db.doc('posts/hidden-' + f.uid);
+  await own.set({authorUid:f.uid,title:'OWN_POST',content:'own',status:'hidden',imageUrls:['SECRET_MEDIA']});
+  await other.set({authorUid:f.other,title:'OTHER_POST',status:'published'});
+  await hidden.set({authorUid:f.other,status:'hidden'});
+  await own.collection('comments').doc('other').set({authorUid:f.other,content:'OTHER_REPLY'});
+  await other.collection('comments').doc('own').set({authorUid:f.uid,postId:other.id,content:'OWN_REPLY'});
+  await hidden.collection('comments').doc('own').set({authorUid:f.uid,content:'HIDDEN_REPLY'});
+  await db.doc('unrelated/x/comments/own').set({authorUid:f.uid,content:'UNRELATED'});
+  const result=await f.run(f.request);
+  assert.equal(result.counts.community_posts,1);
+  assert.equal(result.counts.community_comments,1);
+  assert.ok(result.json.includes('OWN_POST') && result.json.includes('OWN_REPLY'));
+  for(const value of ['SECRET_MEDIA','OTHER_REPLY','OTHER_POST','HIDDEN_REPLY','UNRELATED'])assert.ok(!result.json.includes(value));
 });
 test('paginates own authored records and excludes other or unlinked records', async () => {
   const f = await fixture();
@@ -114,6 +142,7 @@ test('revoked access while gathering refuses delivery and generation audit', asy
   let calls = 0;
   const wrapper = {
     collection: db.collection.bind(db), doc: db.doc.bind(db),
+    collectionGroup: db.collectionGroup.bind(db),
     runTransaction: async fn => {
       if (++calls === 2) await db.doc('patients/' + f.patient).update({families: []});
       return db.runTransaction(fn);

@@ -5,18 +5,19 @@ import { auth } from "@/firebase/firebaseConfig";
 import AuditMenuLink from "@/src/audit/AuditMenuLink";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { translations } from "@/src/i18n/translations";
+import { myDataCopy } from "@/src/profile/myDataCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router, useSegments } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
-import React, { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Alert, Animated, Platform, ScrollView, useWindowDimensions, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const DRAWER_WIDTH = SCREEN_WIDTH * 0.55;
 
 export default function FamilyLayout() {
+  const { width } = useWindowDimensions();
+  const drawerWidth = Math.min(width - 24, Math.max(280, width * 0.82));
   const segments = useSegments() as string[];
   const currentPage = segments[segments.length - 1];
   const insets = useSafeAreaInsets();
@@ -24,6 +25,9 @@ export default function FamilyLayout() {
   const t = translations[language];
 
   const hideBottomNavRoutes = [
+    "camera",
+    "scan-result",
+    "result",
     "chat-room",
     "detail",
     "edit",
@@ -34,12 +38,14 @@ export default function FamilyLayout() {
     "voice",
     "handbook",
     "notification-detail",
+    "account-settings",
     "emergency-contacts",
+    "report-care-issue",
   ];
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [slideAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.timing(slideAnim, {
@@ -51,7 +57,7 @@ export default function FamilyLayout() {
 
   const translateX = slideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [DRAWER_WIDTH, 0],
+    outputRange: [drawerWidth, 0],
   });
 
   const overlayOpacity = slideAnim.interpolate({
@@ -59,7 +65,28 @@ export default function FamilyLayout() {
     outputRange: [0, 1],
   });
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Web 測試
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "確定要登出目前帳號嗎？"
+      );
+
+      if (!confirmed) return;
+
+      try {
+        await signOut(auth);
+        setIsSidebarOpen(false);
+        router.replace("/");
+      } catch (error) {
+        console.log("登出失敗:", error);
+        window.alert("登出失敗，請稍後再試");
+      }
+
+      return;
+    }
+
+    //手機版
     Alert.alert(t.logout, t.logoutMessage, [
       { text: t.cancel, style: "cancel" },
       {
@@ -86,7 +113,7 @@ export default function FamilyLayout() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.content}>
+      <View style={[styles.content, hideBottomNav && { paddingBottom: insets.bottom }]}>
         <Stack screenOptions={{ headerShown: false, gestureEnabled: false }} />
       </View>
 
@@ -121,7 +148,7 @@ export default function FamilyLayout() {
 
       <Animated.View
         pointerEvents={isSidebarOpen ? "auto" : "none"}
-        style={[StyleSheet.absoluteFillObject, styles.overlay, { opacity: overlayOpacity }]}
+        style={[StyleSheet.absoluteFill, styles.overlay, { opacity: overlayOpacity }]}
       >
         <Pressable style={{ flex: 1 }} onPress={() => setIsSidebarOpen(false)} />
       </Animated.View>
@@ -130,8 +157,9 @@ export default function FamilyLayout() {
         style={[
           styles.drawer,
           {
+            width: drawerWidth,
             transform: [{ translateX }],
-            paddingTop: insets.top + 40,
+            paddingTop: insets.top + 16,
           },
         ]}
       >
@@ -141,11 +169,40 @@ export default function FamilyLayout() {
           </View>
         </View>
 
-        <View style={styles.menuContainer}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.menuContainer, { paddingBottom: insets.bottom + 24 }]}>
           <AuditMenuLink onNavigate={() => setIsSidebarOpen(false)} />
           <PrivacyPolicyLink />
+          <Pressable style={styles.menuItem} onPress={() => {
+            setIsSidebarOpen(false);
+            router.push("/family/community" as any);
+          }}>
+            <Text style={styles.menuItemText}>照顧者交流</Text>
+          </Pressable>
+          <Pressable style={styles.menuItem} onPress={() => {
+            setIsSidebarOpen(false);
+            router.push("/my-data" as any);
+          }}>
+            <Text style={styles.menuItemText}>{myDataCopy[language].title}</Text>
+          </Pressable>
           <Pressable style={styles.menuItem} onPress={() => { setIsSidebarOpen(false); router.push("/care-target/invitations" as any); }}>
             <Text style={styles.menuItemText}>{invitationCopy[language].title}</Text>
+          </Pressable>
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/family/report-care-issue" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>
+              {language === "zh"
+                ? "回報照護問題"
+                : language === "en"
+                  ? "Report Care Issue"
+                  : language === "vi"
+                    ? "Báo cáo vấn đề chăm sóc"
+                    : "Laporkan Masalah Perawatan"}
+            </Text>
           </Pressable>
           <View style={styles.menuItem}>
             <Text style={styles.menuItemText}>{t.language}</Text>
@@ -191,6 +248,16 @@ export default function FamilyLayout() {
             <Text style={styles.menuItemText}>{t.emergencyPhoneSettings}</Text>
           </Pressable>
 
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/account-settings" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>帳號設定</Text>
+          </Pressable>
+
           <Pressable style={styles.menuItem} onPress={() => Alert.alert(t.warning, t.unlinkConfirm)}>
             <Text style={styles.menuItemTextDanger}>{t.unlink}</Text>
           </Pressable>
@@ -216,7 +283,7 @@ export default function FamilyLayout() {
           >
             <Text style={styles.menuItemTextDanger}>刪除帳號</Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </Animated.View>
     </View>
   );
@@ -245,26 +312,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.4)",
     zIndex: 100,
   },
-  drawer: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: DRAWER_WIDTH,
-    backgroundColor: "#FFF",
-    zIndex: 101,
-    borderLeftWidth: 2,
-    borderLeftColor: "#000",
-    shadowColor: "#000",
-    shadowOffset: { width: -5, height: 0 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 20,
-  },
-  badgeContainer: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
+  drawer: { position: "absolute", top: 0, right: 0, bottom: 0, backgroundColor: "#FFF", zIndex: 101, borderLeftWidth: 2, borderLeftColor: "#000", shadowColor: "#000", shadowOffset: { width: -5, height: 0 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 20 },
+  badgeContainer: { alignItems: "center", marginBottom: 16 },
   badge: {
     paddingHorizontal: 20,
     paddingVertical: 6,
@@ -293,8 +342,11 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     color: "#000",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
   languageOptions: {
     marginTop: 10,
@@ -304,13 +356,19 @@ const styles = StyleSheet.create({
     color: "#555",
     fontSize: 16,
     fontWeight: "700",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 22,
   },
   languageOptionActive: {
     color: "#007AFF",
   },
   menuItemTextDanger: {
     color: "#E33B3B",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
 });

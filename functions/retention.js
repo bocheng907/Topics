@@ -34,7 +34,9 @@ function storagePaths(data, bucket, prefix) {
         throw new Error("Invalid retention storage reference");
       }
       const path = decodeURIComponent(match[2]);
-      if (!prefix || !path.startsWith(prefix) || path.includes("..")) {
+      const allowedPrefixes = Array.isArray(prefix) ? prefix : [prefix];
+      if (!allowedPrefixes.some((allowed) => allowed &&
+          path.startsWith(allowed)) || path.includes("..")) {
         throw new Error("Storage reference outside retention scope");
       }
       result.add(path);
@@ -75,7 +77,9 @@ async function runRetention({db, bucket, dryRun = true, now = new Date(),
   const scopes = POLICIES.map(([name, months]) => ({
     ref: db.collection(name), months, name,
   }));
-  scopes.push({ref: db.collectionGroup("messages"), months: 6, name: "messages"});
+  for (const name of ["messages", "familyMessages"]) {
+    scopes.push({ref: db.collectionGroup(name), months: 6, name});
+  }
   for (const scope of scopes) {
     const cutoff = cutoffDate(now, scope.months);
     let cursor;
@@ -88,8 +92,10 @@ async function runRetention({db, bucket, dryRun = true, now = new Date(),
       for (const doc of snapshot.docs) {
         const data = doc.data();
         if (!isExpired(data.createdAt, cutoff) ||
-            (scope.name === "messages" &&
-              !/^chats\/[^/]+\/messages\/[^/]+$/.test(doc.ref.path)) ||
+            (["messages", "familyMessages"].includes(scope.name) &&
+              !(doc.ref.path.split("/").length === 4 &&
+                doc.ref.path.split("/")[0] === "chats" &&
+                doc.ref.path.split("/")[2] === scope.name)) ||
             (Array.isArray(data.entries) &&
               !data.entries.every((e) => isExpired(e.createdAt, cutoff)))) {
           report.skipped++;
@@ -98,11 +104,14 @@ async function runRetention({db, bucket, dryRun = true, now = new Date(),
         report.candidates++;
         try {
           const prefix = scope.name === "prescriptions" ?
-            `prescriptions/${data.createdBy}/` :
+            [`prescriptions/${data.createdBy}/`,
+              `prescriptions/${data.patientId}/${data.createdBy}/`] :
             scope.name === "abnormal_records" ?
               `abnormal_media/${data.patientId}/` :
               scope.name === "messages" ?
-                `chats/${doc.ref.parent.parent.id}/images/` : null;
+                `chats/${doc.ref.parent.parent.id}/images/` :
+                scope.name === "familyMessages" ?
+                  `chats/${doc.ref.parent.parent.id}/familyImages/` : null;
           const paths = storagePaths(data, bucket.name, prefix);
           if (dryRun) continue;
           // Atomic detach prevents deleting media for a concurrently edited row.

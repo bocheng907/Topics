@@ -2,6 +2,158 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Community: immutable role mapping; bounded posts/comments; atomic counters.
+    function communityRole() {
+      return get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role;
+    }
+    function communityUser() {
+      return signedIn() && communityRole() in ['family', 'agency'];
+    }
+    function visibleCommunityPost(data) {
+      return data.status == 'published' || data.authorUid == request.auth.uid;
+    }
+    function communityParent(postId) {
+      return get(/databases/$(database)/documents/posts/$(postId)).data;
+    }
+    function readableCommunityParent(postId) {
+      return communityUser() && exists(/databases/$(database)/documents/posts/$(postId))
+        && visibleCommunityPost(communityParent(postId));
+    }
+    match /user_roles/{uid} {
+      function validRole(data) {
+        return data.keys().hasOnly(['uid', 'role', 'userDocId', 'updatedAt'])
+          && data.uid == uid && data.role in ['family', 'agency', 'caregiver']
+          && data.userDocId is string && data.userDocId.size() > 0 && data.userDocId.size() <= 200
+          && data.updatedAt == request.time
+          && getAfter(/databases/$(database)/documents/users/$(data.userDocId)).data.uid == uid
+          && getAfter(/databases/$(database)/documents/users/$(data.userDocId)).data.role == data.role;
+      }
+      allow read: if signedIn() && request.auth.uid == uid;
+      // Only the trusted callable may establish identity/role mappings.
+      allow create: if false;
+      allow update, delete: if false;
+    }
+    match /posts/{postId} {
+      function validPost(d) {
+        return d.keys().hasOnly(['category','title','content','preview','authorUid','authorName',
+          'createdAt','updatedAt','viewCount','commentCount','likeCount','reportCount',
+          'status','imageUrls','authorRole','lastCommentId'])
+          && d.category in ['照護技巧','用品資源','經驗交流']
+          && boundedString(d.title,200) && d.title.size() > 0
+          && boundedString(d.content,20000) && d.content.size() > 0
+          && boundedString(d.preview,400) && boundedString(d.authorName,360) && d.authorName.size() > 0
+          && boundedString(d.authorUid,128) && d.authorUid.size() > 0
+          && d.createdAt is timestamp && d.updatedAt is timestamp
+          && d.status in ['published','hidden']
+          && d.viewCount is int && d.viewCount >= 0 && d.viewCount <= 2147483647
+          && d.commentCount is int && d.commentCount >= 0 && d.commentCount <= 2147483647
+          && d.likeCount is int && d.likeCount >= 0 && d.likeCount <= 2147483647
+          && d.reportCount is int && d.reportCount >= 0 && d.reportCount <= 2147483647
+          && (!('authorRole' in d) || d.authorRole in ['family','agency'])
+          && boundedString(d.get('lastCommentId',''),200)
+          && d.imageUrls is list && d.imageUrls.size() <= 4
+          && (d.imageUrls.size()<1 || boundedString(d.imageUrls[0],2048))
+          && (d.imageUrls.size()<2 || boundedString(d.imageUrls[1],2048))
+          && (d.imageUrls.size()<3 || boundedString(d.imageUrls[2],2048))
+          && (d.imageUrls.size()<4 || boundedString(d.imageUrls[3],2048));
+      }
+      function changes() { return request.resource.data.diff(resource.data).affectedKeys(); }
+      function ownEdit() {
+        return resource.data.authorUid == request.auth.uid
+          && changes().hasOnly(['category','title','content','preview','imageUrls','updatedAt'])
+          && request.resource.data.updatedAt == request.time;
+      }
+      function commentAction() {
+        let id = request.resource.data.lastCommentId;
+        let p = /databases/$(database)/documents/posts/$(postId)/comments/$(id);
+        return id.size()>0 && changes().hasOnly(['commentCount','lastCommentId'])
+          && ((!exists(p) && existsAfter(p) && getAfter(p).data.authorUid == request.auth.uid
+              && request.resource.data.commentCount == resource.data.commentCount+1)
+            || (exists(p) && !existsAfter(p) && get(p).data.authorUid == request.auth.uid
+              && request.resource.data.commentCount == resource.data.commentCount-1));
+      }
+      function likeAction() {
+        let p = /databases/$(database)/documents/posts/$(postId)/likes/$(request.auth.uid);
+        return changes().hasOnly(['likeCount'])
+          && ((!exists(p) && existsAfter(p) && request.resource.data.likeCount == resource.data.likeCount+1)
+            || (exists(p) && !existsAfter(p) && request.resource.data.likeCount == resource.data.likeCount-1));
+      }
+      function viewAction() {
+        let p = /databases/$(database)/documents/posts/$(postId)/views/$(request.auth.uid);
+        return changes().hasOnly(['viewCount']) && request.resource.data.viewCount == resource.data.viewCount+1
+          && (!exists(p) || get(p).data.lastViewedAt <= request.time-duration.value(24,'h'))
+          && getAfter(p).data.lastViewedAt == request.time;
+      }
+      function reportAction() {
+        let p = /databases/$(database)/documents/reports/$(postId+'_by_'+request.auth.uid);
+        return changes().hasOnly(['reportCount','status']) && !exists(p) && existsAfter(p)
+          && request.resource.data.reportCount == resource.data.reportCount+1
+          && request.resource.data.status == (request.resource.data.reportCount>=3 ? 'hidden' : 'published');
+      }
+      allow read: if communityUser() && visibleCommunityPost(resource.data);
+      allow create: if communityUser() && validPost(request.resource.data)
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.get('authorRole',communityRole()) == communityRole()
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
+        && request.resource.data.status == 'published' && request.resource.data.viewCount == 0
+        && request.resource.data.commentCount == 0 && request.resource.data.likeCount == 0
+        && request.resource.data.reportCount == 0 && !('lastCommentId' in request.resource.data);
+      allow update: if communityUser() && validPost(request.resource.data)
+        && (ownEdit() || (resource.data.status == 'published'
+          && (commentAction() || likeAction() || viewAction() || reportAction())));
+      allow delete: if communityUser() && resource.data.authorUid == request.auth.uid;
+      match /comments/{commentId} {
+        function counter(delta) {
+          let p = /databases/$(database)/documents/posts/$(postId);
+          return getAfter(p).data.lastCommentId == commentId
+            && getAfter(p).data.commentCount == get(p).data.commentCount+delta;
+        }
+        allow read: if readableCommunityParent(postId);
+        allow create: if communityUser() && communityParent(postId).status == 'published'
+          && request.resource.data.keys().hasOnly(['postId','content','authorUid','authorName','createdAt','likeCount','authorRole'])
+          && request.resource.data.postId == postId && request.resource.data.authorUid == request.auth.uid
+          && boundedString(request.resource.data.content,4000) && request.resource.data.content.size()>0
+          && boundedString(request.resource.data.authorName,360) && request.resource.data.authorName.size()>0
+          && request.resource.data.get('authorRole',communityRole()) == communityRole()
+          && request.resource.data.createdAt == request.time && request.resource.data.likeCount == 0 && counter(1);
+        allow update: if false;
+        allow delete: if communityUser() && communityParent(postId).status == 'published'
+          && resource.data.authorUid == request.auth.uid && counter(-1);
+      }
+      match /likes/{uid} {
+        function counter(delta) {
+          let p = /databases/$(database)/documents/posts/$(postId);
+          return getAfter(p).data.likeCount == get(p).data.likeCount+delta;
+        }
+        allow read: if readableCommunityParent(postId) && request.auth.uid == uid;
+        allow create: if communityUser() && request.auth.uid == uid && communityParent(postId).status == 'published'
+          && request.resource.data.keys().hasOnly(['createdAt']) && request.resource.data.createdAt == request.time && counter(1);
+        allow delete: if communityUser() && request.auth.uid == uid && communityParent(postId).status == 'published' && counter(-1);
+        allow update: if false;
+      }
+      match /views/{uid} {
+        allow read: if readableCommunityParent(postId) && request.auth.uid == uid;
+        allow create, update: if communityUser() && request.auth.uid == uid && communityParent(postId).status == 'published'
+          && request.resource.data.keys().hasOnly(['lastViewedAt']) && request.resource.data.lastViewedAt == request.time
+          && (resource == null || resource.data.lastViewedAt <= request.time-duration.value(24,'h'))
+          && getAfter(/databases/$(database)/documents/posts/$(postId)).data.viewCount == communityParent(postId).viewCount+1;
+        allow delete: if false;
+      }
+    }
+    match /reports/{reportId} {
+      allow read, update, delete: if false;
+      allow create: if communityUser()
+        && request.resource.data.keys().hasOnly(['postId','reporterUid','reason','detail','createdAt'])
+        && boundedString(request.resource.data.postId,200) && request.resource.data.postId.size()>0
+        && reportId == request.resource.data.postId+'_by_'+request.auth.uid
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.reason in ['廣告或垃圾訊息','攻擊性言論','醫療謠言或錯誤資訊','涉及個人隱私','其他']
+        && boundedString(request.resource.data.detail,2000) && request.resource.data.createdAt == request.time
+        && communityParent(request.resource.data.postId).status == 'published'
+        && getAfter(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.reportCount
+          == communityParent(request.resource.data.postId).reportCount+1;
+    }
+
     function authenticated() {
       return request.auth != null;
     }
@@ -73,6 +225,24 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(userDocId)).data.uid;
     }
 
+    function ownsRole(profileId, role) {
+      let profile = get(/databases/$(database)/documents/users/$(profileId)).data;
+      return signedIn() && profile.uid == request.auth.uid && profile.role == role;
+    }
+
+    function boundAgency(caregiverUid) {
+      return signedIn() && get(/databases/$(database)/documents/agency_memberships/$(caregiverUid)).data.agencyUid == request.auth.uid;
+    }
+
+    function validProfileExtras(data) {
+      return boundedString(data.get('avatarUrl', ''), 4096)
+        && boundedString(data.emergencyPhone1, 64) && boundedString(data.emergencyPhone2, 64)
+        && (data.role != 'family' || (data.emergencyPhone1.size() > 0 && data.emergencyPhone2.size() > 0))
+        && (!('agencyInviteCode' in data) || (data.role == 'agency'
+          && data.agencyInviteCode is string && data.agencyInviteCode.matches('^[A-Z0-9]{6}$')
+          && getAfter(/databases/$(database)/documents/agency_invites/$(data.agencyInviteCode)).data.agencyUid == request.auth.uid));
+    }
+
     // Consent can be absent only on legacy profiles; new profiles must supply it.
     function validUserConsent(data) {
       return !('privacyConsent' in data) || (
@@ -91,18 +261,26 @@ service cloud.firestore {
       allow read: if isOwnUserDoc();
 
       allow create: if isOwnIncomingUserDoc()
+        && (!exists(/databases/$(database)/documents/user_roles/$(request.auth.uid))
+          || get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.userDocId == userDocId)
         && validUserConsent(request.resource.data)
-        && request.resource.data.privacyConsent.version == '2026-09-12.v1'
+        && request.resource.data.privacyConsent.version == '2026-09-22.v2'
         && request.resource.data.privacyConsent.acceptedAt == request.time
         && request.resource.data.keys().hasOnly([
           "uid", "email", "role", "createdAt", "activePatientId",
-          "emergencyPhone1", "emergencyPhone2", "privacyConsent"
+          "emergencyPhone1", "emergencyPhone2", "privacyConsent", "displayName", "avatarUrl"
         ])
-        && request.resource.data.role in ["family", "caregiver"]
+        && request.resource.data.role in ["family", "caregiver", "agency"]
+        && validProfileExtras(request.resource.data)
         && request.resource.data.activePatientId is string
         && request.resource.data.email is string
         && request.resource.data.emergencyPhone1 is string
-        && request.resource.data.emergencyPhone2 is string;
+        && request.resource.data.emergencyPhone2 is string
+        && (!('displayName' in request.resource.data) || (
+          request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 120
+        ));
 
       allow update: if signedIn()
         && validUserConsent(request.resource.data)
@@ -111,8 +289,10 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "uid", "email", "role", "createdAt", "activePatientId",
           "emergencyPhone1", "emergencyPhone2", "accountStatus",
-          "deletionRequestedAt", "deletionScheduledFor", "privacyConsent"
+          "deletionRequestedAt", "deletionScheduledFor", "privacyConsent",
+          "displayName", "avatarUrl", "agencyInviteCode"
         ])
+        && validProfileExtras(request.resource.data)
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.email == resource.data.email
         && request.resource.data.role == resource.data.role
@@ -123,12 +303,74 @@ service cloud.firestore {
         && request.resource.data.activePatientId is string
         && request.resource.data.emergencyPhone1 is string
         && request.resource.data.emergencyPhone2 is string
+        && (!('displayName' in request.resource.data) || (
+          request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 120
+        ))
         && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['activePatientId']) ||
           request.resource.data.activePatientId == "" ||
           isLinkedToPatient(request.resource.data.activePatientId)
         );
 
       allow delete: if false;
+    }
+
+    // Invite lookup/binding now use the tested, role-checked agencyAccess service.
+    match /agency_invites/{code} {
+      allow read, write: if false;
+    }
+    match /agency_memberships/{caregiverUid} {
+      allow get: if signedIn() && (request.auth.uid == caregiverUid || resource.data.agencyUid == request.auth.uid);
+      allow list: if signedIn() && resource.data.agencyUid == request.auth.uid;
+      allow write: if false;
+    }
+    match /caregiver_profiles/{caregiverUid} {
+      allow read: if signedIn() && (request.auth.uid == caregiverUid || boundAgency(caregiverUid));
+      allow create, update: if signedIn() && request.auth.uid == caregiverUid
+        && request.resource.data.keys().hasOnly(['caregiverUid', 'profileId', 'displayName', 'avatarUrl', 'phone', 'updatedAt'])
+        && request.resource.data.caregiverUid == caregiverUid
+        && ownsRole(request.resource.data.profileId, 'caregiver')
+        && request.resource.data.displayName == getAfter(/databases/$(database)/documents/users/$(request.resource.data.profileId)).data.displayName
+        && request.resource.data.avatarUrl == getAfter(/databases/$(database)/documents/users/$(request.resource.data.profileId)).data.avatarUrl
+        && boundedString(request.resource.data.phone, 64)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+    match /caregiver_service_summaries/{caregiverUid}/patients/{patientId} {
+      function validSummary() {
+        let data = request.resource.data;
+        return data.keys().hasOnly(['caregiverUid', 'patientId', 'patientName', 'active', 'createdAt', 'updatedAt'])
+          && data.caregiverUid == caregiverUid && data.patientId == patientId
+          && boundedString(data.patientName, 120) && data.active is bool
+          && data.createdAt is timestamp && data.updatedAt == request.time;
+      }
+      allow read: if signedIn() && (request.auth.uid == caregiverUid || boundAgency(caregiverUid));
+      allow create: if signedIn() && request.auth.uid == caregiverUid
+        && isCaregiverMember(patientId) && validSummary()
+        && request.resource.data.active == true && request.resource.data.createdAt == request.time;
+      allow update: if signedIn() && request.auth.uid == caregiverUid && validSummary()
+        && request.resource.data.createdAt == resource.data.createdAt
+        && ((isCaregiverMember(patientId) && request.resource.data.active == true)
+          || (request.resource.data.active == false
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active', 'updatedAt'])));
+      allow delete: if false;
+    }
+    match /agency_reports/{reportId} {
+      allow read: if signedIn() && resource.data.agencyUid == request.auth.uid
+        && boundAgency(resource.data.caregiverUid);
+      allow create, delete: if false;
+      allow update: if signedIn() && resource.data.agencyUid == request.auth.uid
+        && boundAgency(resource.data.caregiverUid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['level', 'status', 'handlingNote', 'updatedAt', 'handledAt', 'handledBy'])
+        && request.resource.data.level in ['normal', 'attention', 'pending']
+        && request.resource.data.status in ['open', 'resolved']
+        && boundedString(request.resource.data.handlingNote, 3000)
+        && request.resource.data.updatedAt == request.time
+        && ((request.resource.data.status == 'resolved' && request.resource.data.handledBy == request.auth.uid
+            && request.resource.data.handledAt == request.time)
+          || (request.resource.data.status == 'open' && request.resource.data.handledBy == '' && request.resource.data.handledAt == null));
     }
 
     match /_account_deletions/{uid} {
@@ -184,7 +426,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'patientsId', 'name', 'notes', 'note', 'inviteCode', 'caregivers',
           'families', 'createdAt', 'createdBy', 'updatedAt',
-          'primaryFamilyUid', 'invitationVersion',
+          'primaryFamilyUid', 'invitationVersion', 'familyGroupId',
           'emergencyPhone1', 'emergencyPhone2'
         ])
         && boundedString(data.patientsId, 128)
@@ -192,6 +434,7 @@ service cloud.firestore {
         && boundedString(data.get('notes', ''), 5000)
         && boundedString(data.get('note', ''), 5000)
         && boundedString(data.createdBy, 128)
+        && boundedString(data.get('familyGroupId', ''), 256)
         && boundedString(data.emergencyPhone1, 64)
         && boundedString(data.emergencyPhone2, 64)
         && data.createdAt is timestamp
@@ -224,16 +467,105 @@ service cloud.firestore {
 
     // Existing membership authorizes reads; trusted callables handle create/join.
     match /patients/{patientId} {
+
+      // Care handbook: linked families edit; linked caregivers read only.
+      // Fixed document ID; all nine text sections are bounded and required.
+      match /care_handbook/{handbookId} {
+        function validRevision(value) {
+          return value is string && value.size() == 36
+            && value.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+        }
+        function validHandbook(data) {
+          return data.keys().hasAll([
+            'patientId', 'updatedAt', 'updatedBy', 'dailyRoutine',
+            'medicationNotes', 'dietNotes', 'mobilityNotes', 'hygieneNotes',
+            'sleepNotes', 'communicationNotes', 'emergencyNotes', 'otherNotes', 'revision', 'baseRevision'
+          ]) && data.keys().hasOnly([
+            'patientId', 'updatedAt', 'updatedBy', 'dailyRoutine',
+            'medicationNotes', 'dietNotes', 'mobilityNotes', 'hygieneNotes',
+            'sleepNotes', 'communicationNotes', 'emergencyNotes', 'otherNotes', 'revision', 'baseRevision'
+          ])
+          && data.patientId == patientId
+          && data.updatedBy == request.auth.uid
+          && data.updatedAt == request.time
+          && validRevision(data.revision)
+          && (data.baseRevision == '' || validRevision(data.baseRevision))
+          && !exists(/databases/$(database)/documents/patients/$(patientId)/care_handbook_revisions/$(data.revision))
+          && getAfter(/databases/$(database)/documents/patients/$(patientId)/care_handbook_revisions/$(data.revision)).data.createdAt == request.time
+          && boundedString(data.dailyRoutine, 2000)
+          && boundedString(data.medicationNotes, 2000)
+          && boundedString(data.dietNotes, 2000)
+          && boundedString(data.mobilityNotes, 2000)
+          && boundedString(data.hygieneNotes, 2000)
+          && boundedString(data.sleepNotes, 2000)
+          && boundedString(data.communicationNotes, 2000)
+          && boundedString(data.emergencyNotes, 2000)
+          && boundedString(data.otherNotes, 2000);
+        }
+        allow read: if handbookId == 'main' && signedIn()
+          && isLinkedToPatient(patientId);
+        allow create: if handbookId == 'main' && signedIn()
+          && isFamilyMember(patientId) && validHandbook(request.resource.data)
+          && request.resource.data.baseRevision == '';
+        allow update: if handbookId == 'main' && signedIn()
+          && isFamilyMember(patientId)
+          && resource.data.patientId == patientId
+          && request.resource.data.baseRevision == resource.data.get('revision', '')
+          && request.resource.data.revision != resource.data.get('revision', '')
+          && validHandbook(request.resource.data);
+        allow delete: if false;
+
+        // Latest acknowledgment per caregiver, bound to an exact handbook revision.
+        // No client-entered name/role; authenticated UID and server timestamp only.
+        match /acknowledgments/{caregiverUid} {
+          function validAcknowledgment(data) {
+            return data.keys().hasAll(['patientId', 'caregiverUid', 'revision', 'acknowledgedAt'])
+              && data.keys().hasOnly(['patientId', 'caregiverUid', 'revision', 'acknowledgedAt'])
+              && data.patientId == patientId
+              && data.caregiverUid == caregiverUid
+              && data.caregiverUid == request.auth.uid
+              && validRevision(data.revision)
+              && data.acknowledgedAt == request.time
+              && getAfter(/databases/$(database)/documents/patients/$(patientId)/care_handbook/main).data.revision == data.revision;
+          }
+          allow read: if handbookId == 'main' && signedIn() && isLinkedToPatient(patientId)
+            && exists(/databases/$(database)/documents/patients/$(patientId)/care_handbook/main);
+          allow create: if handbookId == 'main' && signedIn() && isCaregiverMember(patientId)
+            && validAcknowledgment(request.resource.data);
+          allow update: if handbookId == 'main' && signedIn() && isCaregiverMember(patientId)
+            && resource.data.caregiverUid == request.auth.uid
+            && resource.data.patientId == patientId
+            && request.resource.data.revision != resource.data.revision
+            && validAcknowledgment(request.resource.data);
+          allow delete: if false;
+        }
+      }
+
+      // Create-only UUID registry, atomically paired with main; no clinical text or UID.
+      match /care_handbook_revisions/{revision} {
+        function validRevisionMarker(data) {
+          return data.keys().hasAll(['createdAt']) && data.keys().hasOnly(['createdAt'])
+            && data.createdAt == request.time
+            && revision.size() == 36
+            && revision.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+            && getAfter(/databases/$(database)/documents/patients/$(patientId)/care_handbook/main).data.revision == revision
+            && getAfter(/databases/$(database)/documents/patients/$(patientId)/care_handbook/main).data.updatedAt == request.time
+            && getAfter(/databases/$(database)/documents/patients/$(patientId)/care_handbook/main).data.updatedBy == request.auth.uid;
+        }
+        allow create: if signedIn() && isFamilyMember(patientId) && validRevisionMarker(request.resource.data);
+        allow read, update, delete: if false;
+      }
+
       allow read: if signedIn() && (
         request.auth.uid in resource.data.families
         || request.auth.uid in resource.data.caregivers
       );
       allow create: if false;
-      allow update: if signedIn() && isLinkedToPatient(patientId)
+      allow update: if signedIn() && isPrimaryFamily(patientId)
         && validPatientProfile(request.resource.data)
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           "patientsId", "createdAt", "createdBy", "inviteCode",
-          "families", "caregivers", "primaryFamilyUid", "invitationVersion"
+          "families", "caregivers", "primaryFamilyUid", "invitationVersion", "familyGroupId"
         ]);
       allow delete: if signedIn() && isPrimaryFamily(patientId);
 
@@ -535,20 +867,19 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.patientId is string
-        && (isPrimaryFamily(request.resource.data.patientId)
-          || (isCaregiverMember(request.resource.data.patientId)
-            && request.resource.data.createdAt == request.time));
+        && isCaregiverMember(request.resource.data.patientId)
+        && request.resource.data.createdAt == request.time;
 
       allow update: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId)
+        && isLinkedToPatient(resource.data.patientId)
         && request.resource.data.patientId == resource.data.patientId
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt;
 
       allow delete: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId);
+        && isLinkedToPatient(resource.data.patientId);
 
       match /items/{itemId} {
         allow read: if signedIn()
@@ -556,13 +887,14 @@ service cloud.firestore {
           && isLinkedToPatient(prescriptionPatientId(prescriptionId));
 
         allow create: if signedIn() && (
-          isPrimaryFamily(getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId)
+          (exists(/databases/$(database)/documents/prescriptions/$(prescriptionId))
+            && isLinkedToPatient(prescriptionPatientId(prescriptionId)))
           || isCreatingOwnPrescription(prescriptionId,
             getAfter(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.patientId));
 
         allow update, delete: if signedIn()
           && prescriptionPatientId(prescriptionId) is string
-          && isPrimaryFamily(prescriptionPatientId(prescriptionId));
+          && isLinkedToPatient(prescriptionPatientId(prescriptionId));
       }
     }
 
@@ -573,7 +905,13 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.resource.data.patientId is string
-        && (isPrimaryFamily(request.resource.data.patientId)
+        && ((request.resource.data.prescriptionId is string
+          && exists(/databases/$(database)/documents/prescriptions/$(request.resource.data.prescriptionId))
+          && prescriptionPatientId(request.resource.data.prescriptionId) == request.resource.data.patientId
+          && isLinkedToPatient(request.resource.data.patientId)
+          && request.resource.data.notifyUserIds is list
+          && request.resource.data.notifyUserIds.toSet() == patientDoc(request.resource.data.patientId).data.families.concat(
+            patientDoc(request.resource.data.patientId).data.caregivers).toSet())
           || (request.resource.data.prescriptionId is string
             && isCreatingOwnPrescription(request.resource.data.prescriptionId,
               request.resource.data.patientId)
@@ -585,12 +923,16 @@ service cloud.firestore {
 
       allow update: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId)
-        && request.resource.data.patientId == resource.data.patientId;
+        && isLinkedToPatient(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId
+        && request.resource.data.prescriptionId == resource.data.prescriptionId
+        && request.resource.data.notifyUserIds is list
+        && request.resource.data.notifyUserIds.toSet() == patientDoc(resource.data.patientId).data.families.concat(
+          patientDoc(resource.data.patientId).data.caregivers).toSet();
 
       allow delete: if signedIn()
         && resource.data.patientId is string
-        && isPrimaryFamily(resource.data.patientId);
+        && isLinkedToPatient(resource.data.patientId);
     }
 
     match /medication_logs/{logId} {
@@ -631,6 +973,8 @@ service cloud.firestore {
     }
 
     match /health_thresholds/{thresholdId} {
+      // Missing documents contain no data. Existing thresholds still require membership.
+      allow get: if signedIn() && !exists(/databases/$(database)/documents/health_thresholds/$(thresholdId));
       allow read: if signedIn() && (
         isLinkedToPatient(thresholdId)
         || (
@@ -643,23 +987,23 @@ service cloud.firestore {
         && request.resource.data.patientDocId is string
         && request.resource.data.patientsId is string
         && thresholdId == "threshold_pat_" + request.resource.data.patientsId
-        && isFamilyMember(request.resource.data.patientDocId);
+        && isPrimaryFamily(request.resource.data.patientDocId);
 
       allow update: if signedIn() && (
-        isFamilyMember(thresholdId)
+        isPrimaryFamily(thresholdId)
         || (
           resource.data.patientDocId is string
-          && isFamilyMember(resource.data.patientDocId)
+           && isPrimaryFamily(resource.data.patientDocId)
           && request.resource.data.patientDocId == resource.data.patientDocId
           && request.resource.data.patientsId == resource.data.patientsId
         )
       );
 
       allow delete: if signedIn() && (
-        isFamilyMember(thresholdId)
+        isPrimaryFamily(thresholdId)
         || (
           resource.data.patientDocId is string
-          && isFamilyMember(resource.data.patientDocId)
+           && isPrimaryFamily(resource.data.patientDocId)
         )
       );
     }
@@ -750,6 +1094,9 @@ service cloud.firestore {
           "name_vi",
           "name_id",
           "personName",
+          "name_zh",
+          "title_zh",
+          "location_zh",
           "title",
           "title_en",
           "title_vi",
@@ -776,6 +1123,9 @@ service cloud.firestore {
           "completedAt",
           "completedBy"
         ])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['name_zh']) || boundedString(request.resource.data.name_zh, 200))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['title_zh']) || boundedString(request.resource.data.title_zh, 500))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['location_zh']) || boundedString(request.resource.data.location_zh, 500))
         && (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             "completedBy"
@@ -817,9 +1167,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /chats/{patientId}/messages/{messageId} {
+    match /chats/{patientId}/{room}/{messageId} {
+      function roomAccess() {
+        return (room == 'messages' && isLinkedToPatient(patientId))
+          || (room == 'familyMessages' && isFamilyMember(patientId));
+      }
       function validMessage(data) {
-        return data.keys().hasOnly(['senderId', 'createdAt', 'text', 'text_zh', 'text_original', 'imageUrl'])
+        return data.keys().hasOnly(['senderId', 'senderName', 'senderAvatarUrl', 'createdAt', 'text', 'text_zh', 'text_original', 'imageUrl'])
+          && boundedString(data.get('senderName', ''), 120)
+          && boundedString(data.get('senderAvatarUrl', ''), 4096)
           && data.senderId is string && data.senderId == request.auth.uid
           && data.senderId.size() <= 128
           && data.createdAt is timestamp && data.createdAt == request.time
@@ -830,8 +1186,8 @@ service cloud.firestore {
           && (!('text_zh' in data) || (data.text_zh is string && data.text_zh.size() <= 10000))
           && (!('text_original' in data) || (data.text_original is string && data.text_original.size() <= 10000));
       }
-      allow read: if signedIn() && isLinkedToPatient(patientId);
-      allow create: if signedIn() && isLinkedToPatient(patientId) && validMessage(request.resource.data);
+      allow read: if signedIn() && roomAccess();
+      allow create: if signedIn() && roomAccess() && validMessage(request.resource.data);
       // Client messages are immutable. Readers keep translations locally.
       allow update, delete: if false;
     }

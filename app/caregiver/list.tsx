@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 // app/caregiver/list.tsx
 import React, { useEffect, useState } from "react";
 import {
@@ -13,7 +14,6 @@ import { router } from "expo-router";
 import {
   collection,
   onSnapshot,
-  orderBy,
   query,
   where,
   doc,
@@ -22,7 +22,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
-import { canEditPrescription } from "@/src/care-target/permissions";
+import { canDeletePrescription } from "@/src/care-target/permissions";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useAuth } from "@/src/auth/useAuth";
 import { translations } from "@/src/i18n/translations";
@@ -162,7 +162,7 @@ function getMemoText(value: any): string {
 }
 
 async function deletePrescriptionCascade(prescriptionId: string) {
-  if (!await canEditPrescription(prescriptionId)) throw new Error("Primary family required");
+  if (!await canDeletePrescription(prescriptionId)) throw new Error("Prescription management permission required");
   const parent = await getDoc(doc(db, "prescriptions", prescriptionId));
   const patientId = parent.data()?.patientId;
   if (!patientId) throw new Error("Patient unavailable");
@@ -187,28 +187,30 @@ export default function CaregiverListScreen() {
   const [list, setList] = useState<PrescriptionRow[]>([]);
   const [medications, setMedications] = useState<MedicationGroup[]>([]);
   const [ready, setReady] = useState(false);
+  const scope = activePatientId ?? '';
+  const [previousScope, setPreviousScope] = useState<string | null>(null);
+  if (previousScope !== scope) {
+    setPreviousScope(scope); setList([]); setMedications([]); setReady(!scope);
+  }
 
   useEffect(() => {
     if (!activePatientId) {
-      setList([]);
-      setMedications([]);
-      setReady(true);
       return;
     }
 
-    setReady(false);
 
     const prescriptionsQuery = query(
       collection(db, "prescriptions"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc")
+      where("patientId", "==", activePatientId)
     );
 
     const unsubscribe = onSnapshot(
       prescriptionsQuery,
       async (snapshot) => {
         try {
-          const rows: PrescriptionRow[] = snapshot.docs.map((document) => {
+          const rows: PrescriptionRow[] = [...snapshot.docs]
+            .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+            .map((document) => {
             const data = document.data() as any;
 
             return {
@@ -371,7 +373,7 @@ export default function CaregiverListScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <Pressable
           onPress={() => router.back()}
           style={styles.backButton}
@@ -386,17 +388,17 @@ export default function CaregiverListScreen() {
             onPress={() => setTab("records")}
             style={[styles.tab, tab === "records" && styles.activeTab]}
           >
-            <Text style={styles.tabText}>藥單紀錄</Text>
+            <Text style={styles.tabText} adjustsFontSizeToFit minimumFontScale={0.72}>{t.prescriptionRecords}</Text>
           </Pressable>
 
           <Pressable
             onPress={() => setTab("meds")}
             style={[styles.tab, tab === "meds" && styles.activeTab]}
           >
-            <Text style={styles.tabText}>用藥列表</Text>
+            <Text style={styles.tabText} adjustsFontSizeToFit minimumFontScale={0.72}>{t.medicationList}</Text>
           </Pressable>
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {tab === "records" ? (
@@ -464,10 +466,10 @@ export default function CaregiverListScreen() {
                   color="#2F80ED"
                 />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.summaryLabel}>目前持續服用中</Text>
+                  <Text style={styles.summaryLabel}>{t.currentMedications}</Text>
                   <Text style={styles.summaryCount}>
-                    共 <Text style={styles.summaryNumber}>{medications.length}</Text>{" "}
-                    種藥物
+                    {t.medicationCountPrefix} <Text style={styles.summaryNumber}>{medications.length}</Text>{" "}
+                    {t.medicationCountSuffix}
                   </Text>
                 </View>
               </View>
@@ -476,14 +478,14 @@ export default function CaregiverListScreen() {
             <View style={styles.warningBox}>
               <Ionicons name="warning" size={40} color="#ebb120" />
               <Text style={styles.warningText}>
-                用藥資訊僅供參考，請以醫師或藥師指示為準
+                {t.medicationDisclaimer}
               </Text>
             </View>
 
             {medications.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="medical-outline" size={60} color="#CCC" />
-                <Text style={styles.emptyText}>目前尚無用藥資料</Text>
+                <Text style={styles.emptyText}>{t.noMedicationData}</Text>
               </View>
             ) : (
               medications.map((medication) => (
@@ -503,7 +505,7 @@ export default function CaregiverListScreen() {
                       </Text>
 
                       <View style={styles.purposeRow}>
-                        <Text style={styles.purposeLabel}>常見用途</Text>
+                        <Text style={styles.purposeLabel}>{t.commonUses}</Text>
 
                         {medication.purposes.length > 0 ? (
                           medication.purposes.slice(0, 2).map((purpose) => (
@@ -515,18 +517,18 @@ export default function CaregiverListScreen() {
                           ))
                         ) : (
                           <View style={styles.noPurposeTag}>
-                            <Text style={styles.noPurposeText}>無</Text>
+                            <Text style={styles.noPurposeText}>{t.none}</Text>
                           </View>
                         )}
                       </View>
 
                       <Text style={styles.sourceText}>
-                        資料來源：{medication.sourceLabel || "藥單辨識"}
+                        {t.dataSource}：{medication.sourceLabel || t.prescriptionRecognition}
                       </Text>
 
                       {medication.sourceLabel === "AI 補充" ? (
                         <Text style={styles.aiHint}>
-                          ※ 此資訊僅供參考，請勿自行停藥或更改用藥
+                          {t.aiMedicationHint}
                         </Text>
                       ) : null}
                     </View>
@@ -536,7 +538,7 @@ export default function CaregiverListScreen() {
 
                   <View style={styles.medFooter}>
                     <Text style={styles.recordCount}>
-                      共 {medication.count} 筆紀錄
+                      {t.recordsCountPrefix} {medication.count} {t.recordsCountSuffix}
                     </Text>
                     <Ionicons
                       name="chevron-forward"
@@ -564,17 +566,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  header: {
-    backgroundColor: "#F4E770",
-    paddingTop: 54,
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 20,
-    height: 48,
-  },
+  header: { backgroundColor: "#F4E770", paddingTop: 12, minHeight: 56 },
+  backButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, minHeight: 44, paddingVertical: 8 },
   backText: {
     fontSize: 17,
     fontWeight: "700",
@@ -584,20 +577,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "#F4E770",
   },
-  tab: {
-    flex: 1,
-    paddingVertical: 15,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  tab: { flex: 1, paddingVertical: 15, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, minWidth: 0 },
   activeTab: {
     backgroundColor: "#DCCF00",
   },
-  tabText: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#222",
-  },
+  tabText: { fontSize: 20, fontWeight: "900", color: "#222", width: "100%", textAlign: "center", flexShrink: 1 },
   scrollContent: {
     padding: 20,
     paddingBottom: 140,
@@ -636,19 +620,13 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#333",
     marginBottom: 4,
+    flexShrink: 1,
   },
   recordDate: {
     fontSize: 14,
     color: "#999",
   },
-  recordFooter: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    borderTopColor: "#EEE",
-    paddingTop: 10,
-    marginTop: 10,
-    gap: 20,
-  },
+  recordFooter: { flexDirection: "row", borderTopWidth: 1, borderTopColor: "#EEE", paddingTop: 10, marginTop: 10, gap: 20, flexWrap: "wrap" },
   detailText: {
     color: "#007AFF",
     fontWeight: "bold",
@@ -671,6 +649,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
+    flexWrap: "wrap",
   },
   summaryLabel: {
     fontSize: 18,
@@ -679,10 +658,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   summaryCount: {
-    fontSize: 30,
+    fontSize: 26,
     color: "#111",
     fontWeight: "900",
-    lineHeight: 38,
+    lineHeight: 34,
+    flexShrink: 1,
   },
   summaryNumber: {
     color: "#E53935",
@@ -729,10 +709,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   medName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
     color: "#111",
     marginBottom: 8,
+    flexShrink: 1,
   },
   purposeRow: {
     flexDirection: "row",
@@ -747,16 +728,12 @@ const styles = StyleSheet.create({
     color: "#777",
     marginRight: 4,
   },
-  purposeTag: {
-    backgroundColor: "#FFF3A8",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
+  purposeTag: { backgroundColor: "#FFF3A8", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, maxWidth: "100%" },
   purposeTagText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "900",
     color: "#555",
+    flexShrink: 1,
   },
   noPurposeTag: {
     backgroundColor: "#E5E5E5",
@@ -790,10 +767,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 10,
   },
   recordCount: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "900",
     color: "#111",
+    flex: 1,
+    flexShrink: 1,
   },
 });

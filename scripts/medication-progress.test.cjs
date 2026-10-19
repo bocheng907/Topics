@@ -1,0 +1,14 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const ts=require('typescript');
+const source=fs.readFileSync(require('node:path').join(__dirname,'../src/reminders/medicationProgress.ts'),'utf8');const exportsObject={};new Function('exports',ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(exportsObject);
+const {medicationProgress:p,taipeiDateKey}=exportsObject;const date='2026-10-15';const reminders=[{id:'a',enabled:true,scheduleTime:'08:00'},{id:'b',enabled:true,scheduleTime:'08:00'},{id:'c',enabled:true,scheduleTime:'18:00'}];
+test('empty state',()=>assert.deepEqual(p([],[],date),{total:0,completed:0}));
+test('multiple medicines at same time count as one slot',()=>assert.deepEqual(p(reminders,[],date),{total:2,completed:0}));
+test('slot completion matches caregiver behavior',()=>assert.deepEqual(p(reminders,[{dateKey:date,status:'taken',scheduleTime:'08:00'}],date),{total:2,completed:1}));
+test('all slots complete',()=>assert.deepEqual(p(reminders,['08:00','18:00'].map(scheduleTime=>({dateKey:date,status:'taken',scheduleTime})),date),{total:2,completed:2}));
+test('duplicate logs cannot exceed total',()=>assert.equal(p(reminders,Array(3).fill({dateKey:date,status:'taken',scheduleTime:'08:00'}),date).completed,1));
+test('yesterday and skipped logs do not count',()=>assert.equal(p(reminders,[{dateKey:'2026-10-14',status:'taken',scheduleTime:'08:00'},{dateKey:date,status:'skipped',scheduleTime:'18:00'}],date).completed,0));
+test('partial legacy reminders do not complete a slot',()=>assert.equal(p(reminders,[{dateKey:date,status:'taken',reminderId:'a'}],date).completed,0));
+test('legacy all reminder IDs complete a slot',()=>assert.equal(p(reminders,[{dateKey:date,status:'taken',reminderIds:['a','b']}],date).completed,1));
+test('disabled and invalid times ignored',()=>assert.deepEqual(p([{id:'a',enabled:false,scheduleTime:'08:00'},{id:'b',enabled:true,scheduleTime:'25:00'}],[],date),{total:0,completed:0}));
+test('removed reminder does not contribute completion',()=>assert.equal(p(reminders,[{dateKey:date,status:'taken',reminderId:'removed'}],date).completed,0));
+test('Taipei midnight boundary',()=>{assert.equal(taipeiDateKey(new Date('2026-10-15T15:59:59Z')),'2026-10-15');assert.equal(taipeiDateKey(new Date('2026-10-15T16:00:00Z')),'2026-10-16');});

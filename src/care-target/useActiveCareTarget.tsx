@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   type ReactNode,
   useContext,
   useEffect,
@@ -39,57 +40,49 @@ type ActiveCareTargetContextValue = {
   linkedCareTargets: CareTarget[];
   setActivePatientId: (id: string) => Promise<void>;
   clearActivePatient: () => Promise<void>;
+  forgetCareTarget: (id: string) => Promise<void>;
 };
 
 const ActiveCareTargetContext = createContext<ActiveCareTargetContextValue | null>(null);
 
 export function ActiveCareTargetProvider({ children }: { children: ReactNode }) {
   const { user, ready } = useAuth();
+  const uid = user?.uid;
+  const role = user?.role;
 
   const [hydrating, setHydrating] = useState(true);
   const [activePatientId, setActiveId] = useState<string | null>(null);
 
   const [targets, setTargets] = useState<CareTarget[]>([]);
   const [linkedIds, setLinkedIds] = useState<string[]>([]);
+  const scope = `${ready}/${user?.uid}/${user?.role}`;
+  const [previousScope, setPreviousScope] = useState<string | null>(null);
+  if (previousScope !== scope) {
+    setPreviousScope(scope); setActiveId(null); setTargets([]); setLinkedIds([]);
+    setHydrating(Boolean(ready && uid && role && role !== "agency"));
+  }
 
   useEffect(() => {
-    if (!ready) return;
-
-    if (!user) {
-      setActiveId(null);
-      setTargets([]);
-      setLinkedIds([]);
-      setHydrating(false);
-      return;
-    }
+    if (!ready || !uid || !role || role === "agency") return;
 
     let cancelled = false;
 
     (async () => {
       try {
-        setHydrating(true);
 
-        const role = user?.role;
-
-        if (!role) {
-          console.log("useActiveCareTarget: user.role missing");
-          setTargets([]);
-          setLinkedIds([]);
-          setActiveId(null);
-          setHydrating(false);
-          return;
-        }
-
-        const field = role === "family" ? "families" : "caregivers";
+        const field =
+          role === "family"
+            ? "families"
+            : "caregivers";
 
         const [snap, activeRaw] = await Promise.all([
           getDocs(
             query(
               collection(db, "patients"),
-              where(field, "array-contains", user.uid)
+              where(field, "array-contains", uid)
             )
           ),
-          AsyncStorage.getItem(activeKey(user.uid)),
+          AsyncStorage.getItem(activeKey(uid)),
         ]);
 
         if (cancelled) return;
@@ -134,11 +127,11 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
 
         if ((!nextActiveId || !ids.includes(nextActiveId)) && ids.length > 0) {
           nextActiveId = ids[0];
-          await AsyncStorage.setItem(activeKey(user.uid), nextActiveId);
+          await AsyncStorage.setItem(activeKey(uid), nextActiveId);
 
           try {
             const userSnap = await getDocs(
-              query(collection(db, "users"), where("uid", "==", user.uid))
+              query(collection(db, "users"), where("uid", "==", uid))
             );
 
             if (!userSnap.empty) {
@@ -153,11 +146,11 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
 
         if (ids.length === 0) {
           nextActiveId = null;
-          await AsyncStorage.removeItem(activeKey(user.uid));
+          await AsyncStorage.removeItem(activeKey(uid));
 
           try {
             const userSnap = await getDocs(
-              query(collection(db, "users"), where("uid", "==", user.uid))
+              query(collection(db, "users"), where("uid", "==", uid))
             );
 
             if (!userSnap.empty) {
@@ -189,7 +182,7 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
     return () => {
       cancelled = true;
     };
-  }, [ready, user?.uid, user?.role]);
+  }, [ready, uid, role]);
 
   const linkedCareTargets = useMemo(() => {
     const setIds = new Set(linkedIds);
@@ -201,8 +194,8 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
     return targets.find((t) => t.id === activePatientId) ?? null;
   }, [targets, activePatientId]);
 
-  async function setActivePatientId(id: string) {
-    if (!user || auth.currentUser?.uid !== user.uid) throw new Error("Sign in required");
+  const setActivePatientId = useCallback(async (id: string) => {
+    if (!user || user.role === "agency") return;
     if (!id || id.includes("/")) throw new Error("Invalid patient");
     const uid = user.uid;
     const snap = await getDocFromServer(doc(db, "patients", id));
@@ -224,10 +217,22 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
     setTargets(prev => [...prev.filter(item => item.id !== id), target]);
     setLinkedIds(prev => prev.includes(id) ? prev : [...prev, id]);
     setActiveId(id);
-  }
+  }, [user]);
 
-  async function clearActivePatient() {
+  const forgetCareTarget = useCallback(async (id: string) => {
     if (!user) return;
+    // The callable has already removed membership and cleared the server profile.
+    // Clear memory before storage so a storage failure cannot retain visible data.
+    setTargets(prev => prev.filter(target => target.id !== id));
+    setLinkedIds(prev => prev.filter(linked => linked !== id));
+    if (activePatientId === id) {
+      setActiveId(null);
+      await AsyncStorage.removeItem(activeKey(user.uid));
+    }
+  }, [user, activePatientId]);
+
+  const clearActivePatient = useCallback(async () => {
+    if (!user || user.role === "agency") return;
 
     await AsyncStorage.removeItem(activeKey(user.uid));
     setActiveId(null);
@@ -245,17 +250,18 @@ export function ActiveCareTargetProvider({ children }: { children: ReactNode }) 
     } catch (e) {
       console.log("clear activePatientId failed:", e);
     }
-  }
+  }, [user]);
 
   const value = useMemo<ActiveCareTargetContextValue>(() => ({
-    ready: !hydrating,
+    ready: ready && !hydrating,
     hydrating,
     activePatientId,
     activePatient,
     linkedCareTargets,
     setActivePatientId,
+    forgetCareTarget,
     clearActivePatient,
-  }), [hydrating, activePatientId, activePatient, linkedCareTargets]);
+  }), [ready, hydrating, activePatientId, activePatient, linkedCareTargets, setActivePatientId, forgetCareTarget, clearActivePatient]);
 
   return (
     <ActiveCareTargetContext.Provider value={value}>

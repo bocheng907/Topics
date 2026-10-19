@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -17,6 +18,7 @@ import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { usePrimaryFamily } from "@/src/care-target/usePrimaryFamily";
 
 export default function FamilyEmergencyContactsScreen() {
   const { language } = useLanguage();
@@ -28,21 +30,26 @@ export default function FamilyEmergencyContactsScreen() {
   const [phone2, setPhone2] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const isPrimaryFamily = usePrimaryFamily(selectedPatientId || null);
+  const primaryOnly = {
+    zh: "僅主要家屬可更正照顧對象的緊急聯絡電話。",
+    en: "Only the primary family member can change the care target's emergency contacts.",
+    vi: "Chỉ người nhà chính có thể sửa số liên lạc khẩn cấp.",
+    id: "Hanya keluarga utama yang dapat mengubah kontak darurat.",
+  }[language];
 
-  useEffect(() => {
-    if (!ready) return;
-
-    if (selectedPatientId && linkedCareTargets.some((item) => item.id === selectedPatientId)) {
-      return;
-    }
-
-    setSelectedPatientId(activePatientId ?? linkedCareTargets[0]?.id ?? "");
-  }, [ready, activePatientId, linkedCareTargets, selectedPatientId]);
+  const validSelection = linkedCareTargets.some(item => item.id === selectedPatientId);
+  const fallbackId = linkedCareTargets.some(item => item.id === activePatientId) ?
+    activePatientId! : linkedCareTargets[0]?.id ?? "";
+  if (ready && !validSelection && selectedPatientId !== fallbackId) setSelectedPatientId(fallbackId);
+  const [previousPatientId, setPreviousPatientId] = useState(selectedPatientId);
+  if (previousPatientId !== selectedPatientId) {
+    setPreviousPatientId(selectedPatientId); setPhone1(""); setPhone2("");
+    setLoading(Boolean(selectedPatientId));
+  }
 
   useEffect(() => {
     if (!selectedPatientId) {
-      setPhone1("");
-      setPhone2("");
       return;
     }
 
@@ -50,7 +57,6 @@ export default function FamilyEmergencyContactsScreen() {
 
     (async () => {
       try {
-        setLoading(true);
         const snap = await getDoc(doc(db, "patients", selectedPatientId));
         if (!alive) return;
 
@@ -74,8 +80,8 @@ export default function FamilyEmergencyContactsScreen() {
   }, [selectedPatientId]);
 
   const canSave = useMemo(
-    () => !!selectedPatientId && !loading && !saving,
-    [selectedPatientId, loading, saving]
+    () => !!selectedPatientId && isPrimaryFamily && !loading && !saving,
+    [selectedPatientId, isPrimaryFamily, loading, saving]
   );
 
   const handleSave = async () => {
@@ -110,12 +116,12 @@ export default function FamilyEmergencyContactsScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={28} color="#333" />
           <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>{t.emergencyPhoneSettings}</Text>
@@ -181,6 +187,7 @@ export default function FamilyEmergencyContactsScreen() {
                       style={styles.input}
                       value={phone1}
                       onChangeText={setPhone1}
+                      editable={isPrimaryFamily}
                       keyboardType="phone-pad"
                       placeholder={t.emergencyPhonePlaceholder1}
                       placeholderTextColor="#999"
@@ -193,6 +200,7 @@ export default function FamilyEmergencyContactsScreen() {
                       style={styles.input}
                       value={phone2}
                       onChangeText={setPhone2}
+                      editable={isPrimaryFamily}
                       keyboardType="phone-pad"
                       placeholder={t.emergencyPhonePlaceholder2}
                       placeholderTextColor="#999"
@@ -202,6 +210,7 @@ export default function FamilyEmergencyContactsScreen() {
               )}
             </View>
 
+            {!isPrimaryFamily && <Text style={styles.messageText}>{primaryOnly}</Text>}
             <Pressable
               style={[styles.primaryBtn, !canSave && styles.primaryBtnDisabled]}
               disabled={!canSave}
@@ -218,15 +227,7 @@ export default function FamilyEmergencyContactsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF" },
-  header: {
-    height: 100,
-    paddingTop: 50,
-    paddingHorizontal: 15,
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-  },
+  header: { paddingTop: 12, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#F0F0F0", minHeight: 56 },
   backBtn: { flexDirection: "row", alignItems: "center" },
   backText: { fontSize: 20, fontWeight: "bold", color: "#333", marginLeft: 2 },
   content: {

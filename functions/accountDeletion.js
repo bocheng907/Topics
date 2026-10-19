@@ -217,16 +217,56 @@ async function unlinkOrDeletePatients(db, bucket, uid) {
 }
 
 async function purgeAccountData({db, auth, bucket, uid}) {
+  await require("./communityDeletion").purgeCommunityAccount({db, bucket, uid});
+  // Approved agency policy: detach at the 30-day deadline, never delete the
+  // caregiver's patient data or retained service summaries with the agency.
+  const agencyMembers = await db.collection("agency_memberships")
+      .where("agencyUid", "==", uid).get();
+  for (const membership of agencyMembers.docs) {
+    await db.runTransaction(async (tx) => {
+      const current = await tx.get(membership.ref);
+      if (current.exists && current.data().agencyUid === uid) tx.delete(membership.ref);
+    });
+  }
+  const invites = await db.collection("agency_invites").where("agencyUid", "==", uid).get();
+  for (const invite of invites.docs) {
+    await db.runTransaction(async (tx) => {
+      const current = await tx.get(invite.ref);
+      if (current.exists && current.data().agencyUid === uid) {
+        // Keep the code reserved, but remove the deleted agency's identity.
+        tx.set(invite.ref, {inviteCode: invite.id, agencyUid: "", active: false});
+      }
+    });
+  }
+  // Remove only this account's profile/binding and its UUID avatar directory.
+  await db.doc("agency_memberships/" + uid).delete();
+  await db.doc("caregiver_profiles/" + uid).delete();
+  await bucket.deleteFiles({prefix: `profile_images/${uid}/`});
   for (const spec of USER_OWNED_COLLECTIONS) {
     await deleteMatchingDocuments(db, bucket, spec, uid);
   }
-  const messages = await db.collectionGroup("messages")
-    .where("senderId", "==", uid).get();
-  for (const message of messages.docs) {
-    await deleteStorageUrls(bucket, message.data(), ["imageUrl"]);
-    await db.recursiveDelete(message.ref);
+  for (const room of ["messages", "familyMessages"]) {
+    const messages = await db.collectionGroup(room)
+      .where("senderId", "==", uid).get();
+    for (const message of messages.docs) {
+      await deleteStorageUrls(bucket, message.data(), ["imageUrl"]);
+      await db.recursiveDelete(message.ref);
+    }
   }
   await unlinkOrDeletePatients(db, bucket, uid);
+  // Also remove self-authored handover acknowledgments after leaving a group.
+  // Restrict the collection-group result to the exact supported document path.
+  const acknowledgments = await db.collectionGroup("acknowledgments")
+      .where("caregiverUid", "==", uid).get();
+  for (const acknowledgment of acknowledgments.docs) {
+    const parts = acknowledgment.ref.path.split("/");
+    if (parts.length === 6 && parts[0] === "patients" &&
+        parts[2] === "care_handbook" && parts[3] === "main" &&
+        parts[4] === "acknowledgments" && parts[5] === uid &&
+        acknowledgment.data().patientId === parts[1]) {
+      await acknowledgment.ref.delete();
+    }
+  }
   const users = await db.collection("users").where("uid", "==", uid).get();
   for (const user of users.docs) {
     const requests = await user.ref.collection("join_requests").get();

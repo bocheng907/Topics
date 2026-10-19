@@ -26,7 +26,7 @@ test('published document and Rules match consent version; no policy placeholders
   const url = new URL(consent.PRIVACY_POLICY_URL);
   const html = fs.readFileSync(path.join(root, 'privacy-hosting', `${url.pathname}.html`), 'utf8');
   assert.ok(html.includes(version));
-  assert.ok(html.includes('暨南大學資管系,智慧醫療團隊'));
+  assert.ok(html.includes('暨南大學資管系'));
   assert.ok(html.includes('mailto:bocheng5204@gmail.com'));
   assert.ok(!html.includes('【待填】'));
   assert.ok(!html.includes('<script'));
@@ -35,7 +35,10 @@ test('published document and Rules match consent version; no policy placeholders
 });
 
 const host = process.env.FIRESTORE_EMULATOR_HOST;
-if (host !== '127.0.0.1:8198') throw new Error('Use the local privacy-test emulator only');
+if (host !== '127.0.0.1:18198' ||
+    (process.env.GCLOUD_PROJECT && process.env.GCLOUD_PROJECT !== 'demo-invite-expiry')) {
+  throw new Error('Use the dedicated local demo emulator only');
+}
 const project = 'demo-invite-expiry';
 const base = `http://${host}/v1/projects/${project}/databases/(default)/documents`;
 const prefix = `projects/${project}/databases/(default)/documents`;

@@ -1,6 +1,14 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 // app/family/voice.tsx
 import { Feather, Ionicons } from '@expo/vector-icons'; // 💡 引入專業圖示庫
-import { Audio } from 'expo-av';
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+} from 'expo-audio';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -13,6 +21,8 @@ import { translations } from '@/src/i18n/translations';
 import { useLanguage } from '@/src/store/LanguageContext';
 import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
+import { createMediaUploadFilename } from '@/firebase/uploadFilename';
+import { readLocalBlob } from "@/src/media/readLocalBlob";
 
 // 初始任務模板 (純圖片，不帶任何錄音狀態)
 const initialTasks = [
@@ -48,27 +58,36 @@ export default function FamilyVoiceScreen() {
   const [recordingTask, setRecordingTask] = useState<any>(null); 
   
   // 錄音與試聽狀態 (Modal 用)
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [modalSound, setModalSound] = useState<Audio.Sound | null>(null);
-  const [audioUri, setAudioUri] = useState<string | null>(null); 
+  // expo-audio 的錄音器與播放器都由 hook 管理生命週期，元件卸載時自動釋放，
+  // 不需要像舊版 expo-av 那樣自己 unloadAsync
+  const recorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
+  const modalPlayer = useAudioPlayer();
+  const modalPlayerStatus = useAudioPlayerStatus(modalPlayer);
+  const [audioUri, setAudioUri] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [isPlayingModal, setIsPlayingModal] = useState(false); 
-  const [previewTime, setPreviewTime] = useState(0); 
+  const previewTime = isPlayingModal ? Math.floor(modalPlayerStatus.currentTime) : 0;
 
   // 列表播放狀態 (實體播放用)
-  const [listSound, setListSound] = useState<Audio.Sound | null>(null);
-  const [playingTaskId, setPlayingTaskId] = useState<number | null>(null); 
+  const listPlayer = useAudioPlayer();
+  const [playingTaskId, setPlayingTaskId] = useState<number | null>(null);
 
-  // 清除未使用的音檔資源
+  // 播放結束時清掉播放中狀態（取代舊版的 setOnPlaybackStatusUpdate）
   useEffect(() => {
-    return modalSound ? () => { modalSound.unloadAsync(); } : undefined;
-  }, [modalSound]);
+    const subscription = modalPlayer.addListener('playbackStatusUpdate', status => {
+      if (status.didJustFinish) setIsPlayingModal(false);
+    });
+    return () => subscription.remove();
+  }, [modalPlayer]);
 
   useEffect(() => {
-    return listSound ? () => { listSound.unloadAsync(); } : undefined;
-  }, [listSound]);
+    const subscription = listPlayer.addListener('playbackStatusUpdate', status => {
+      if (status.didJustFinish) setPlayingTaskId(null);
+    });
+    return () => subscription.remove();
+  }, [listPlayer]);
 
   // ==========================================
   // 1. 抓取 Firebase 語音紀錄 (同步狀態)
@@ -115,29 +134,11 @@ export default function FamilyVoiceScreen() {
       interval = setInterval(() => {
         setRecordTime((prev) => (prev >= 30 ? 30 : prev + 1));
       }, 1000);
-    } else if (recordingTask === null) setRecordTime(0);
+    }
     return () => {
       if (interval) clearInterval(interval);
     };
   }, [recordingTask, isRecording]);
-
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | undefined;
-    if (isPlayingModal) {
-      interval = setInterval(() => {
-        setPreviewTime((prev) => {
-          if (prev >= recordTime - 1) {
-            setIsPlayingModal(false);
-            return recordTime;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } else setPreviewTime(0);
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isPlayingModal, recordTime]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -150,20 +151,20 @@ export default function FamilyVoiceScreen() {
   // ==========================================
   const startRecording = async () => {
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.status !== 'granted') {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
         Alert.alert(t.resultErrorTitle, t.micPermissionNeeded);
         return;
       }
       // 💡 錄音前：開啟錄音模式
-      await Audio.setAudioModeAsync({ 
-        allowsRecordingIOS: true, 
-        playsInSilentModeIOS: true,
-        playThroughEarpieceAndroid: false // 防止 Android 也從聽筒出聲
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false, // 防止 Android 也從聽筒出聲
       });
-      
-      const { recording: newRecording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.LOW_QUALITY);
-      setRecording(newRecording);
+
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       setIsRecording(true);
       setRecordTime(0);
       setAudioUri(null);
@@ -173,12 +174,11 @@ export default function FamilyVoiceScreen() {
   };
 
   const stopRecording = async () => {
-    if (!recording) return;
+    if (!recorder.isRecording) return;
     setIsRecording(false);
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
-    setAudioUri(uri);
-    setRecording(null);
+    await recorder.stop();
+    // expo-audio 的錄音檔路徑在 recorder.uri
+    setAudioUri(recorder.uri);
   };
 
   const toggleRecord = () => {
@@ -189,33 +189,21 @@ export default function FamilyVoiceScreen() {
 
   const togglePreview = async () => {
     if (isPlayingModal) {
-      if (modalSound) await modalSound.stopAsync();
+      modalPlayer.pause();
       setIsPlayingModal(false);
-      setPreviewTime(0);
     } else {
       if (!audioUri) return;
       setIsPlayingModal(true);
 
       // 💡 播放前：關閉錄音模式，強制聲音從底部主喇叭放出！
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false, 
-        playsInSilentModeIOS: true,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
 
-      // 🟢 正確寫法：一樣補上 null，再放 false
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: audioUri },
-        { shouldPlay: true },
-        null,  // 💡 填 null
-        false  // 💡 填 false
-      );
-      
-      setModalSound(newSound);
-      
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) setIsPlayingModal(false);
-      });
+      modalPlayer.replace({ uri: audioUri });
+      modalPlayer.play();
     }
   };
 
@@ -227,40 +215,25 @@ export default function FamilyVoiceScreen() {
 
     // 如果點擊的是正在播放的，就停止
     if (playingTaskId === task.id) {
-      if (listSound) { await listSound.stopAsync(); await listSound.unloadAsync(); setListSound(null); }
+      listPlayer.pause();
       setPlayingTaskId(null);
       return;
     }
-
-    // 停止上一首
-    if (listSound) { await listSound.stopAsync(); await listSound.unloadAsync(); }
 
     setPlayingTaskId(task.id);
     try {
 
       // 💡 播放前：關閉錄音模式，強制聲音從底部主喇叭放出！
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
 
-      // 🟢 正確寫法：把 false 移到第 4 個位子，第 3 個位子補上 null
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: task.audioUrl },
-        { shouldPlay: true },
-        null,  // 💡 第三個參數保留給系統，我們填 null
-        false  // 💡 第四個參數才是真正的「不要等下載完」！
-      );
-      
-      setListSound(newSound);
-      
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setPlayingTaskId(null);
-        }
-      });
-    } catch (error) {
+      // 換音源後從頭播放（replace 會自動停掉前一首）
+      listPlayer.replace({ uri: task.audioUrl });
+      listPlayer.play();
+    } catch {
       Alert.alert(t.resultErrorTitle, t.playVoiceFailed);
       setPlayingTaskId(null);
     }
@@ -285,10 +258,10 @@ export default function FamilyVoiceScreen() {
             
             // 如果正在播放則停止
             if (playingTaskId === task.id) {
-              if (listSound) await listSound.stopAsync();
+              listPlayer.pause();
               setPlayingTaskId(null);
             }
-          } catch (error) {
+          } catch {
             Alert.alert(t.resultErrorTitle, t.deleteFailedShort);
           }
         } 
@@ -307,17 +280,16 @@ export default function FamilyVoiceScreen() {
 
     setIsUploading(true);
     try {
-      const now = new Date();
-      const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-      const shortId = activePatientId.slice(-4);
-      const customDocId = `${timeStr}_voice_${shortId}`;
-      const fileName = `${customDocId}.m4a`;
+      const fileName = createMediaUploadFilename('m4a');
+      const customDocId = fileName.slice(0, -4);
 
-      const response = await fetch(audioUri);
-      const blob = await response.blob();
+      const blob = await readLocalBlob(audioUri);
       const storageRef = ref(storage, `voice_messages/${activePatientId}/${fileName}`);
       
-      await uploadBytes(storageRef, blob);
+      await uploadBytes(storageRef, blob, {
+        contentType: blob.type || 'audio/mp4',
+        customMetadata: {uploaderUid: user.uid, patientId: activePatientId},
+      });
       const downloadUrl = await getDownloadURL(storageRef);
 
       const docRef = doc(db, 'voice_records', customDocId);
@@ -354,14 +326,14 @@ export default function FamilyVoiceScreen() {
   return (
     <View style={styles.container}>
       {/* 💡 延伸的綠色 Header (拿掉電池 UI，加深 PaddingBottom) */}
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <View style={styles.headerRow}>
           <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
             <Ionicons name="chevron-back" size={24} color="#111827" />
             <Text style={styles.backBtnText}>{t.back}</Text>
           </Pressable>
         </View>
-      </View>
+      </ScreenHeader>
 
       {/* 列表區域 */}
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -426,7 +398,7 @@ export default function FamilyVoiceScreen() {
       {/* ================= 錄音彈出視窗 (Modal) ================= */}
       {recordingTask && (
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <ScrollView style={{ maxHeight: "90%", width: "90%", flexGrow: 0, borderRadius: 32 }} contentContainerStyle={styles.modalContent}>
             <Pressable 
               style={styles.closeBtn} 
               onPress={() => {
@@ -481,7 +453,7 @@ export default function FamilyVoiceScreen() {
                 )}
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </View>
       )}
     </View>
@@ -491,34 +463,34 @@ export default function FamilyVoiceScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA' },
   // 💡 修改了 Header，增加了 paddingBottom 讓綠色延伸
-  header: { backgroundColor: '#90E389', paddingTop: 54, paddingBottom: 16, elevation: 2 },
+  header: { backgroundColor: '#90E389', paddingTop: 12, paddingBottom: 16, elevation: 2, minHeight: 56 },
   headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
   
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
-  taskCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', paddingVertical: 14, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  taskLeft: { flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 },
+  taskCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', paddingVertical: 14, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexWrap: "wrap", gap: 12 },
+  taskLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
   imageBox: { width: 90, height: 90, backgroundColor: '#F0F0F0', borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden' },
   taskImage: { width: 100, height: 100 },
-  taskInfo: { justifyContent: 'center' },
-  taskTitle: { fontSize: 24, fontWeight: 'bold', color: '#000', marginBottom: 6, letterSpacing: 1 },
+  taskInfo: { justifyContent: 'center', flex: 1, minWidth: 0 },
+  taskTitle: { fontSize: 20, fontWeight: 'bold', color: '#000', marginBottom: 6, letterSpacing: 1 },
   
-  statusArea: { height: 28, justifyContent: 'center' },
+  statusArea: { justifyContent: 'center', minHeight: 28 },
   statusEmpty: { fontSize: 16, color: '#9CA3AF', fontWeight: '600', letterSpacing: 1 },
   playBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
   playIcon: { marginRight: 8 },
   waveContainer: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 16 },
   waveBar: { width: 3, backgroundColor: '#000', borderRadius: 2 },
   
-  taskRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  taskRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
   iconBtn: { padding: 10 },
   
   modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', zIndex: 50 },
-  modalContent: { backgroundColor: '#E2E5EA', width: '80%', borderRadius: 32, padding: 24, alignItems: 'center', elevation: 10 },
+  modalContent: { backgroundColor: '#E2E5EA', borderRadius: 32, padding: 24, alignItems: 'center', elevation: 10, paddingTop: 56 },
   closeBtn: { position: 'absolute', top: 16, right: 20, padding: 8 },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#374151', marginBottom: 8, marginTop: 10, letterSpacing: 1 },
-  modalSubtitle: { fontSize: 14, color: '#6B7280', fontWeight: '600', marginBottom: 24 },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#374151', marginBottom: 8, marginTop: 0, letterSpacing: 1, textAlign: "center", width: "100%", paddingHorizontal: 0 },
+  modalSubtitle: { fontSize: 14, color: '#6B7280', fontWeight: '600', marginBottom: 24, textAlign: "center" },
   
   micWrap: { width: 120, height: 120, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
   micPulse: { position: 'absolute', width: '100%', height: '100%', backgroundColor: '#EF3E3E', borderRadius: 60, opacity: 0.3 },
@@ -527,9 +499,9 @@ const styles = StyleSheet.create({
   timeText: { fontSize: 26, fontWeight: '600', letterSpacing: 2, marginBottom: 32, color: '#000' },
   
   btnRow: { flexDirection: 'row', width: '100%', gap: 16 },
-  actionBtn: { flex: 1, paddingVertical: 14, borderRadius: 16, alignItems: 'center' },
+  actionBtn: { flex: 1, paddingVertical: 14, borderRadius: 16, alignItems: 'center', paddingHorizontal: 8 },
   btnPreview: { backgroundColor: '#85C6F9' },
   btnSave: { backgroundColor: '#4651DB' },
   btnDisabled: { backgroundColor: '#D1D5DB' },
-  actionBtnText: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
+  actionBtnText: { color: '#FFF', fontSize: 20, fontWeight: 'bold', width: "100%", textAlign: "center" },
 });

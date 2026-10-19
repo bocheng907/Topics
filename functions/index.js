@@ -21,14 +21,37 @@ const db = getFirestore();
 exports.exportPersonalData = onCall({region: "us-central1",
   timeoutSeconds: 240, memory: "512MiB", maxInstances: 3},
 require("./personalDataExport").createPersonalDataExportService({db}));
+exports.myDataSummary = onCall({region: "us-central1",
+  timeoutSeconds: 120, memory: "256MiB", maxInstances: 5},
+require("./myDataSummary").createMyDataSummaryService({db}));
 const careTargetAccess = require("./careTargetAccess")
     .createCareTargetService(db);
 exports.createCareTarget = onCall({region: "us-central1"},
   careTargetAccess.createCareTarget);
 exports.joinCareTarget = onCall({region: "us-central1"},
   careTargetAccess.joinCareTarget);
+exports.leaveCareTarget = onCall({region: "us-central1"},
+  require("./leaveCareTarget").createLeaveCareTarget(db));
+exports.syncCommunityRole = onCall({region: "us-central1"},
+  require("./communityRole").createSyncCommunityRole(db));
 exports.manageInvitation = onCall({region: "us-central1"},
   careTargetAccess.manageInvitation);
+const agencyReportAccess =
+  require("./agencyReportAccess")
+      .createAgencyReportService(db);
+const agencyAccess = require("./agencyAccess").createAgencyAccessService(db);
+exports.getAgencyInvite = onCall({region: "us-central1"}, agencyAccess.getAgencyInvite);
+exports.bindAgency = onCall({region: "us-central1"}, agencyAccess.bindAgency);
+
+exports.getAgencyReportContext = onCall(
+    {region: "us-central1"},
+    agencyReportAccess.getAgencyReportContext,
+);
+
+exports.createAgencyReport = onCall(
+    {region: "us-central1"},
+    agencyReportAccess.createAgencyReport,
+);
 const audit = require("./auditLog").createAuditService(db);
 exports.recordSessionAudit = onCall({region: "us-central1"},
   audit.recordSession);
@@ -38,6 +61,7 @@ for (const [name, document, kind] of [
     "prescription_item"],
   ["auditCareMembers", "patients/{patientId}", "members"],
   ["auditHealthThreshold", "health_thresholds/{thresholdId}", "threshold"],
+  ["auditUserProfile", "users/{userDocId}", "profile"],
 ]) {
   exports[name] = onDocumentWrittenWithAuthContext({
     document, region: "us-central1", retry: true,

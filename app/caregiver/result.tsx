@@ -1,15 +1,7 @@
+import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import { useEffect, useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  Image,
-  ActivityIndicator,
-  ScrollView,
-  Pressable,
-  TextInput,
-  Alert,
-} from "react-native";
+import { View, Text, Image, ActivityIndicator, Pressable, TextInput, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   collection,
@@ -201,7 +193,10 @@ function ResultScreen() {
     }
   }, [analyzeResult]);
 
-  useEffect(() => {
+  const draftScope = JSON.stringify([isDraftMode, safeAnalyze, safeImageUrl, draftTitle, t.cameraDefaultDraftTitle]);
+  const [previousDraftScope, setPreviousDraftScope] = useState<string | null>(null);
+  if (previousDraftScope !== draftScope) {
+    setPreviousDraftScope(draftScope);
     if (isDraftMode) {
       const safe = safeAnalyze ?? {};
 
@@ -235,8 +230,11 @@ function ResultScreen() {
       setGlobalMemo(formatPrescriptionMemo(safe.memo));
       setItems(medicines.map((it) => mapItem(it)));
       setStatus("done");
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (isDraftMode) return;
 
     if (!prescriptionId) {
       Alert.alert(t.resultErrorTitle, t.resultMissingId);
@@ -405,7 +403,7 @@ function ResultScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, paddingBottom: 160, gap: 16 }}>
+    <ScreenScrollView contentContainerStyle={{ padding: 20, paddingTop: 20, paddingBottom: 160, gap: 16 }}>
       <Text style={{ fontSize: 24, fontWeight: "900", color: "#333" }}>
         {status === "loading" ? t.resultLoadingTitle : t.resultDoneTitle}
       </Text>
@@ -609,7 +607,7 @@ function ResultScreen() {
           </View>
         </View>
       )}
-    </ScrollView>
+    </ScreenScrollView>
   );
 }
 

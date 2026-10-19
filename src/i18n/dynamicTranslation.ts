@@ -131,7 +131,13 @@ export async function ensureFirestoreTranslations(
     // Read-only members may view translations without persisting them.
     const prescriptionId = docRef.path.startsWith("prescriptions/") ? docRef.path.split("/")[1] : null;
     if (!docRef.path.startsWith("chats/") && (!prescriptionId || await canEditPrescription(prescriptionId))) {
-      await updateDoc(docRef, updatePayload);
+      // Persisting is best-effort: a viewer without write access (e.g. a family
+      // member reading a caregiver's note) still gets the translation locally.
+      try {
+        await updateDoc(docRef, updatePayload);
+      } catch (error) {
+        console.log("persist translation skipped:", docRef.path, (error as { code?: string })?.code);
+      }
     }
   }
 

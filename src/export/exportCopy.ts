@@ -1,7 +1,7 @@
 export const exportCopy = {
   zh: {
     title: "匯出個人資料", back: "返回", password: "請輸入目前密碼",
-    description: "匯出本人帳號、通知，以及本人建立且目前仍有權存取的照護紀錄。包含藥單明細、健康紀錄、服藥紀錄、記事、行事曆及本人聊天室訊息；不包含其他成員帳號、完整長者檔案、圖片／音檔本體或媒體下載連結。",
+    description: "匯出本人帳號、通知，以及本人建立且目前仍有權存取的照護紀錄。包含藥單明細、健康紀錄、服藥紀錄、記事、行事曆、本人聊天室訊息，以及目前可存取的本人社群文章與留言；不包含其他成員帳號、完整長者檔案、圖片／音檔本體或媒體下載連結。",
     warning: "JSON 可能含敏感健康資料，且未加密。請只存放或分享至可信任的位置。匯出檔不會上傳至公開網址；下載或分享出去的副本需由你自行管理。",
     generate: "重新驗證並產生 JSON", busy: "處理中…",
     download: "下載 JSON", share: "儲存／分享 JSON",
@@ -15,7 +15,7 @@ export const exportCopy = {
   },
   en: {
     title: "Export personal data", back: "Back", password: "Current password",
-    description: "Export your account, notifications and records you authored that you can still access: prescriptions and items, health and medication records, notes, calendar events and your chat messages. Other user profiles, full patient profiles, media files and media URLs are excluded.",
+    description: "Export your account, notifications and records you authored that you can still access: prescriptions and items, health and medication records, notes, calendar events your chat messages, and your community posts and comments that remain accessible. Other user profiles, full patient profiles, media files and media URLs are excluded.",
     warning: "The unencrypted JSON may contain sensitive health data. Save or share only to a trusted location. No public download URL is created. You manage any saved or shared copies.",
     generate: "Verify and generate JSON", busy: "Working…", download: "Download JSON",
     share: "Save / share JSON", ready: "Export prepared", count: "Records",
@@ -29,7 +29,7 @@ export const exportCopy = {
   },
   vi: {
     title: "Xuất dữ liệu cá nhân", back: "Quay lại", password: "Mật khẩu hiện tại",
-    description: "Xuất tài khoản, thông báo và bản ghi do bạn tạo mà bạn vẫn có quyền truy cập: đơn thuốc, sức khỏe, dùng thuốc, ghi chú, lịch và tin nhắn của bạn. Không gồm hồ sơ người khác, hồ sơ đầy đủ của người được chăm sóc, tệp hoặc liên kết đa phương tiện.",
+    description: "Xuất tài khoản, thông báo và bản ghi do bạn tạo mà bạn vẫn có quyền truy cập: đơn thuốc, sức khỏe, dùng thuốc, ghi chú, lịch, tin nhắn, bài viết và bình luận cộng đồng của bạn mà bạn vẫn có quyền truy cập. Không gồm hồ sơ người khác, hồ sơ đầy đủ của người được chăm sóc, tệp hoặc liên kết đa phương tiện.",
     warning: "JSON không được mã hóa và có thể chứa dữ liệu sức khỏe nhạy cảm. Chỉ lưu hoặc chia sẻ đến nơi tin cậy. Không tạo liên kết tải công khai; bạn quản lý các bản sao đã lưu.",
     generate: "Xác minh và tạo JSON", busy: "Đang xử lý…", download: "Tải JSON",
     share: "Lưu / chia sẻ JSON", ready: "Đã tạo tệp", count: "Số bản ghi",
@@ -43,7 +43,7 @@ export const exportCopy = {
   },
   id: {
     title: "Ekspor data pribadi", back: "Kembali", password: "Kata sandi saat ini",
-    description: "Ekspor akun, notifikasi, dan catatan buatan Anda yang masih dapat diakses: resep, kesehatan, obat, catatan, kalender, dan pesan Anda. Profil pengguna lain, profil lengkap pasien, berkas media, dan tautan media tidak disertakan.",
+    description: "Ekspor akun, notifikasi, dan catatan buatan Anda yang masih dapat diakses: resep, kesehatan, obat, catatan, kalender, pesan, serta postingan dan komentar komunitas Anda yang masih dapat diakses. Profil pengguna lain, profil lengkap pasien, berkas media, dan tautan media tidak disertakan.",
     warning: "JSON tidak terenkripsi dan dapat berisi data kesehatan sensitif. Simpan atau bagikan hanya ke lokasi tepercaya. Tidak ada tautan unduhan publik; Anda mengelola salinan yang disimpan.",
     generate: "Verifikasi dan buat JSON", busy: "Memproses…", download: "Unduh JSON",
     share: "Simpan / bagikan JSON", ready: "Ekspor siap", count: "Catatan",

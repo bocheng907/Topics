@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 // app/family/list.tsx
 import React, { useEffect, useState } from "react";
 import {
@@ -14,15 +15,14 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   collection,
   onSnapshot,
-  orderBy,
   query,
   where,
   doc,
   getDocs,
   writeBatch,
-} from "firebase/firestore";
+ getDoc } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
-import { getDoc } from "firebase/firestore";
+
 import { canEditPrescription } from "@/src/care-target/permissions";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useAuthContext } from "@/src/auth/AuthProvider";
@@ -171,7 +171,7 @@ function getMemoText(value: any): string {
 }
 
 async function deletePrescriptionCascade(prescriptionId: string) {
-  if (!await canEditPrescription(prescriptionId)) throw new Error("Primary family required");
+  if (!await canEditPrescription(prescriptionId)) throw new Error("Prescription management permission required");
   const parent = await getDoc(doc(db, "prescriptions", prescriptionId));
   const patientId = parent.data()?.patientId;
   if (!patientId) throw new Error("Patient unavailable");
@@ -222,28 +222,30 @@ export default function FamilyListScreen() {
   const [list, setList] = useState<PrescriptionRow[]>([]);
   const [medications, setMedications] = useState<MedicationGroup[]>([]);
   const [dataReady, setDataReady] = useState(false);
+  const scope = activePatientId ?? '';
+  const [previousScope, setPreviousScope] = useState<string | null>(null);
+  if (previousScope !== scope) {
+    setPreviousScope(scope); setList([]); setMedications([]); setDataReady(!scope);
+  }
 
   useEffect(() => {
     if (!activePatientId) {
-      setList([]);
-      setMedications([]);
-      setDataReady(true);
       return;
     }
 
-    setDataReady(false);
 
     const prescriptionsQuery = query(
       collection(db, "prescriptions"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc")
+      where("patientId", "==", activePatientId)
     );
 
     const unsubscribe = onSnapshot(
       prescriptionsQuery,
       async (snapshot) => {
         try {
-          const rows: PrescriptionRow[] = snapshot.docs.map((document) => {
+          const rows: PrescriptionRow[] = [...snapshot.docs]
+            .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+            .map((document) => {
             const data = document.data() as any;
 
             return {
@@ -411,7 +413,7 @@ export default function FamilyListScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
           <Ionicons name="chevron-back" size={24} color="#111827" />
           <Text style={styles.backText}>{t.back}</Text>
@@ -432,7 +434,7 @@ export default function FamilyListScreen() {
             <Text style={styles.tabText}>{extraText.medicationList}</Text>
           </Pressable>
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {tab === "records" ? (
@@ -606,17 +608,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  header: {
-    backgroundColor: "#F4E770",
-    paddingTop: 54,
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 20,
-    height: 48,
-  },
+  header: { backgroundColor: "#F4E770", paddingTop: 12, minHeight: 56 },
+  backButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, minHeight: 44, paddingVertical: 8 },
   backText: {
     fontSize: 17,
     fontWeight: "700",
@@ -626,20 +619,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "#F4E770",
   },
-  tab: {
-    flex: 1,
-    paddingVertical: 15,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  tab: { flex: 1, paddingVertical: 15, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, minWidth: 0 },
   activeTab: {
     backgroundColor: "#DCCF00",
   },
-  tabText: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#111",
-  },
+  tabText: { fontSize: 20, fontWeight: "900", color: "#111", width: "100%", textAlign: "center", flexShrink: 1 },
   scrollContent: {
     padding: 20,
     gap: 15,
@@ -673,13 +657,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#999",
   },
-  cardFooter: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    borderTopColor: "#EEE",
-    paddingTop: 10,
-    gap: 15,
-  },
+  cardFooter: { flexDirection: "row", borderTopWidth: 1, borderTopColor: "#EEE", paddingTop: 10, gap: 15, flexWrap: "wrap" },
   detailText: {
     color: "#007AFF",
     fontWeight: "bold",
@@ -769,12 +747,7 @@ const styles = StyleSheet.create({
     color: "#777",
     marginRight: 3,
   },
-  purposeTag: {
-    backgroundColor: "#FFF3A8",
-    borderRadius: 11,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
+  purposeTag: { backgroundColor: "#FFF3A8", borderRadius: 11, paddingHorizontal: 10, paddingVertical: 5, maxWidth: "100%" },
   purposeTagText: {
     fontSize: 14,
     fontWeight: "800",

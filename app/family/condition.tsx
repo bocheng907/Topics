@@ -1,5 +1,6 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import { Ionicons } from '@expo/vector-icons';
-import { ResizeMode, Video } from 'expo-av';
+import VideoPlayerView from '@/src/media/VideoPlayerView';
 import { router, useNavigation } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -10,7 +11,7 @@ import { useActiveCareTarget } from '@/src/care-target/useActiveCareTarget';
 import { pickDynamicLocalizedString } from '@/src/i18n/dynamicTranslation';
 import { translations, type Language } from '@/src/i18n/translations';
 import { useLanguage } from '@/src/store/LanguageContext';
-import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 
 function pickAbnormalTitle(record: any, language: Language) {
   return pickDynamicLocalizedString(record, 'title', language, ['titleZh', 'titleOriginal'], record?.titleOriginal ?? '');
@@ -53,12 +54,13 @@ export default function FamilyConditionScreen() {
     
     const q = query(
       collection(db, 'abnormal_records'),
-      where('patientId', '==', activePatientId),
-      orderBy('createdAt', 'desc')
+      where('patientId', '==', activePatientId)
     );
     
     const unsub = onSnapshot(q, (snap) => {
-      const fetchedRecords = snap.docs.map(doc => {
+      const fetchedRecords = [...snap.docs]
+        .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+        .map(doc => {
         const data = doc.data();
         const dateObj = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
         const dateStr = `${dateObj.getFullYear()}年 ${dateObj.getMonth() + 1}月 ${dateObj.getDate()}日`;
@@ -70,12 +72,20 @@ export default function FamilyConditionScreen() {
     return unsub;
   }, [activePatientId]);
 
-  useEffect(() => {
+  const [previousRecords, setPreviousRecords] = useState(records);
+  if (previousRecords !== records) {
+    setPreviousRecords(records);
     if (selectedRecord) {
       const updatedRecord = records.find(r => r.id === selectedRecord.id);
-      if (updatedRecord) setSelectedRecord(updatedRecord);
+      if (updatedRecord) {
+        setSelectedRecord(updatedRecord);
+        if (selectedFolderEntry) {
+          const updatedEntry = updatedRecord.entries?.find((entry: any) => entry.entryId === selectedFolderEntry.entryId);
+          if (updatedEntry) setSelectedFolderEntry(updatedEntry);
+        }
+      }
     }
-  }, [records]);
+  }
 
   // --- 導覽功能 ---
   const goToList = () => { 
@@ -110,12 +120,7 @@ export default function FamilyConditionScreen() {
 
     if (isVideo) {
       return (
-        <Video 
-          source={{ uri }} 
-          style={styles.mediaImage} 
-          useNativeControls 
-          resizeMode={ResizeMode.CONTAIN} 
-        />
+        <VideoPlayerView uri={uri} style={styles.mediaImage} />
       );
     }
     return (
@@ -267,8 +272,8 @@ export default function FamilyConditionScreen() {
   );
 
   const renderFolderEntryDetail = () => {
-    const eDateObj = selectedFolderEntry?.createdAt?.toDate ? selectedFolderEntry.createdAt.toDate() : new Date(selectedFolderEntry?.createdAt || Date.now());
-    const eDateStr = `${eDateObj.getFullYear()}年 ${eDateObj.getMonth() + 1}月 ${eDateObj.getDate()}日`;
+    const eDateObj = selectedFolderEntry?.createdAt?.toDate ? selectedFolderEntry.createdAt.toDate() : new Date(selectedFolderEntry?.createdAt ?? NaN);
+    const eDateStr = Number.isNaN(eDateObj.getTime()) ? '—' : `${eDateObj.getFullYear()}年 ${eDateObj.getMonth() + 1}月 ${eDateObj.getDate()}日`;
     
     return (
       <View style={styles.viewContainer}>
@@ -309,7 +314,7 @@ export default function FamilyConditionScreen() {
   // --- 主結構回傳 ---
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => {
@@ -324,7 +329,7 @@ export default function FamilyConditionScreen() {
             <Text style={styles.backBtnText}>{t.back}</Text>
           </Pressable>
         </View>
-      </View>
+      </ScreenHeader>
 
       <View style={{ flex: 1 }}>
         {currentView === 'list' && renderList()}
@@ -341,7 +346,7 @@ const styles = StyleSheet.create({
   viewContainer: { flex: 1, position: 'relative' },
   scrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   
-  header: { backgroundColor: '#7BC6F9', paddingTop: 54, paddingBottom: 16, elevation: 2 },
+  header: { backgroundColor: '#7BC6F9', paddingTop: 12, paddingBottom: 16, elevation: 2, minHeight: 56 },
   headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'flex-start' },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
@@ -356,14 +361,14 @@ const styles = StyleSheet.create({
   listIconBox: { width: 48, height: 48, backgroundColor: '#7BC6F9', borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
 
   doctorModeRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 },
-  doctorModeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, elevation: 1 },
+  doctorModeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, elevation: 1, maxWidth: "100%" },
   doctorModeBtnIdle: { backgroundColor: '#FFF', borderColor: '#DDD' },
   doctorModeBtnActive: { backgroundColor: '#4A8B46', borderColor: '#4A8B46' },
-  doctorModeText: { fontWeight: 'bold', fontSize: 14, color: '#555' },
+  doctorModeText: { fontWeight: 'bold', fontSize: 14, color: '#555', flexShrink: 1, textAlign: "center" },
   mediaContainer: { width: '100%', aspectRatio: 4/3, backgroundColor: '#E5E5E5', borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 24, overflow: 'hidden' },
   mediaImage: { width: '100%', height: '100%' },
-  detailHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  detailTitle: { fontSize: 26, fontWeight: 'bold', color: '#000' },
+  detailHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, flexWrap: "wrap", gap: 8 },
+  detailTitle: { fontSize: 26, fontWeight: 'bold', color: '#000', maxWidth: "100%" },
   detailDate: { color: '#888', fontSize: 15, marginBottom: 24 },
   noteBox: { backgroundColor: '#F7F7F7', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#EEE' },
   noteTitle: { color: '#666', fontWeight: 'bold', marginBottom: 8, fontSize: 15 },

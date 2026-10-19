@@ -1,6 +1,8 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { ResizeMode, Video } from 'expo-av';
+import VideoPlayerView from '@/src/media/VideoPlayerView';
 import * as ImagePicker from 'expo-image-picker';
+import { randomUUID } from 'expo-crypto';
 import { router, useNavigation } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -16,8 +18,10 @@ import {
 } from '@/src/i18n/dynamicTranslation';
 import { translations, type Language } from '@/src/i18n/translations';
 import { useLanguage } from '@/src/store/LanguageContext';
-import { arrayRemove, arrayUnion, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { createMediaUploadFilename } from '@/firebase/uploadFilename';
+import { readLocalBlob } from "@/src/media/readLocalBlob";
 
 function pickAbnormalTitle(record: any, language: Language) {
   return pickDynamicLocalizedString(record, 'title', language, ['titleZh', 'titleOriginal'], record?.titleOriginal ?? '');
@@ -68,11 +72,12 @@ export default function AbnormalRecordScreen() {
     if (!activePatientId) return;
     const q = query(
       collection(db, 'abnormal_records'),
-      where('patientId', '==', activePatientId),
-      orderBy('createdAt', 'desc')
+      where('patientId', '==', activePatientId)
     );
     const unsub = onSnapshot(q, (snap) => {
-      const fetchedRecords = snap.docs.map(doc => {
+      const fetchedRecords = [...snap.docs]
+        .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+        .map(doc => {
         const data = doc.data();
         const dateObj = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
         const dateStr = `${dateObj.getFullYear()}年 ${dateObj.getMonth() + 1}月 ${dateObj.getDate()}日`;
@@ -83,21 +88,20 @@ export default function AbnormalRecordScreen() {
     return unsub;
   }, [activePatientId]);
 
-  useEffect(() => {
+  const [previousRecords, setPreviousRecords] = useState(records);
+  if (previousRecords !== records) {
+    setPreviousRecords(records);
     if (selectedRecord) {
       const updatedRecord = records.find(r => r.id === selectedRecord.id);
-      if (updatedRecord && updatedRecord !== selectedRecord) setSelectedRecord(updatedRecord);
+      if (updatedRecord) {
+        setSelectedRecord(updatedRecord);
+        if (selectedFolderEntry) {
+          const updatedEntry = updatedRecord.entries?.find((entry: any) => entry.entryId === selectedFolderEntry.entryId);
+          if (updatedEntry) setSelectedFolderEntry(updatedEntry);
+        }
+      }
     }
-  }, [records, selectedRecord]);
-
-  useEffect(() => {
-    if (!selectedRecord || !selectedFolderEntry) return;
-
-    const updatedEntry = selectedRecord.entries?.find(
-      (entry: any) => entry.entryId === selectedFolderEntry.entryId
-    );
-    if (updatedEntry && updatedEntry !== selectedFolderEntry) setSelectedFolderEntry(updatedEntry);
-  }, [selectedFolderEntry, selectedRecord]);
+  }
 
   useEffect(() => {
     if (
@@ -144,7 +148,7 @@ export default function AbnormalRecordScreen() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') return Alert.alert(t.warning, t.cameraPermissionMessage);
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ['images', 'videos'],
       videoMaxDuration: 60,
       quality: 0.7,
     });
@@ -158,7 +162,7 @@ export default function AbnormalRecordScreen() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') return Alert.alert(t.warning, t.cameraAlbumPermissionMessage);
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ['images', 'videos'],
       videoMaxDuration: 60,
       quality: 0.7,
     });
@@ -177,26 +181,23 @@ export default function AbnormalRecordScreen() {
   };
 
   const uploadMediaFile = async (uri: string) => {
+    if (!user) {
+      throw new Error('Sign in before uploading media');
+    }
     if (!activePatientId) {
       throw new Error('Missing active patient id');
     }
 
-    const response = await fetch(uri);
-    const blob = await response.blob();
+    const blob = await readLocalBlob(uri);
     const extension = mediaType === 'video' ? 'mp4' : 'jpg';
     
-    // 1. 產生 YYYY-MM-DD_HH-mm-ss 好讀時間格式
-    const now = new Date();
-    const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-    
-    // 2. 取得長輩 ID 末 4 碼
-    const shortId = activePatientId.slice(-4);
-
-    // 3. 組合出完美的檔名 (例如: 2026-04-26_14-30-05_abnormal_e1a4.jpg)
-    const fileName = `${timeStr}_abnormal_${shortId}.${extension}`;
+    const fileName = createMediaUploadFilename(extension);
     
     const storageRef = ref(storage, `abnormal_media/${activePatientId}/${fileName}`);
-    await uploadBytes(storageRef, blob);
+    await uploadBytes(storageRef, blob, {
+      contentType: blob.type || (mediaType === 'video' ? 'video/mp4' : 'image/jpeg'),
+      customMetadata: {uploaderUid: user.uid, patientId: activePatientId},
+    });
     return await getDownloadURL(storageRef);
   };
 
@@ -244,7 +245,7 @@ export default function AbnormalRecordScreen() {
 
       Alert.alert(t.success, t.saveSuccessMessage);
       goToList();
-    } catch (error) {
+    } catch {
       Alert.alert(t.resultErrorTitle, t.resultSaveFailedMessage);
     } finally {
       setIsUploading(false);
@@ -260,7 +261,7 @@ export default function AbnormalRecordScreen() {
       if (mediaUri) uploadedUrl = await uploadMediaFile(mediaUri);
 
       const newEntry = {
-        entryId: Date.now().toString(),
+        entryId: randomUUID(),
         notesOriginal: notes,
         notesZh: '', 
         mediaUrl: uploadedUrl,
@@ -273,7 +274,7 @@ export default function AbnormalRecordScreen() {
 
       Alert.alert(t.success, t.saveSuccessMessage);
       goBackToFolder();
-    } catch (error) {
+    } catch {
       Alert.alert(t.resultErrorTitle, t.resultSaveFailedMessage);
     } finally {
       setIsUploading(false);
@@ -292,7 +293,7 @@ export default function AbnormalRecordScreen() {
             await deleteDoc(doc(db, 'abnormal_records', selectedRecord.id));
             Alert.alert(t.success, t.deleteConfirm);
             goToList();
-          } catch (e) {
+          } catch {
             Alert.alert(t.resultErrorTitle, t.deleteFailedShort);
           }
       }}
@@ -309,7 +310,7 @@ export default function AbnormalRecordScreen() {
             await updateDoc(docRef, { entries: arrayRemove(selectedFolderEntry) });
             Alert.alert(t.success, t.deleteConfirm);
             goBackToFolder();
-          } catch (e) {
+          } catch {
             Alert.alert(t.resultErrorTitle, t.deleteFailedShort);
           }
       }}
@@ -332,7 +333,7 @@ export default function AbnormalRecordScreen() {
         setCurrentView('folderEntryDetail');
       }
       Alert.alert(t.success, t.saveSuccessMessage);
-    } catch (e) {
+    } catch {
       Alert.alert(t.resultErrorTitle, t.resultSaveFailedMessage);
     } finally {
       setIsUploading(false);
@@ -365,11 +366,9 @@ export default function AbnormalRecordScreen() {
   const renderMedia = (uri: string, type: 'image' | 'video' | null | undefined, isUploadBox: boolean = false) => {
     if (type === 'video') {
       return (
-        <Video 
-          source={{ uri }} 
-          style={isUploadBox ? { width: '100%', height: '100%' } : styles.mediaImage} 
-          useNativeControls 
-          resizeMode={ResizeMode.CONTAIN} 
+        <VideoPlayerView
+          uri={uri}
+          style={isUploadBox ? { width: '100%', height: '100%' } : styles.mediaImage}
         />
       );
     }
@@ -535,8 +534,8 @@ export default function AbnormalRecordScreen() {
   );
 
   const renderFolderEntryDetail = () => {
-    const eDateObj = selectedFolderEntry?.createdAt?.toDate ? selectedFolderEntry.createdAt.toDate() : new Date(selectedFolderEntry?.createdAt || Date.now());
-    const eDateStr = `${eDateObj.getFullYear()}年 ${eDateObj.getMonth() + 1}月 ${eDateObj.getDate()}日`;
+    const eDateObj = selectedFolderEntry?.createdAt?.toDate ? selectedFolderEntry.createdAt.toDate() : new Date(selectedFolderEntry?.createdAt ?? NaN);
+    const eDateStr = Number.isNaN(eDateObj.getTime()) ? '—' : `${eDateObj.getFullYear()}年 ${eDateObj.getMonth() + 1}月 ${eDateObj.getDate()}日`;
     return (
       <View style={styles.viewContainer}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -687,14 +686,14 @@ export default function AbnormalRecordScreen() {
         <Text style={styles.inputLabel}>{t.noteDescription}</Text>
         <TextInput value={notes} onChangeText={setNotes} placeholder={t.notePlaceholder} multiline numberOfLines={6} style={styles.inputNotes} placeholderTextColor="#999" />
       </ScrollView>
-      <Pressable onPress={handleSaveFolderEntry} disabled={isUploading} style={styles.fabBtn}>{isUploading ? <ActivityIndicator color="black" /> : <Feather name="check" size={36} color="black" />}</Pressable>
+      <Pressable onPress={() => void handleSaveFolderEntry()} disabled={isUploading} style={styles.fabBtn}>{isUploading ? <ActivityIndicator color="black" /> : <Feather name="check" size={36} color="black" />}</Pressable>
     </View>
   );
 
   // --- 主結構回傳 ---
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => {
@@ -710,7 +709,7 @@ export default function AbnormalRecordScreen() {
             <Text style={styles.backBtnText}>{t.back}</Text>
           </Pressable>
         </View>
-      </View>
+      </ScreenHeader>
 
       <View style={{ flex: 1 }}>
         {currentView === 'list' && renderList()}
@@ -730,7 +729,7 @@ const styles = StyleSheet.create({
   viewContainer: { flex: 1, position: 'relative' },
   scrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
   
-  header: { backgroundColor: '#7BC6F9', paddingTop: 54, paddingBottom: 16, elevation: 2 },
+  header: { backgroundColor: '#7BC6F9', paddingTop: 12, paddingBottom: 16, elevation: 2, minHeight: 56 },
   headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'flex-start' },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
@@ -749,22 +748,22 @@ const styles = StyleSheet.create({
   listIconBox: { width: 48, height: 48, backgroundColor: '#7BC6F9', borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
 
   doctorModeRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 },
-  doctorModeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, elevation: 1 },
+  doctorModeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, elevation: 1, maxWidth: "100%" },
   doctorModeBtnIdle: { backgroundColor: '#FFF', borderColor: '#DDD' },
   doctorModeBtnActive: { backgroundColor: '#4A8B46', borderColor: '#4A8B46' },
-  doctorModeText: { fontWeight: 'bold', fontSize: 14, color: '#555' },
+  doctorModeText: { fontWeight: 'bold', fontSize: 14, color: '#555', flexShrink: 1, textAlign: "center" },
   mediaContainer: { width: '100%', aspectRatio: 4/3, backgroundColor: '#E5E5E5', borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 24, overflow: 'hidden' },
   mediaImage: { width: '100%', height: '100%' },
-  detailHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  detailTitle: { fontSize: 26, fontWeight: 'bold', color: '#000' },
+  detailHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, flexWrap: "wrap", gap: 8 },
+  detailTitle: { fontSize: 26, fontWeight: 'bold', color: '#000', maxWidth: "100%" },
   detailDate: { color: '#888', fontSize: 15, marginBottom: 24 },
   noteBox: { backgroundColor: '#F7F7F7', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#EEE' },
   noteTitle: { color: '#666', fontWeight: 'bold', marginBottom: 8, fontSize: 15 },
   noteText: { color: '#000', lineHeight: 24, fontSize: 16 },
 
   folderHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
-  addEntryBtn: { width: '100%', backgroundColor: '#FFF4E5', borderWidth: 2, borderColor: '#E59752', borderStyle: 'dashed', borderRadius: 12, paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 24 },
-  addEntryBtnText: { color: '#D37B2B', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
+  addEntryBtn: { width: '100%', backgroundColor: '#FFF4E5', borderWidth: 2, borderColor: '#E59752', borderStyle: 'dashed', borderRadius: 12, paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 24, paddingHorizontal: 12 },
+  addEntryBtnText: { color: '#D37B2B', fontSize: 16, fontWeight: 'bold', letterSpacing: 1, flexShrink: 1, textAlign: "center" },
   timelineContainer: { paddingLeft: 16, borderLeftWidth: 2, borderLeftColor: '#7BC6F9', marginLeft: 16, marginTop: 16 },
   timelineItem: { marginBottom: 32, position: 'relative' },
   timelineDot: { position: 'absolute', left: -25, top: 2, width: 16, height: 16, backgroundColor: '#7BC6F9', borderRadius: 8, borderWidth: 3, borderColor: '#FFF' },
@@ -774,13 +773,13 @@ const styles = StyleSheet.create({
   timelineNotes: { color: '#000', fontSize: 15, lineHeight: 20, marginBottom: 8 },
   timelineMore: { color: '#7BC6F9', fontSize: 12, fontWeight: 'bold' },
   timelineMoreRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  folderBadge: { alignSelf: 'flex-start', backgroundColor: '#FFF4E5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#FBE0C3', marginBottom: 16, flexDirection: 'row', alignItems: 'center' },
-  folderBadgeText: { color: '#E59752', fontWeight: 'bold', fontSize: 14 },
+  folderBadge: { alignSelf: 'flex-start', backgroundColor: '#FFF4E5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#FBE0C3', marginBottom: 16, flexDirection: 'row', alignItems: 'center', maxWidth: "100%" },
+  folderBadgeText: { color: '#E59752', fontWeight: 'bold', fontSize: 14, flexShrink: 1 },
 
   switchTabs: { flexDirection: 'row', backgroundColor: '#EAEAEA', borderRadius: 12, padding: 4, marginBottom: 24 },
-  tabBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  tabBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', paddingHorizontal: 8, minWidth: 0 },
   tabBtnActive: { backgroundColor: '#FFF', elevation: 1 },
-  tabText: { fontWeight: 'bold', color: '#888' },
+  tabText: { fontWeight: 'bold', color: '#888', width: "100%", textAlign: "center" },
   tabTextActive: { color: '#000' },
   
   // 🌟 上傳框的動態樣式
@@ -788,8 +787,8 @@ const styles = StyleSheet.create({
   uploadBoxEmpty: { backgroundColor: '#E5E5E5', borderWidth: 2, borderColor: '#CCC', borderStyle: 'dashed' },
   uploadBoxFilled: { backgroundColor: '#000', borderWidth: 0 },
   uploadPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  reselectBtn: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  reselectBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
+  reselectBtn: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: "90%" },
+  reselectBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14, flexShrink: 1 },
 
   inputTitle: { backgroundColor: '#EAEAEA', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, fontSize: 18, fontWeight: 'bold', color: '#000', marginBottom: 20 },
   inputNotes: { backgroundColor: '#EAEAEA', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, fontSize: 16, color: '#000', marginBottom: 20, textAlignVertical: 'top' },

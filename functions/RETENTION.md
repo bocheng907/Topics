@@ -43,3 +43,16 @@ Firestore rules protect it. Logs contain counts, not health data or download
 tokens. Backups, versioned Storage objects, externally shared copies and cloud
 audit logs require separate retention policies. No recovery backup is created
 by this job; use dry-run results to review scope before enabling deletion.
+
+## Emulator integration test
+
+Run the synthetic delete-and-preserve scenario from the repository root:
+
+```powershell
+npx -y firebase-tools@latest emulators:exec --only firestore,storage --project demo-invite-expiry --config firebase.retention-test.json "node --test functions/retention.emulator.cjs"
+```
+
+The dedicated config binds to local ports 18198/19298 and uses a demo project;
+the test refuses any other Firestore host or non-demo project. It creates old
+and recent synthetic records and media, verifies actual deletion/preservation,
+then Firebase CLI shuts down the emulators. Never point this test at production.

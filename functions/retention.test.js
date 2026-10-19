@@ -18,6 +18,13 @@ test("storage references require the correct bucket and scoped prefix", () => {
   const data = {imageUrl: url + "prescriptions%2Fuid%2Fa.jpg?token=secret"};
   assert.deepEqual(storagePaths(data, "bucket", "prescriptions/uid/"),
       ["prescriptions/uid/a.jpg"]);
+  const newPath = {imageUrl: url +
+    "prescriptions%2Fpatient%2Fuid%2Fuuid.jpg?token=secret"};
+  assert.deepEqual(storagePaths(newPath, "bucket", [
+    "prescriptions/uid/", "prescriptions/patient/uid/"]),
+  ["prescriptions/patient/uid/uuid.jpg"]);
+  assert.throws(() => storagePaths(newPath, "bucket", [
+    "prescriptions/uid/", "prescriptions/other/uid/"]));
   assert.throws(() => storagePaths(data, "other", "prescriptions/uid/"));
   assert.throws(() => storagePaths(data, "bucket", "chats/"));
   assert.throws(() => storagePaths({imageUrl: "http://localhost/a"},

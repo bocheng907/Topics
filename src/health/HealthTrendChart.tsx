@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -92,7 +92,8 @@ export default function HealthTrendChart({
   bpDiaData,
 }: Props) {
   const { width } = useWindowDimensions();
-  const chartWidth = Math.max(width - 120, 220);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const chartWidth = Math.max(1, (containerWidth || width - 48) - 64);
   const config = getChartConfig(chartDataType);
 
   const temperatureYAxisLabels =
@@ -118,7 +119,7 @@ export default function HealthTrendChart({
 
   if (chartDataType === "血壓") {
     return (
-      <View style={styles.chartCard}>
+      <View style={styles.chartCard} onLayout={event => setContainerWidth(event.nativeEvent.layout.width)}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>{config.title}</Text>
           <Text style={styles.unit}>{config.unit}</Text>
@@ -178,7 +179,7 @@ export default function HealthTrendChart({
   }
 
   return (
-    <View style={styles.chartCard}>
+    <View style={styles.chartCard} onLayout={event => setContainerWidth(event.nativeEvent.layout.width)}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>{config.title}</Text>
         <Text style={styles.unit}>{config.unit}</Text>
@@ -249,13 +250,7 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 10,
   },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: 4,
-    paddingHorizontal: 2,
-  },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, paddingHorizontal: 2, flexWrap: "wrap", gap: 8 },
   title: {
     fontSize: 18,
     fontWeight: "700",
@@ -272,13 +267,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 2,
   },
-  legendRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-    gap: 18,
-    paddingHorizontal: 2,
-  },
+  legendRow: { flexDirection: "row", alignItems: "center", marginBottom: 10, gap: 18, paddingHorizontal: 2, flexWrap: "wrap" },
   legendItem: {
     flexDirection: "row",
     alignItems: "center",

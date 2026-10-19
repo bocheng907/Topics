@@ -1,6 +1,7 @@
+import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import { useEffect, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth/useAuth";
@@ -44,13 +45,13 @@ export default function CareTargetSelectScreen() {
   };
 
   async function pick(id: string) {
-    if (!user) return;
+    if (!user || submittingId !== null) return;
     try {
       setSubmittingId(id);
       await setActivePatientId(id); // ✅ 改這裡
       const home = user.role === "caregiver" ? "/caregiver" : "/family";
       router.replace(home as any);
-    } catch (e) {
+    } catch {
       Alert.alert(t.resultErrorTitle, t.switchTargetFailed);
     } finally {
       setSubmittingId(null);
@@ -60,7 +61,7 @@ export default function CareTargetSelectScreen() {
   if (!ctReady) return <ActivityIndicator style={{ flex: 1 }} />;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop:90, gap: 16 }}>
+    <ScreenScrollView contentContainerStyle={{ padding: 20, paddingTop: 20, gap: 16 }}>
       <Text style={{ fontSize: 28, fontWeight: "900", color: "#333", marginBottom: 8 }}>
         {t.selectCareTarget}
       </Text>
@@ -79,9 +80,9 @@ export default function CareTargetSelectScreen() {
               gap: 10
             }}
           >
-            <Pressable onPress={() => pick(ct.id)} style={{ gap: 4 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 22, fontWeight: "900", color: isSelected ? "#007AFF" : "#333" }}>
+            <Pressable disabled={submittingId !== null} onPress={() => pick(ct.id)} style={{ gap: 4 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' }}>
+                <Text style={{ flexShrink: 1, fontSize: 22, fontWeight: "900", color: isSelected ? "#007AFF" : "#333" }}>
                   {ct.name}
                 </Text>
                 {isSelected && <Text style={{ color: "#007AFF", fontWeight: "800" }}>{t.active}</Text>}
@@ -125,7 +126,7 @@ export default function CareTargetSelectScreen() {
           style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, padding: 18, borderWidth: 1, borderColor: "#007AFF",borderRadius: 12, backgroundColor: "#fff"}}
         >
           <Ionicons name="key" size={18} color="#007AFF" />
-          <Text style={{ color: "#007AFF", textAlign: "center", fontWeight: "800", fontSize: 16 }}>{t.joinByInviteCode}</Text>
+          <Text style={{ flexShrink: 1, color: "#007AFF", textAlign: "center", fontWeight: "800", fontSize: 16 }}>{t.joinByInviteCode}</Text>
         </Pressable>
         <Pressable 
           onPress={() => {
@@ -137,6 +138,6 @@ export default function CareTargetSelectScreen() {
           <Text style={{ color: "#666", textAlign: "center", fontWeight: "700" }}>{t.home}</Text>
         </Pressable>
       </View>
-    </ScrollView>
+    </ScreenScrollView>
   );
 }

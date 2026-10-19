@@ -1,4 +1,6 @@
 // app/caregiver/index.tsx
+import { getHomeLayout } from "@/src/ui/homeLayout";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { db } from "@/firebase/firebaseConfig";
 import { router } from "expo-router";
 import {
@@ -6,12 +8,13 @@ import {
   doc,
   onSnapshot,
   query,
-  runTransaction,
+  setDoc,
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  useWindowDimensions,
   ActivityIndicator,
   Alert,
   Pressable,
@@ -109,14 +112,16 @@ function hhmmToMinutes(hhmm?: string) {
 }
 
 export default function CaregiverHomeScreen() {
+  const { width, fontScale } = useWindowDimensions();
+  const { narrowCards } = getHomeLayout(width, fontScale);
   const { user } = useAuth();
   const { activePatient, activePatientId, ready } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
-  const hasLoadedOnceRef = useRef(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  const [target, setTarget] = useState<CareTarget | null>(null);
-  const [loading, setLoading] = useState(true);
+  const target = ready && user && activePatientId ? activePatient as CareTarget | null : null;
+  const loading = !ready;
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [todayLogs, setTodayLogs] = useState<MedicationLog[]>([]);
@@ -137,7 +142,6 @@ export default function CaregiverHomeScreen() {
       });
     };
 
-    refreshClock();
     const timer = setInterval(refreshClock, 30 * 1000);
     return () => clearInterval(timer);
   }, []);
@@ -145,29 +149,17 @@ export default function CaregiverHomeScreen() {
   // ==========================================
   // 邏輯：防呆與權限檢查 (沒有長輩則去加入)
   // ==========================================
-  useEffect(() => {
-    if (!ready) return;
-    if (!user) return;
-
-    setLoading(true);
-
-    if (!activePatient || !activePatientId) {
-      setTarget(null);
-      setLoading(false);
-      router.replace("/care-target/join");
-      return;
-    }
-
-    setTarget(activePatient as CareTarget);
-    setLoading(false);
-  }, [ready, user, activePatient, activePatientId]);
+  const dataScope = `${ready}/${user?.uid}/${activePatientId}/${todayKey}`;
+  const [previousScope, setPreviousScope] = useState(dataScope);
+  if (previousScope !== dataScope) {
+    setPreviousScope(dataScope); setReminders([]); setTodayLogs([]);
+  }
 
   // ==========================================
   // 邏輯：監聽目前長輩的提醒
   // ==========================================
   useEffect(() => {
     if (!ready || !user || !activePatientId) {
-      setReminders([]);
       return;
     }
 
@@ -219,7 +211,6 @@ export default function CaregiverHomeScreen() {
   // ==========================================
   useEffect(() => {
     if (!ready || !user || !activePatientId) {
-      setTodayLogs([]);
       return;
     }
 
@@ -349,42 +340,35 @@ export default function CaregiverHomeScreen() {
         logId
       );
 
-      const created = await runTransaction(db, async (transaction) => {
-        const existingLog = await transaction.get(logRef);
-        if (existingLog.exists()) return false;
-
-        transaction.set(logRef, {
-          logId,
-          reminderId: primaryReminder.id,
-          reminderIds: slotReminders.map((reminder) => reminder.id),
-          prescriptionId: primaryReminder.prescriptionId ?? "",
-          prescriptionIds: [
-            ...new Set(
-              slotReminders
-                .map((reminder) => reminder.prescriptionId ?? "")
-                .filter(Boolean)
-            ),
-          ],
-          patientId: activePatientId,
-          patientsId: activePatient?.patientsId ?? "",
-          medicineName: primaryReminder.medicineName,
-          medicineNames: slotReminders.map((reminder) => reminder.medicineName),
-          doseText: primaryReminder.doseText,
-          scheduleTime: activeSlot.scheduleTime,
-          status: "taken",
-          confirmedBy: user.uid,
-          takenAt: serverTimestamp(),
-          dateKey: todayKey,
-          createdAt: serverTimestamp(),
-        });
-
-        return true;
+      // Do not read the deterministic log document before creating it.
+      // Firestore rules intentionally deny reads for a non-existent medication log,
+      // so a transaction.get() here turns a valid first-time DONE into permission-denied.
+      await setDoc(logRef, {
+        logId,
+        reminderId: primaryReminder.id,
+        reminderIds: slotReminders.map((reminder) => reminder.id),
+        prescriptionId: primaryReminder.prescriptionId ?? "",
+        prescriptionIds: [
+          ...new Set(
+            slotReminders
+              .map((reminder) => reminder.prescriptionId ?? "")
+              .filter(Boolean)
+          ),
+        ],
+        patientId: activePatientId,
+        patientsId: activePatient?.patientsId ?? "",
+        medicineName: primaryReminder.medicineName,
+        medicineNames: slotReminders.map((reminder) => reminder.medicineName),
+        doseText: primaryReminder.doseText,
+        scheduleTime: activeSlot.scheduleTime,
+        status: "taken",
+        confirmedBy: user.uid,
+        takenAt: serverTimestamp(),
+        dateKey: todayKey,
+        createdAt: serverTimestamp(),
       });
 
-      Alert.alert(
-        t.alreadyDone,
-        created ? t.doneRecorded : t.reminderAlreadyDone
-      );
+      Alert.alert(t.alreadyDone, t.doneRecorded);
     } catch (error) {
       console.log("done error:", error);
       Alert.alert(t.resultErrorTitle, t.recordFailed);
@@ -394,18 +378,72 @@ export default function CaregiverHomeScreen() {
   }
 
   const isFullyLoaded = !loading && ready;
-  useEffect(() => {
-    if (isFullyLoaded) {
-      hasLoadedOnceRef.current = true;
-    }
-  });
+  if (isFullyLoaded && !hasLoadedOnce) {
+    setHasLoadedOnce(true);
+  }
 
-  if (!hasLoadedOnceRef.current && !isFullyLoaded) {
+  if (!hasLoadedOnce && !isFullyLoaded) {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
   }
 
+  if (!activePatientId || !activePatient) {
+    return (
+      <View style={styles.noTargetContainer}>
+        <View style={styles.noTargetCard}>
+          <Ionicons
+            name="person-add-outline"
+            size={54}
+            color="#4F59D5"
+          />
+
+          <Text style={styles.noTargetTitle}>
+            尚未綁定照護對象
+          </Text>
+
+          <Text style={styles.noTargetDescription}>
+            你可以先加入照護對象，也可以先綁定所屬仲介
+          </Text>
+
+          <Pressable
+            style={styles.primarySetupButton}
+            onPress={() =>
+              router.push("/care-target/join" as any)
+            }
+          >
+            <Ionicons
+              name="people-outline"
+              size={22}
+              color="#FFF"
+            />
+            <Text style={styles.primarySetupButtonText}>
+              綁定照護對象
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.secondarySetupButton}
+            onPress={() =>
+              router.push(
+                "/caregiver/agency-binding" as any
+              )
+            }
+          >
+            <Ionicons
+              name="business-outline"
+              size={22}
+              color="#4F59D5"
+            />
+            <Text style={styles.secondarySetupButtonText}>
+              綁定仲介
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -480,7 +518,7 @@ export default function CaregiverHomeScreen() {
 
         {/* 2x2 功能網格 */}
         <View style={styles.gridContainer}>
-          <View style={styles.gridRow}>
+          <View style={[styles.gridRow, narrowCards && { flexDirection: "column" }]}>
             <Pressable
               onPress={() => router.push("/caregiver/list")}
               style={[styles.gridItem, { backgroundColor: "#FEF9C3" }]}
@@ -489,7 +527,7 @@ export default function CaregiverHomeScreen() {
                 <View style={[styles.gridIconBadge, { backgroundColor: "#CA8A04" }]}>
                   <Ionicons name="clipboard" size={28} color="#FFFFFF" />
                 </View>
-                <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.viewPrescriptionRecords}</Text>
+                <Text style={styles.gridText}>{t.viewPrescriptionRecords}</Text>
               </View>
             </Pressable>
 
@@ -501,12 +539,12 @@ export default function CaregiverHomeScreen() {
                 <View style={[styles.gridIconBadge, { backgroundColor: "#EA580C" }]}>
                   <Ionicons name="pulse" size={28} color="#FFFFFF" />
                 </View>
-                <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.dailyHealthReport}</Text>
+                <Text style={styles.gridText}>{t.dailyHealthReport}</Text>
               </View>
             </Pressable>
           </View>
 
-          <View style={styles.gridRow}>
+          <View style={[styles.gridRow, narrowCards && { flexDirection: "column" }]}>
             <Pressable
               onPress={() =>
                 router.push("/caregiver/communication-cards" as any)
@@ -517,7 +555,7 @@ export default function CaregiverHomeScreen() {
                 <View style={[styles.gridIconBadge, { backgroundColor: "#16A34A" }]}>
                   <Ionicons name="image" size={28} color="#FFFFFF" />
                 </View>
-                <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.communicationCards}</Text>
+                <Text style={styles.gridText}>{t.communicationCards}</Text>
               </View>
             </Pressable>
 
@@ -529,13 +567,13 @@ export default function CaregiverHomeScreen() {
                 <View style={[styles.gridIconBadge, { backgroundColor: "#2563EB" }]}>
                   <Ionicons name="videocam" size={28} color="#FFFFFF" />
                 </View>
-                <Text style={styles.gridText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.conditionRecording}</Text>
+                <Text style={styles.gridText}>{t.conditionRecording}</Text>
               </View>
             </Pressable>
           </View>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -543,13 +581,74 @@ export default function CaregiverHomeScreen() {
 // 樣式表
 // ==========================================
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: "#FFFFFF", paddingTop: 70 },
+  scrollContent: { paddingBottom: 190, paddingTop: 8 },
+  noTargetContainer: {
     flex: 1,
     backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    paddingHorizontal: 24,
   },
-  scrollContent: {
-    paddingBottom: 190, // 避開懸浮的緊急撥號鍵與底部導覽列（兩者皆為浮動疊層，不會自動讓出空間）
-    paddingTop: 80, // 稍微加大上方的 Padding，閃開共用導覽列的漢堡按鈕
+
+  noTargetCard: {
+    backgroundColor: "#F8F9FC",
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    alignItems: "center",
+    gap: 14,
+  },
+
+  noTargetTitle: {
+    marginTop: 6,
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#111827",
+    textAlign: "center",
+  },
+
+  noTargetDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+
+  primarySetupButton: {
+    width: "100%",
+    minHeight: 56,
+    borderRadius: 16,
+    backgroundColor: "#4F59D5",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  primarySetupButtonText: {
+    color: "#FFF",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+
+  secondarySetupButton: {
+    width: "100%",
+    minHeight: 56,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#4F59D5",
+    backgroundColor: "#FFF",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  secondarySetupButtonText: {
+    color: "#4F59D5",
+    fontSize: 17,
+    fontWeight: "800",
   },
   userInfo: {
     paddingHorizontal: 24,
@@ -577,6 +676,7 @@ const styles = StyleSheet.create({
   reminderTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 12,
     marginBottom: 12,
     width: "100%",
@@ -585,15 +685,11 @@ const styles = StyleSheet.create({
   emojiLarge: {
     fontSize: 36,
   },
-  reminderTitle: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#000",
-    letterSpacing: 1,
-  },
+  reminderTitle: { fontSize: 32, fontWeight: "bold", color: "#000", letterSpacing: 1, flexShrink: 1, textAlign: "center" },
   reminderSubRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
     marginBottom: 24,
     width: "100%",
@@ -602,44 +698,15 @@ const styles = StyleSheet.create({
   emojiMedium: {
     fontSize: 28,
   },
-  reminderSubText: {
-    fontSize: 22,
-    fontWeight: "600",
-    color: "#000",
-  },
-  doneBtn: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
+  reminderSubText: { fontSize: 22, fontWeight: "600", color: "#000", flexShrink: 1, textAlign: "center" },
+  doneBtn: { borderRadius: 55, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2, minWidth: 110, minHeight: 110, maxWidth: "100%", padding: 16 },
   doneBtnActive: { backgroundColor: "#F5A623" },
   doneBtnDone: { backgroundColor: "#22C55E" },
   doneBtnDisabled: { backgroundColor: "#E5E7EB" },
   doneBtnLoading: { backgroundColor: "#E5E7EB" },
-  doneBtnTextLight: {
-    fontSize: 24,
-    fontWeight: "900",
-    letterSpacing: 1,
-    color: "#FFFFFF",
-  },
-  doneBtnTextMuted: {
-    fontSize: 24,
-    fontWeight: "900",
-    letterSpacing: 1,
-    color: "#9CA3AF",
-  },
-  doneBtnRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
+  doneBtnTextLight: { fontSize: 24, fontWeight: "900", letterSpacing: 1, color: "#FFFFFF", flexShrink: 1, textAlign: "center" },
+  doneBtnTextMuted: { fontSize: 24, fontWeight: "900", letterSpacing: 1, color: "#9CA3AF", flexShrink: 1, textAlign: "center" },
+  doneBtnRow: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: "100%" },
   sectionHeader: {
     paddingHorizontal: 24,
     marginTop: 24,
@@ -650,22 +717,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#111827",
   },
-  mainActionButton: {
-    backgroundColor: "#4F59D5",
-    marginHorizontal: 20,
-    borderRadius: 16,
-    paddingVertical: 16,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
+  mainActionButton: { backgroundColor: "#4F59D5", marginHorizontal: 20, borderRadius: 16, paddingVertical: 16, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, marginBottom: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3, paddingHorizontal: 12 },
   mainActionText: {
     flexShrink: 1,
     fontSize: 22,
@@ -682,23 +734,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 16,
   },
-  gridItem: {
-    flex: 1,
-    height: 128,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  gridGroup: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
+  gridItem: { flex: 1, borderRadius: 20, justifyContent: "flex-start", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2, minHeight: 140, minWidth: 0, paddingHorizontal: 12, paddingVertical: 16 },
+  gridGroup: { alignItems: "center", justifyContent: "flex-start", gap: 8, width: "100%" },
   gridIconBadge: {
     width: 52,
     height: 52,
@@ -706,13 +743,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  gridText: {
-    width: "92%",
-    fontSize: 17,
-    lineHeight: 20,
-    fontWeight: "bold",
-    color: "#111827",
-    letterSpacing: 0.2,
-    textAlign: "center",
-  },
+  gridText: { width: "100%", fontSize: 17, lineHeight: 20, fontWeight: "bold", color: "#111827", letterSpacing: 0.2, textAlign: "center" },
 });

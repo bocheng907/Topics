@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import { doc, getDoc } from "firebase/firestore";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -160,13 +161,13 @@ export function NotificationDetailView() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backButton}>
           <Ionicons name="chevron-back" size={22} color="#111827" />
           <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
         <Ionicons name="menu" size={26} color="#111827" />
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {loading ? (
@@ -229,15 +230,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FAFAFA",
   },
-  header: {
-    height: 112,
-    backgroundColor: "#D9D4F3",
-    paddingTop: 54,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
+  header: { backgroundColor: "#D9D4F3", paddingTop: 12, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 56 },
   backButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -273,16 +266,8 @@ const styles = StyleSheet.create({
     color: "#111827",
     marginBottom: 12,
   },
-  tagRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
-  },
-  tag: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
+  tagRow: { flexDirection: "row", gap: 8, marginBottom: 12, flexWrap: "wrap" },
+  tag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, maxWidth: "100%" },
   tagText: {
     fontSize: 12,
     fontWeight: "700",
@@ -311,11 +296,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
     paddingBottom: 0,
   },
-  infoLabel: {
-    fontSize: 14,
-    color: "#9CA3AF",
-    fontWeight: "600",
-  },
+  infoLabel: { fontSize: 14, color: "#9CA3AF", fontWeight: "600", flex: 1 },
   infoValue: {
     flex: 1,
     fontSize: 15,

@@ -1,7 +1,8 @@
 /* eslint-disable require-jsdoc */
 const {FieldValue, Timestamp} = require("firebase-admin/firestore");
 const {HttpsError} = require("firebase-functions/v2/https");
-const {primaryUid} = require("./careRoles");
+const {primaryUid, secondaryFamilyUids, canTransferPrimary} =
+  require("./careRoles");
 function createInvitationManager({db, profile, authorize, clock, randomCode,
   joinDecision}) {
   return async (request) => {
@@ -10,7 +11,7 @@ function createInvitationManager({db, profile, authorize, clock, randomCode,
     const patientId = input.patientId;
     if (typeof patientId !== "string" || !patientId ||
         patientId.length > 256 || patientId.includes("/") ||
-        !["get", "regenerate", "revoke", "approve", "reject"]
+        !["get", "regenerate", "revoke", "approve", "reject", "transfer"]
             .includes(input.action)) {
       throw new HttpsError("invalid-argument", "Invalid operation.");
     }
@@ -20,6 +21,26 @@ function createInvitationManager({db, profile, authorize, clock, randomCode,
       const patient = await tx.get(patientRef);
       if (!patient.exists || primaryUid(patient.data()) !== uid) {
         throw new HttpsError("permission-denied", "Primary family required.");
+      }
+      if (input.action === "transfer") {
+        const targetUid = input.targetUid;
+        if (typeof targetUid !== "string" || targetUid.length > 128 ||
+            !canTransferPrimary(patient.data(), uid, targetUid)) {
+          throw new HttpsError("failed-precondition",
+              "Target must be a current secondary family member.");
+        }
+        const target = await profile(tx, targetUid);
+        if (target.data().role !== "family") {
+          throw new HttpsError("failed-precondition", "Target role changed.");
+        }
+        tx.update(patientRef, {primaryFamilyUid: targetUid,
+          updatedAt: Timestamp.fromMillis(clock())});
+        tx.create(db.collection("audit_logs").doc(), {schemaVersion: 1,
+          actorId: uid, actorType: "firebase_user",
+          operation: "primary_family_transferred", patientId,
+          targetUid, occurredAt: Timestamp.fromMillis(clock()),
+          createdAt: Timestamp.fromMillis(clock()), source: "callable"});
+        return {ok: true};
       }
       const ref = patientRef.collection("_invitation").doc("current");
       const snap = await tx.get(ref);
@@ -33,7 +54,8 @@ function createInvitationManager({db, profile, authorize, clock, randomCode,
           expiresAt: old.issuedAt instanceof Timestamp ?
             old.issuedAt.toMillis() + 86400000 : 0,
           requestId: old.requestId || "", role: old.role || "",
-          applicantUid: old.applicantUid || ""};
+          applicantUid: old.applicantUid || "",
+          secondaryFamilyUids: secondaryFamilyUids(patient.data())};
       }
       const requestRef = old.requestId && old.applicantProfileId ?
         db.doc("users/" + old.applicantProfileId +

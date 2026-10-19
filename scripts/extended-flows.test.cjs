@@ -6,9 +6,10 @@ const {initializeApp,deleteApp}=req('firebase-admin/app');
 const {getFirestore,Timestamp}=req('firebase-admin/firestore');
 const {createAccountDeletionService}=require('../functions/accountDeletion');
 const {createPersonalDataExportService}=require('../functions/personalDataExport');
-if(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8198')throw Error('Local emulator only');
+const host=process.env.FIRESTORE_EMULATOR_HOST;
+if(host!=='127.0.0.1:18198'||(process.env.GCLOUD_PROJECT&&process.env.GCLOUD_PROJECT!=='demo-invite-expiry'))throw Error('Dedicated local demo emulator only');
 const project='demo-invite-expiry',app=initializeApp({projectId:project},'extended-'+randomUUID()),db=getFirestore(app);
-const base='http://127.0.0.1:8198/v1/projects/'+project+'/databases/(default)/documents';
+const base='http://'+host+'/v1/projects/'+project+'/databases/(default)/documents';
 after(async()=>{await db.terminate();await deleteApp(app);});
 function token(uid,claims={}){const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');return enc({alg:'none',typ:'JWT'})+'.'+enc({sub:uid,user_id:uid,aud:project,iss:'https://securetoken.google.com/'+project,iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+3600,firebase:{sign_in_provider:'password'},...claims})+'.';}
 async function rest(path,uid,method='GET',data,claims={}){

@@ -1,18 +1,22 @@
 // app/family/index.tsx
 import { db } from "@/firebase/firebaseConfig";
 import { invitationCopy } from "@/src/care-target/invitationCopy";
-import { usePrimaryFamily } from "@/src/care-target/usePrimaryFamily";
 import { router } from "expo-router";
-import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
-import React, { useEffect, useRef, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import React, { useEffect, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { getHomeLayout } from "@/src/ui/homeLayout";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useHealthThresholds } from "@/src/health/useHealthThresholds";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { useMedicationProgress } from "@/src/reminders/useMedicationProgress";
+import { progressCopy } from "@/src/reminders/medicationProgress";
+import { joinNavigationCopy } from "@/src/care-target/joinNavigationCopy";
 
 // 定義生理數據狀態型別
 type VitalStatus = 'normal' | 'abnormal' | 'outdated' | 'nodata';
@@ -21,11 +25,19 @@ type BloodPressureVital = { sys: number; dia: number; ts: number } | null;
 type SugarVital = { val: number; type: string; ts: number } | null;
 
 export default function FamilyHomeScreen() {
+  const { width, fontScale } = useWindowDimensions();
+  const { vitalWidth, stackedActions } = getHomeLayout(width, fontScale);
   const { ready, activePatient, activePatientId, linkedCareTargets, setActivePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
-  const isPrimaryFamily = usePrimaryFamily(activePatientId);
   const t = translations[language];
-  const hasLoadedOnceRef = useRef(false);
+  const stats = useMedicationProgress(activePatientId);
+  const medicationCopy = progressCopy[language];
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 🌟 抓取該長輩的健康閾值設定
   const { thresholds: dbThresholds, loading: thresholdsLoading } = useHealthThresholds(
@@ -42,13 +54,6 @@ export default function FamilyHomeScreen() {
     hasAnyData: false
   });
 
-  useEffect(() => {
-    if (!ready) return;
-    if (linkedCareTargets.length === 0) {
-      router.replace("/care-target/create");
-    }
-  }, [ready, linkedCareTargets.length]);
-
   // ==========================================
   // 邏輯：監聽健康紀錄，抓出最新數值
   // ==========================================
@@ -57,9 +62,7 @@ export default function FamilyHomeScreen() {
 
     const q = query(
       collection(db, "health_records"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc"),
-      limit(10)
+      where("patientId", "==", activePatientId)
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -69,7 +72,10 @@ export default function FamilyHomeScreen() {
       let sugar: SugarVital = null;
       let hasAnyData = false;
 
-      snap.docs.forEach(doc => {
+      const newestDocs = [...snap.docs]
+        .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+        .slice(0, 10);
+      newestDocs.forEach(doc => {
         const d = doc.data();
         const ts = d.createdAt?.toMillis ? d.createdAt.toMillis() : Date.now();
         hasAnyData = true;
@@ -94,17 +100,32 @@ export default function FamilyHomeScreen() {
   };
 
   const isFullyLoaded = ready && linkedCareTargets.length > 0 && !thresholdsLoading;
-  useEffect(() => {
-    if (isFullyLoaded) {
-      hasLoadedOnceRef.current = true;
-    }
-  });
+  if (isFullyLoaded && !hasLoadedOnce) setHasLoadedOnce(true);
 
-  if (!hasLoadedOnceRef.current && !isFullyLoaded) {
+  if (ready && linkedCareTargets.length === 0) {
+    const copy = joinNavigationCopy[language];
+    return (
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 80, gap: 20 }}>
+          <Text style={{ fontSize: 26, fontWeight: "700" }}>{copy.empty}</Text>
+          <Text style={{ fontSize: 18, lineHeight: 28 }}>{copy.hint}</Text>
+          <Pressable accessibilityRole="button" onPress={() => router.push("/care-target/create")}
+            style={{ padding: 18, borderRadius: 12, backgroundColor: "#007AFF" }}>
+            <Text style={{ color: "white", fontSize: 18, textAlign: "center" }}>{t.createCareTarget}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => router.push("/care-target/join")}
+            style={{ padding: 18, borderRadius: 12, borderWidth: 1, borderColor: "#007AFF" }}>
+            <Text style={{ color: "#007AFF", fontSize: 18, textAlign: "center" }}>{t.joinCareTarget}</Text>
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (!ready || (!hasLoadedOnce && !isFullyLoaded)) {
     return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
   }
 
-  const stats = { total: 0 }; 
 
   // ==========================================
   // 🌟 升級版 UI 輔助函式：判斷醫學數值正常與否 (結合自訂閾值，並修正預設值對齊)
@@ -112,7 +133,7 @@ export default function FamilyHomeScreen() {
   const checkVitalStatus = (type: string, data: any): VitalStatus => {
     if (!data) return 'nodata';
     
-    const isOutdated = (Date.now() - data.ts) > 24 * 60 * 60 * 1000;
+    const isOutdated = (now - data.ts) > 24 * 60 * 60 * 1000;
     if (isOutdated) return 'outdated';
 
     if (type === 'temp') {
@@ -175,12 +196,9 @@ export default function FamilyHomeScreen() {
     const { time, label } = formatTime(data?.ts);
 
     return (
-      <View style={styles.vitalBlock}>
+      <View style={[styles.vitalBlock, { width: vitalWidth }]}>
         <Text
           style={styles.vitalTitle}
-          numberOfLines={2}
-          adjustsFontSizeToFit
-          minimumFontScale={0.65}
         >
           {title}
         </Text>
@@ -219,7 +237,7 @@ export default function FamilyHomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
         <View style={styles.header}>
@@ -255,13 +273,16 @@ export default function FamilyHomeScreen() {
           </Pressable>
         </View>
 
-        {isPrimaryFamily && <Pressable onPress={() => router.push("/family/camera" as any)} style={{padding: 18, margin: 16, backgroundColor: "#e8f2ff", borderRadius: 12}}>
-          <Text style={{fontSize: 18, fontWeight: "700"}}>📷 {t.scanPrescription}</Text>
-        </Pressable>}
         <View style={styles.medCard}>
           <Text style={styles.medTitle}>{t.todayMedicationProgress}</Text>
-          {stats.total > 0 ? (
-            <><Text style={styles.medProgress}>{t.ready}</Text><Text style={styles.medDetail}>{t.waitingMedicationReport}</Text></>
+          {stats.error ? (
+            <Text style={styles.medDetail}>{medicationCopy.error}</Text>
+          ) : stats.loading ? (
+            <Text style={styles.medDetail}>{t.loading}</Text>
+          ) : stats.total > 0 ? (
+            <><Text style={styles.medProgress}>{t.completed} {stats.completed} / {stats.total}</Text><Text style={styles.medDetail}>{medicationCopy.unit}</Text></>
+          ) : stats.prescriptionCount > 0 ? (
+            <Text style={styles.medDetail}>{medicationCopy.none}</Text>
           ) : (
             <View style={{ alignItems: "center", marginTop: 10 }}>
               <Text style={{ fontSize: 16, color: "#999", fontWeight: "bold" }}>{t.noPrescriptions}</Text>
@@ -290,13 +311,13 @@ export default function FamilyHomeScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.actionsRow}>
+        <View style={[styles.actionsRow, stackedActions && styles.actionsColumn]}>
           <Pressable onPress={() => router.push("/family/list")} style={[styles.actionBtn, { backgroundColor: '#FEF9C3' }]}>
             <View style={styles.actionGroup}>
               <View style={[styles.actionIconBadge, { backgroundColor: '#CA8A04' }]}>
                 <Ionicons name="clipboard" size={26} color="#FFFFFF" />
               </View>
-              <Text style={styles.actionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.prescriptionRecords}</Text>
+              <Text style={styles.actionText}>{t.prescriptionRecords}</Text>
             </View>
           </Pressable>
           <Pressable onPress={() => router.push("/family/condition" as any)} style={[styles.actionBtn, { backgroundColor: '#DBEAFE' }]}>
@@ -304,7 +325,7 @@ export default function FamilyHomeScreen() {
               <View style={[styles.actionIconBadge, { backgroundColor: '#2563EB' }]}>
                 <Ionicons name="videocam" size={26} color="#FFFFFF" />
               </View>
-              <Text style={styles.actionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.conditionView}</Text>
+              <Text style={styles.actionText}>{t.conditionView}</Text>
             </View>
           </Pressable>
           <Pressable onPress={() => router.push("/family/voice")} style={[styles.actionBtn, { backgroundColor: '#DCFCE7' }]}>
@@ -312,18 +333,19 @@ export default function FamilyHomeScreen() {
               <View style={[styles.actionIconBadge, { backgroundColor: '#16A34A' }]}>
                 <Ionicons name="mic" size={26} color="#FFFFFF" />
               </View>
-              <Text style={styles.actionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.recordVoice}</Text>
+              <Text style={styles.actionText}>{t.recordVoice}</Text>
             </View>
           </Pressable>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
-  scrollContent: { paddingBottom: 150, paddingTop: 80 },
+  // Keep the fixed menu above the scroll viewport, including while scrolling.
+  container: { flex: 1, backgroundColor: "#FFFFFF", paddingTop: 70 },
+  scrollContent: { paddingBottom: 24, paddingTop: 8 },
   header: { flexDirection: "row", justifyContent: "flex-start", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8 },
   avatarList: { flexDirection: "row", alignItems: "center", gap: 8 },
   avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: "center", alignItems: "center" },
@@ -334,9 +356,9 @@ const styles = StyleSheet.create({
   textGray: { color: "#6B7280" },
   avatarAdd: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: "#E5E7EB", justifyContent: "center", alignItems: "center" },
 
-  userInfo: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginTop: 8, marginBottom: 16 },
-  userName: { fontSize: 28, fontWeight: "bold", letterSpacing: 2, color: "#111827", marginRight: 12 },
-  inviteBadge: { backgroundColor: "#EDE9FE", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 12 },
+  userInfo: { flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center", paddingHorizontal: 20, marginTop: 8, marginBottom: 16 },
+  userName: { maxWidth: "100%", flexShrink: 1, fontSize: 28, fontWeight: "bold", letterSpacing: 2, color: "#111827", marginRight: 12 },
+  inviteBadge: { maxWidth: "100%", flexShrink: 1, backgroundColor: "#EDE9FE", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 12 },
   inviteText: { color: "#4F59D5", fontWeight: "600", fontSize: 14 },
   copyIconWrap: { width: 24, height: 24, justifyContent: "center", alignItems: "center" },
 
@@ -346,12 +368,12 @@ const styles = StyleSheet.create({
   medDetail: { fontSize: 16, textAlign: "center", color: "#111827", fontWeight: "500" },
 
   vitalsOuterCard: { backgroundColor: "#F8F9FC", marginHorizontal: 20, marginTop: 16, borderRadius: 20, padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  vitalsGrid: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  vitalsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 16 },
   
-  vitalBlock: { flex: 1, alignItems: "center" },
+  vitalBlock: { minWidth: 0, alignItems: "center" },
   vitalTitle: {
     width: "100%",
-    height: 44,
+    minHeight: 48,
     fontSize: 18,
     lineHeight: 21,
     fontWeight: "bold",
@@ -361,25 +383,26 @@ const styles = StyleSheet.create({
     textAlign: "center",
     textAlignVertical: "center",
   },
-  vitalCardWrap: { width: "100%", height: 130, borderRadius: 12, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
+  vitalCardWrap: { width: "100%", flex: 1, minHeight: 130, borderRadius: 12, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
   
-  vitalCardTop: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 2 },
-  vitalCardBottom: { height: 46, justifyContent: "center", alignItems: "center" },
+  vitalCardTop: { flex: 1, justifyContent: "center", alignItems: "center", padding: 6 },
+  vitalCardBottom: { minHeight: 46, padding: 4, justifyContent: "center", alignItems: "center" },
   
-  vitalValue: { color: "#000", fontWeight: "500" }, 
-  vitalUnit: { color: "#000", fontWeight: "400" },
+  vitalValue: { color: "#000", fontWeight: "500", maxWidth: "100%", textAlign: "center" },
+  vitalUnit: { maxWidth: "100%", textAlign: "center", color: "#000", fontWeight: "400" },
   
-  vitalTimeText: { color: "#FFF", fontSize: 15, fontWeight: "500" },
-  vitalLabelText: { color: "#F3F4F6", fontSize: 13 },
+  vitalTimeText: { maxWidth: "100%", textAlign: "center", color: "#FFF", fontSize: 15, fontWeight: "500" },
+  vitalLabelText: { maxWidth: "100%", textAlign: "center", color: "#F3F4F6", fontSize: 13 },
   
   chartBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#F5A623", borderRadius: 24, paddingVertical: 10, paddingHorizontal: 24, alignSelf: "center", marginTop: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
-  chartBtnText: { color: "#FFF", fontSize: 17, fontWeight: "bold" },
+  chartBtnText: { flexShrink: 1, textAlign: "center", color: "#FFF", fontSize: 17, fontWeight: "bold" },
   actionsRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, marginHorizontal: 20, marginTop: 20 },
-  actionBtn: { flex: 1, aspectRatio: 1, borderRadius: 20, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
-  actionGroup: { alignItems: "center", justifyContent: "center", gap: 8 },
+  actionsColumn: { flexDirection: "column" },
+  actionBtn: { flex: 1, minWidth: 0, minHeight: 132, paddingHorizontal: 8, paddingVertical: 16, borderRadius: 20, justifyContent: "flex-start", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
+  actionGroup: { width: "100%", alignItems: "center", justifyContent: "flex-start", gap: 8 },
   actionIconBadge: { width: 52, height: 52, borderRadius: 26, justifyContent: "center", alignItems: "center" },
   actionText: {
-    width: "92%",
+    width: "100%",
     fontSize: 15,
     lineHeight: 19,
     fontWeight: "bold",

@@ -16,7 +16,7 @@ function load(name, mocks) {
 test('creation permission uses patient membership, not a globally selected role', () => {
   const api = load('src/care-target/permissions.ts', {'firebase/firestore': {}, '@/firebase/firebaseConfig': {}});
   const patient = {families: ['primary', 'secondary'], caregivers: ['care'], primaryFamilyUid: 'primary'};
-  for (const [uid, allowed] of [['primary', true], ['care', true], ['secondary', false], ['stranger', false]]) {
+  for (const [uid, allowed] of [['primary', false], ['care', true], ['secondary', false], ['stranger', false]]) {
     assert.equal(api.canCreatePrescriptionForPatient(patient, uid), allowed);
   }
   assert.equal(api.canCreatePrescriptionForPatient({...patient, caregivers: []}, 'care'), false);

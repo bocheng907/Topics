@@ -1,17 +1,17 @@
+import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import React, { useMemo, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
-import { signOut } from "@/src/auth/auditSession";
-import { auth } from "@/firebase/firebaseConfig";
 import { joinCareTarget } from "@/src/care-target/careTargetApi";
 import JoinRequests from "@/src/care-target/JoinRequests";
 import { invitationCopy } from "@/src/care-target/invitationCopy";
 import { inviteErrorMessage } from "@/src/care-target/inviteFeedback";
+import { joinNavigationCopy } from "@/src/care-target/joinNavigationCopy";
 
 export default function CareTargetJoinScreen() {
   const { user } = useAuth();
@@ -83,7 +83,7 @@ export default function CareTargetJoinScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 90, gap: 24 }}>
+    <ScreenScrollView contentContainerStyle={{ padding: 24, paddingTop: 20, gap: 24 }}>
       <JoinRequests />
       <View style={{ gap: 8 }}>
         <Text style={{ fontSize: 28, fontWeight: "900" }}>{t.joinCareTarget}</Text>
@@ -123,30 +123,27 @@ export default function CareTargetJoinScreen() {
       </Pressable>
 
       <Pressable
-        onPress={async () => {
-          try {
-            // 1. 強制登出 Firebase Auth 帳號
-            await signOut(auth); 
-            
-            // 2. 清除登入頁面之前的歷史堆疊，強制回到登入頁
-            // 💡 根據你的目錄結構，路徑應為 "/(auth)/login"
-            router.replace("/(auth)/login"); 
-          } catch (error) {
-            console.error("登出失敗:", error);
-            // 即使登出 API 失敗，通常也建議強制跳轉回登入頁以防卡死
-            router.replace("/(auth)/login");
-          }
+        disabled={busy}
+        onPress={() => {
+          router.replace(user?.role === "caregiver" ? "/caregiver" : "/");
         }}
         style={({ pressed }) => ({
           marginTop: 10,
           padding: 12,
-          opacity: pressed ? 0.6 : 1, // 加入簡單的點擊回饋
+          opacity: pressed ? 0.6 : 1,
         })}
       >
-        <Text style={{ color: "#666", textAlign: "center", fontWeight: "700", fontSize: 16 }}>
-          {t.backToLoginPage}
+        <Text
+          style={{
+            color: "#666",
+            textAlign: "center",
+            fontWeight: "700",
+            fontSize: 16,
+          }}
+        >
+          {user?.role === "caregiver" ? joinNavigationCopy[language].later : joinNavigationCopy[language].home}
         </Text>
       </Pressable>
-    </ScrollView>
+    </ScreenScrollView>
   );
 }

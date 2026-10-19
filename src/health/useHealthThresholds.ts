@@ -59,16 +59,20 @@ function mergeWithDefaults(data: Partial<PatientThresholds>): PatientThresholds 
 
 export function useHealthThresholds(
   patientId: string,
-  patientsId?: string | null
+  patientsId?: string | null,
+  canManage = false
 ) {
   const [thresholds, setThresholds] = useState<PatientThresholds>(DEFAULT_THRESHOLDS);
   const [loading, setLoading] = useState(true);
+  const scope = `${patientId}/${patientsId}`;
+  const [previousScope, setPreviousScope] = useState<string | null>(null);
+  if (previousScope !== scope) {
+    setPreviousScope(scope); setThresholds(DEFAULT_THRESHOLDS); setLoading(Boolean(patientId));
+  }
 
   // 1. 監聽 Firestore 中的閾值設定
   useEffect(() => {
     if (!patientId) {
-      setThresholds(DEFAULT_THRESHOLDS);
-      setLoading(false);
       return;
     }
 
@@ -90,15 +94,17 @@ export function useHealthThresholds(
           if (legacySnap.exists()) {
             const legacyData = legacySnap.data() as Partial<PatientThresholds>;
             setThresholds(mergeWithDefaults(legacyData));
-            await setDoc(docRef, {
-              ...legacyData,
-              thresholdId,
-              patientDocId: patientId,
-              patientsId: patientCode,
-              migratedFrom: patientId,
-              migratedAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            }, {merge: true});
+            if (canManage) {
+              await setDoc(docRef, {
+                ...legacyData,
+                thresholdId,
+                patientDocId: patientId,
+                patientsId: patientCode,
+                migratedFrom: patientId,
+                migratedAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              }, {merge: true});
+            }
           } else {
             setThresholds(DEFAULT_THRESHOLDS);
           }
@@ -118,11 +124,11 @@ export function useHealthThresholds(
       active = false;
       unsub();
     };
-  }, [patientId, patientsId]);
+  }, [patientId, patientsId, canManage]);
 
   // 2. 提供給前端儲存設定的函數
   const saveThresholds = async (newThresholds: PatientThresholds) => {
-    if (!patientId) return;
+    if (!patientId || !canManage) throw new Error("primary-family-required");
     try {
       const patientCode = getPatientDocumentCode({patientDocId: patientId, patientsId});
       const thresholdId = makeHealthThresholdDocumentId({patientDocId: patientId, patientsId});

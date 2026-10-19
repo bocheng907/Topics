@@ -3,13 +3,17 @@ import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDocFromServer } from "firebase/firestore";
+import { randomUUID } from "expo-crypto";
+import { handbookForm, legacyVersion, publishHandbook, versionOf } from "@/src/care-target/reliableWrites";
+import { reliabilityCopy } from "@/src/care-target/reliabilityCopy";
+import { HandoverStatus } from "@/src/care-target/HandoverStatus";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -58,6 +62,22 @@ export default function FamilyHandbookScreen() {
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const baseline = useRef({ revision: '', legacy: legacyVersion(undefined) });
+  const pending = useRef<{ revision: string; form: CareHandbookForm } | null>(null);
+  const [revision, setRevision] = useState('');
+  const [conflict, setConflict] = useState(false);
+  const [retryNeeded, setRetryNeeded] = useState(false);
+  const [reload, setReload] = useState(0);
+  const copy = reliabilityCopy[language];
+  const scope = useRef('');
+  const generation = useRef(0);
+  const loadScope = `${user?.uid}/${activePatientId}/${ready}/${reload}`;
+  const [previousLoadScope, setPreviousLoadScope] = useState<string | null>(null);
+  if (previousLoadScope !== loadScope) {
+    setPreviousLoadScope(loadScope);
+    setForm(EMPTY_FORM); setLoadError(false); setConflict(false);
+    setRetryNeeded(false); setRevision(''); setLoading(Boolean(ready && activePatientId));
+  }
 
   const fields: { key: FormField; label: string; placeholder: string }[] = [
     { key: "dailyRoutine", label: t.dailyRoutine, placeholder: t.dailyRoutinePlaceholder },
@@ -73,32 +93,24 @@ export default function FamilyHandbookScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setForm(EMPTY_FORM);
-    setLoadError(false);
+    generation.current += 1;
+    scope.current = `${user?.uid}/${activePatientId}`;
+    pending.current = null;
+    baseline.current = { revision: '', legacy: legacyVersion(undefined) };
 
     if (!ready || !activePatientId) {
-      setLoading(false);
       return () => {
         cancelled = true;
       };
     }
 
-    setLoading(true);
-    void getDoc(doc(db, "patients", activePatientId, "care_handbook", "main"))
+    void getDocFromServer(doc(db, "patients", activePatientId, "care_handbook", "main"))
       .then((snapshot) => {
-        if (cancelled || !snapshot.exists()) return;
+        if (cancelled) return;
         const data = snapshot.data();
-        setForm({
-          dailyRoutine: typeof data.dailyRoutine === "string" ? data.dailyRoutine : "",
-          medicationNotes: typeof data.medicationNotes === "string" ? data.medicationNotes : "",
-          dietNotes: typeof data.dietNotes === "string" ? data.dietNotes : "",
-          mobilityNotes: typeof data.mobilityNotes === "string" ? data.mobilityNotes : "",
-          hygieneNotes: typeof data.hygieneNotes === "string" ? data.hygieneNotes : "",
-          sleepNotes: typeof data.sleepNotes === "string" ? data.sleepNotes : "",
-          communicationNotes: typeof data.communicationNotes === "string" ? data.communicationNotes : "",
-          emergencyNotes: typeof data.emergencyNotes === "string" ? data.emergencyNotes : "",
-          otherNotes: typeof data.otherNotes === "string" ? data.otherNotes : "",
-        });
+        baseline.current = { revision: versionOf(data), legacy: legacyVersion(data) };
+        setRevision(versionOf(data));
+        setForm(handbookForm(data));
       })
       .catch((error: unknown) => {
         console.error("Failed to load care handbook:", error);
@@ -110,15 +122,17 @@ export default function FamilyHandbookScreen() {
 
     return () => {
       cancelled = true;
+      scope.current = '';
+      generation.current += 1;
     };
-  }, [activePatientId, ready]);
+  }, [activePatientId, ready, reload, user?.uid]);
 
   const updateField = (key: FormField, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
   const saveHandbook = async () => {
-    if (savingRef.current) return;
+    if (savingRef.current || loading || loadError || conflict) return;
     if (!user) {
       Alert.alert(t.resultErrorTitle, t.resultNotLoggedIn);
       return;
@@ -132,19 +146,20 @@ export default function FamilyHandbookScreen() {
       Object.entries(form).map(([key, value]) => [key, value.trim()])
     ) as CareHandbookForm;
 
+    const submittedScope = scope.current;
+    const submittedGeneration = generation.current;
     try {
       savingRef.current = true;
       setSaving(true);
-      await setDoc(
-        doc(db, "patients", activePatientId, "care_handbook", "main"),
-        {
-          patientId: activePatientId,
-          ...trimmedForm,
-          updatedAt: serverTimestamp(),
-          updatedBy: user.uid,
-        },
-        { merge: true }
-      );
+      pending.current ??= { revision: randomUUID(), form: trimmedForm };
+      const operation = pending.current;
+      await publishHandbook(db, activePatientId, user.uid, operation.form,
+        baseline.current.revision, baseline.current.legacy, operation.revision);
+      if (scope.current !== submittedScope || generation.current !== submittedGeneration) return;
+      baseline.current = { revision: operation.revision, legacy: '' };
+      setRevision(operation.revision);
+      pending.current = null;
+      setRetryNeeded(false);
       setForm(trimmedForm);
       Alert.alert(t.handbookSavedTitle, t.handbookSavedMessage, [
         {
@@ -165,8 +180,17 @@ export default function FamilyHandbookScreen() {
         },
       ]);
     } catch (error: unknown) {
+      if (scope.current !== submittedScope || generation.current !== submittedGeneration) return;
       console.error("Failed to save care handbook:", error);
-      Alert.alert(t.resultErrorTitle, t.handbookSaveFailed);
+      if ((error as { code?: string }).code === 'care/conflict') {
+        pending.current = null;
+        setRetryNeeded(false);
+        setConflict(true);
+        Alert.alert(t.resultErrorTitle, copy.conflict);
+      } else {
+        setRetryNeeded(true);
+        Alert.alert(t.resultErrorTitle, copy.failed);
+      }
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -205,6 +229,12 @@ export default function FamilyHandbookScreen() {
           <Text style={styles.errorText}>{t.resultNoPatient}</Text>
         ) : (
           <>
+            <Text style={styles.description}>{copy.saveHint}</Text>
+            {(conflict || retryNeeded) && <Text accessibilityRole="alert" style={styles.errorText}>{conflict ? copy.conflict : copy.failed}</Text>}
+            {conflict && <Pressable accessibilityRole="button" onPress={() => Alert.alert(copy.reload, copy.discard,
+              [{ text: t.cancel, style: 'cancel' }, { text: t.confirm, onPress: () => setReload(n => n + 1) }])}>
+              <Text style={styles.errorText}>{copy.reload}</Text>
+            </Pressable>}
             {fields.map((field) => (
               <View key={field.key} style={styles.inputCard}>
                 <Text style={styles.fieldLabel}>{field.label}</Text>
@@ -214,6 +244,8 @@ export default function FamilyHandbookScreen() {
                   placeholder={field.placeholder}
                   placeholderTextColor="#9CA3AF"
                   multiline
+                  editable={!saving && !retryNeeded}
+                  maxLength={2000}
                   textAlignVertical="top"
                   style={styles.input}
                 />
@@ -226,7 +258,7 @@ export default function FamilyHandbookScreen() {
                 (pressed || saving) && styles.saveButtonPressed,
               ]}
               onPress={() => void saveHandbook()}
-              disabled={saving}
+              disabled={saving || conflict}
             >
               {saving ? (
                 <ActivityIndicator color="#FFFFFF" />
@@ -235,6 +267,7 @@ export default function FamilyHandbookScreen() {
               )}
               <Text style={styles.saveButtonText}>{saving ? t.saving : t.saveHandbook}</Text>
             </Pressable>
+            <HandoverStatus key={activePatientId} patientId={activePatientId} revision={revision} />
           </>
         )}
       </ScrollView>
@@ -244,20 +277,11 @@ export default function FamilyHandbookScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F7F7F7" },
-  header: {
-    minHeight: 86,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    backgroundColor: "#FFFFFF",
-    flexDirection: "row",
-    alignItems: "flex-end",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  backButton: { flex: 1, flexDirection: "row", alignItems: "center" },
-  backText: { color: "#2F2F2F", fontSize: 16, fontWeight: "600" },
-  title: { fontSize: 22, fontWeight: "800", color: "#242424" },
-  headerSpacer: { flex: 1 },
+  header: { minHeight: 86, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#E5E7EB", flexWrap: "wrap", gap: 8 },
+  backButton: { flexDirection: "row", alignItems: "center", flexShrink: 1, minHeight: 44, maxWidth: "100%" },
+  backText: { color: "#2F2F2F", fontSize: 16, fontWeight: "600", flexShrink: 1 },
+  title: { fontSize: 22, fontWeight: "800", color: "#242424", flex: 1, minWidth: 0, textAlign: "center" },
+  headerSpacer: { width: 28 },
   content: { padding: 18 },
   introCard: {
     backgroundColor: "#FFF5E3",
@@ -292,16 +316,7 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     color: "#222222",
   },
-  saveButton: {
-    minHeight: 56,
-    borderRadius: 14,
-    backgroundColor: "#F5A623",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 9,
-    marginTop: 8,
-  },
+  saveButton: { minHeight: 56, borderRadius: 14, backgroundColor: "#F5A623", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 8, paddingHorizontal: 12, paddingVertical: 12 },
   saveButtonPressed: { opacity: 0.68 },
-  saveButtonText: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
+  saveButtonText: { color: "#FFFFFF", fontSize: 18, fontWeight: "800", flexShrink: 1, textAlign: "center" },
 });

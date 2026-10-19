@@ -1,3 +1,4 @@
+import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import { auth } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import { translations } from "@/src/i18n/translations";
@@ -7,10 +8,11 @@ import { router } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import React, { useRef, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 
-import { createCareTarget } from "@/src/care-target/careTargetApi";
+import { createCareTarget, joinCareTarget } from "@/src/care-target/careTargetApi";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { invitationCopy } from "@/src/care-target/invitationCopy";
 
 export default function CareTargetCreateScreen() {
   const { user } = useAuth();
@@ -20,7 +22,9 @@ export default function CareTargetCreateScreen() {
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
-  const created = useRef<{uid: string; patientId: string; inviteCode: string} | null>(null);
+  const [inviteCode, setInviteCode] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [created, setCreated] = useState<{uid: string; patientId: string; inviteCode: string} | null>(null);
   const submitting = useRef(false);
 
   const onCreate = async () => {
@@ -42,9 +46,9 @@ export default function CareTargetCreateScreen() {
     setBusy(true);
     submitting.current = true;
     try {
-      const result = created.current?.uid === user.uid ? created.current :
+      const result = created?.uid === user.uid ? created :
         (await createCareTarget({ name: trimmedName, notes: trimmedNotes })).data;
-      created.current = { ...result, uid: user.uid };
+      setCreated({ ...result, uid: user.uid });
       const code = result.inviteCode;
       await setActivePatientId(result.patientId);
 
@@ -77,15 +81,42 @@ export default function CareTargetCreateScreen() {
     }
   };
 
+
+  const onJoinByInvite = async () => {
+    if (!user || joining) return;
+    const code = inviteCode.trim().toUpperCase();
+    if (code.length < 4 || code.length > 8) {
+      Alert.alert(t.prompt, t.inviteCodePlaceholder);
+      return;
+    }
+    setJoining(true);
+    try {
+      const { data: result } = await joinCareTarget({ code });
+      if (result.status === "approved" || result.alreadyJoined) {
+        await setActivePatientId(result.patientId);
+        Alert.alert(t.joinSuccess, t.selectCareTarget, [
+          { text: t.startUse, onPress: () => router.replace("/family") },
+        ]);
+      } else {
+        Alert.alert(t.prompt, invitationCopy[language].submitted);
+      }
+    } catch (e: any) {
+      console.log("join by invite from create screen failed:", e);
+      Alert.alert(t.joinFailed, t.checkInviteCode);
+    } finally {
+      setJoining(false);
+    }
+  };
+
   return (
-    <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 90, gap: 20 }}>
+    <ScreenScrollView contentContainerStyle={{ padding: 24, paddingTop: 20, gap: 20 }}>
       <Text style={{ fontSize: 28, fontWeight: "900" }}>{t.createCareTarget}</Text>
 
       <View style={{ gap: 8 }}>
         <Text style={{ fontSize: 16, fontWeight: "800", color: "#444" }}>{t.elderName}</Text>
         <TextInput
           value={name}
-          editable={!created.current && !busy}
+          editable={!created && !busy}
           maxLength={200}
           onChangeText={setName}
           placeholder={t.elderNamePlaceholder}
@@ -104,7 +135,7 @@ export default function CareTargetCreateScreen() {
         <Text style={{ fontSize: 16, fontWeight: "800", color: "#444" }}>{t.careNotesOptional}</Text>
         <TextInput
           value={notes}
-          editable={!created.current && !busy}
+          editable={!created && !busy}
           maxLength={5000}
           onChangeText={setNotes}
           placeholder={t.careNotesPlaceholder}
@@ -121,6 +152,32 @@ export default function CareTargetCreateScreen() {
             textAlignVertical: "top",
           }}
         />
+      </View>
+
+      <View style={{ marginTop: 8, paddingTop: 20, borderTopWidth: 1, borderTopColor: "#E5E5EA", gap: 10 }}>
+        <Text style={{ fontSize: 20, fontWeight: "900", color: "#333" }}>{t.joinByInviteCode}</Text>
+        <Text style={{ fontSize: 14, color: "#666", lineHeight: 20 }}>{t.askInviteCode}</Text>
+        <TextInput
+          value={inviteCode}
+          onChangeText={setInviteCode}
+          maxLength={8}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          placeholder={t.inviteCodePlaceholder}
+          style={{
+            borderWidth: 1, borderColor: "#007AFF", borderRadius: 12, padding: 16,
+            fontSize: 22, fontWeight: "800", textAlign: "center", letterSpacing: 3, backgroundColor: "#F9FBFF",
+          }}
+        />
+        <Pressable
+          onPress={onJoinByInvite}
+          disabled={joining || inviteCode.trim().length < 4}
+          style={{ backgroundColor: !joining && inviteCode.trim().length >= 4 ? "#34A853" : "#CCC", padding: 16, borderRadius: 12 }}
+        >
+          <Text style={{ color: "#FFF", textAlign: "center", fontWeight: "900", fontSize: 17 }}>
+            {joining ? "…" : t.joinNow}
+          </Text>
+        </Pressable>
       </View>
 
       <Pressable
@@ -157,6 +214,6 @@ export default function CareTargetCreateScreen() {
           {router.canGoBack() ? t.back : t.logoutAndBack}
         </Text>
       </Pressable>
-    </ScrollView>
+    </ScreenScrollView>
   );
 }

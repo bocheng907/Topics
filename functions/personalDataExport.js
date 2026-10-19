@@ -144,10 +144,12 @@ function createPersonalDataExportService({db, clock = () => Date.now(),
       }
     }
     const patientRefs = new Map();
+    const familyPatients = new Set();
     for (const field of ["families", "caregivers"]) {
       await scan(db.collection("patients").where(field, "array-contains", uid),
           async (doc) => {
             if (linked(doc.data(), uid)) patientRefs.set(doc.id, doc.ref);
+            if (field === "families") familyPatients.add(doc.id);
           });
     }
     if (patientRefs.size > 100) {
@@ -165,6 +167,31 @@ function createPersonalDataExportService({db, clock = () => Date.now(),
       }
       if (!output.records[group]) output.records[group] = [];
       output.records[group].push(row);
+    }
+    const communityParents = new Map();
+    if (["family", "agency"].includes(profiles.docs[0].data().role)) {
+      const fields = ["category", "title", "content", "preview", "authorUid",
+        "authorName", "createdAt", "updatedAt", "status"];
+      await scan(db.collection("posts").where("authorUid", "==", uid),
+          async (doc) => add("community_posts", doc, fields));
+      await scan(db.collectionGroup("comments").where("authorUid", "==", uid),
+          async (doc) => {
+            const parts = doc.ref.path.split("/");
+            if (parts.length !== 4 || parts[0] !== "posts" ||
+                parts[2] !== "comments") return;
+            const parent = await doc.ref.parent.parent.get();
+            if (!parent.exists || (parent.data().status !== "published" &&
+                parent.data().authorUid !== uid)) {
+              output.skippedInaccessible++;
+              return;
+            }
+            communityParents.set(parent.id, parent.ref);
+            if (communityParents.size > 100) {
+              throw new HttpsError("resource-exhausted", "Too many community threads.");
+            }
+            add("community_comments", doc, ["postId", "content", "authorUid",
+              "authorName", "createdAt"]);
+          });
     }
     for (const [collection, owner, fields] of SPECS) {
       output.records[collection] = [];
@@ -194,14 +221,29 @@ function createPersonalDataExportService({db, clock = () => Date.now(),
           });
     }
     for (const [patientId, patientRef] of patientRefs) {
-      await scan(db.doc("chats/" + patientId).collection("messages")
-          .where("senderId", "==", uid), async (doc) => {
-        if (doc.data().senderId === uid) {
-          add("messages", doc, [...TEXT, "senderId", "createdAt"]);
-          output.records.messages[output.records.messages.length - 1]
-              .patientId = patientId;
-        }
-      });
+      const acknowledgment = await patientRef.collection("care_handbook")
+          .doc("main").collection("acknowledgments").doc(uid).get();
+      if (++scanned > maxDocuments) {
+        throw new HttpsError("resource-exhausted", "Export too large.");
+      }
+      if (acknowledgment.exists &&
+          acknowledgment.data().caregiverUid === uid &&
+          acknowledgment.data().patientId === patientId) {
+        add("handover_acknowledgments", acknowledgment,
+            ["patientId", "caregiverUid", "revision", "acknowledgedAt"]);
+      }
+      for (const [room, group] of [["messages", "messages"],
+        ["familyMessages", "family_group_messages"]]) {
+        if (room === "familyMessages" && !familyPatients.has(patientId)) continue;
+        await scan(db.doc("chats/" + patientId).collection(room)
+            .where("senderId", "==", uid), async (doc) => {
+          if (doc.data().senderId === uid) {
+            add(group, doc, [...TEXT, "senderId", "createdAt"]);
+            output.records[group][output.records[group].length - 1]
+                .patientId = patientId;
+          }
+        });
+      }
       await scan(patientRef.collection("care_notes")
           .where("createdBy", "==", uid), async (doc) => {
         if (doc.data().createdBy === uid &&
@@ -224,8 +266,14 @@ function createPersonalDataExportService({db, clock = () => Date.now(),
       const profile = await tx.get(profileRef);
       const patients = await Promise.all([...patientRefs.values()]
           .map((ref) => tx.get(ref)));
+      const community = await Promise.all([...communityParents.values()]
+          .map((ref) => tx.get(ref)));
       if (pending.exists || !profile.exists || profile.data().uid !== uid ||
-          patients.some((p) => !p.exists || !linked(p.data(), uid))) {
+          profile.data().role !== profiles.docs[0].data().role ||
+          community.some((p) => !p.exists || (p.data().status !== "published" &&
+            p.data().authorUid !== uid)) ||
+          patients.some((p) => !p.exists || !linked(p.data(), uid) ||
+            (familyPatients.has(p.id) && !p.data().families?.includes(uid)))) {
         throw new HttpsError("permission-denied", "Access changed; retry.");
       }
       tx.create(db.collection("audit_logs").doc(), {

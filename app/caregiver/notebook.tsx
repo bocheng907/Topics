@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
@@ -96,6 +97,13 @@ export default function CaregiverNotebookScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingNote, setEditingNote] = useState<CareNote | null>(null);
   const [form, setForm] = useState<NoteForm>(emptyForm);
+  const dataScope = `${ready}/${user?.uid}/${activePatientId}`;
+  const [previousScope, setPreviousScope] = useState<string | null>(null);
+  if (previousScope !== dataScope) {
+    setPreviousScope(dataScope); setNotes([]);
+    setLoading(Boolean(ready && activePatientId && user?.uid));
+    setModalVisible(false); setEditingNote(null); setForm(emptyForm);
+  }
 
   const sortedNotes = useMemo(() => {
     return [...notes].sort((left, right) => {
@@ -108,12 +116,9 @@ export default function CaregiverNotebookScreen() {
     if (!ready) return;
 
     if (!activePatientId || !user?.uid) {
-      setNotes([]);
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
 
     const notesRef = query(
       collection(db, "care_notes"),
@@ -295,7 +300,7 @@ export default function CaregiverNotebookScreen() {
     }
   };
 
-  const patientName = activePatient?.name || "陳柏丞";
+  const patientName = activePatient?.name || "陳爺爺";
 
   if (!ready || loading) {
     return (
@@ -307,7 +312,7 @@ export default function CaregiverNotebookScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <View style={styles.headerRow}>
           <Pressable style={styles.backButton} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={30} color="#111827" />
@@ -319,7 +324,7 @@ export default function CaregiverNotebookScreen() {
             </Text>
           </View>
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {!activePatientId ? (
@@ -407,7 +412,7 @@ export default function CaregiverNotebookScreen() {
           style={styles.modalOverlay}
         >
           <Pressable style={styles.modalBackdrop} onPress={closeModal} />
-          <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom + 18, 28) }]}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: "90%", flexGrow: 0, borderRadius: 26 }} contentContainerStyle={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom + 18, 28) }]}>
             <Text style={styles.modalTitle}>{editingNote ? "編輯記事" : "新增記事"}</Text>
 
             <View style={styles.fieldGroup}>
@@ -452,7 +457,7 @@ export default function CaregiverNotebookScreen() {
                 <Text style={styles.saveButtonText}>{saving ? "儲存中" : "儲存"}</Text>
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -474,19 +479,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FAFAFA",
   },
-  header: {
-    paddingTop: 58,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    backgroundColor: "#7BC6F9",
-    flexDirection: "row",
-    alignItems: "center",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-  },
+  header: { paddingTop: 12, paddingHorizontal: 16, paddingBottom: 16, backgroundColor: "#7BC6F9", flexDirection: "row", alignItems: "center", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, minHeight: 56 },
   backButton: {
     width: 42,
     height: 42,
@@ -765,7 +758,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.45)",
   },
   modalSheet: {
@@ -864,21 +857,13 @@ const styles = StyleSheet.create({
   checkboxChecked: {
     backgroundColor: "#7BC6F9",
   },
-  checkboxText: {
-    color: "#000000",
-    fontSize: 16,
-    fontWeight: "900",
-  },
+  checkboxText: { color: "#000000", fontSize: 16, fontWeight: "900", flexShrink: 1 },
   pinText: {
     fontSize: 16,
     fontWeight: "800",
     color: "#374151",
   },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 12,
-  },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, flexWrap: "wrap" },
   cancelButton: {
     paddingHorizontal: 20,
     paddingVertical: 12,

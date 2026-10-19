@@ -1,6 +1,7 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 // app/caregiver/communication-cards.tsx
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { router } from 'expo-router'; // 💡 新增：引入 router 來做返回功能
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -40,13 +41,19 @@ export default function CaregiverVoiceScreen() {
   
   const [tasks, setTasks] = useState<any[]>(initialTasks.map(t => ({ ...t, hasRecording: false })));
   const [playingTaskId, setPlayingTaskId] = useState<number | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  // expo-audio 的播放器由 hook 管理生命週期（元件卸載時自動釋放），
+  // 不需要像舊版 expo-av 那樣自己 unloadAsync
+  const player = useAudioPlayer();
 
   const [waveHeights, setWaveHeights] = useState([6, 6, 6, 6]);
 
+  // 播放結束時清掉「播放中」狀態（取代舊版的 setOnPlaybackStatusUpdate）
   useEffect(() => {
-    return sound ? () => { sound.unloadAsync(); } : undefined;
-  }, [sound]);
+    const subscription = player.addListener('playbackStatusUpdate', status => {
+      if (status.didJustFinish) setPlayingTaskId(null);
+    });
+    return () => subscription.remove();
+  }, [player]);
 
   // ==========================================
   // 1. 抓取 Firebase 語音紀錄
@@ -95,8 +102,6 @@ export default function CaregiverVoiceScreen() {
           Math.random() * 8 + 4,
         ]);
       }, 150);
-    } else {
-      setWaveHeights([6, 6, 6, 6]);
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -112,37 +117,25 @@ export default function CaregiverVoiceScreen() {
       return;
     }
 
+    // 點同一張卡片 → 停止播放
     if (playingTaskId === task.id) {
-      if (sound) { await sound.stopAsync(); await sound.unloadAsync(); setSound(null); }
+      player.pause();
       setPlayingTaskId(null);
       return;
     }
 
-    if (sound) { await sound.stopAsync(); await sound.unloadAsync(); }
-
     setPlayingTaskId(task.id);
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
 
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: task.audioUrl },
-        { shouldPlay: true },
-        null,
-        false // 無延遲秒播參數
-      );
-      
-      setSound(newSound);
-      
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setPlayingTaskId(null);
-        }
-      });
-    } catch (error) {
+      // 換音源後從頭播放（replace 會自動停掉前一個音源）
+      player.replace({ uri: task.audioUrl });
+      player.play();
+    } catch {
       Alert.alert(t.resultErrorTitle, t.playVoiceFailed);
       setPlayingTaskId(null);
     }
@@ -151,14 +144,14 @@ export default function CaregiverVoiceScreen() {
   return (
     <View style={styles.container}>
       {/* 💡 修改 1：換成家屬端同款的左側返回鍵 Header */}
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <View style={styles.headerRow}>
           <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
             <Ionicons name="chevron-back" size={24} color="#111827" />
             <Text style={styles.backBtnText}>{t.back}</Text>
           </Pressable>
         </View>
-      </View>
+      </ScreenHeader>
 
       <View style={styles.hintContainer}>
         <View style={styles.hintBadge}>
@@ -230,14 +223,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA' },
   
   // 💡 Header 樣式修改：讓內容靠左對齊
-  header: { backgroundColor: '#90E389', paddingTop: 54, paddingBottom: 16, elevation: 2 },
+  header: { backgroundColor: '#90E389', paddingTop: 12, paddingBottom: 16, elevation: 2, minHeight: 56 },
   headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'flex-start' },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
   
-  hintContainer: { paddingTop: 24, paddingBottom: 8, alignItems: 'center' },
-  hintBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2F9F1', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 30, borderWidth: 1, borderColor: '#D5EED4', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
-  hintText: { color: '#4A8B46', fontWeight: 'bold', fontSize: 16, marginLeft: 8 },
+  hintContainer: { paddingTop: 24, paddingBottom: 8, alignItems: 'center', paddingHorizontal: 16 },
+  hintBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2F9F1', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 30, borderWidth: 1, borderColor: '#D5EED4', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, maxWidth: "100%" },
+  hintText: { color: '#4A8B46', fontWeight: 'bold', fontSize: 16, marginLeft: 8, flexShrink: 1 },
   
   // 💡 修改 2：將 paddingBottom 增加到 120，徹底解決底部卡片被遮住的問題
   scrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 120 },
@@ -248,9 +241,9 @@ const styles = StyleSheet.create({
   cardPlaying: { transform: [{ translateY: -4 }], shadowColor: '#90E389', shadowOpacity: 0.5, shadowRadius: 16, elevation: 8 },
   
   imageBox: { width: '100%', aspectRatio: 1, backgroundColor: '#F7F7F7', borderRadius: 20, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  taskImage: { width: 150, height: 150 },
+  taskImage: { width: "100%", height: "100%" },
   
-  playingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  playingOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   playingText: { color: '#FFF', fontWeight: 'bold', fontSize: 18, letterSpacing: 2, textShadowColor: 'rgba(0, 0, 0, 0.75)', textShadowOffset: {width: -1, height: 1}, textShadowRadius: 10 },
   
   iconBadge: { position: 'absolute', bottom: 8, right: 8, width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },

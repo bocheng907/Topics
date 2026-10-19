@@ -1,13 +1,6 @@
+import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-} from "react-native";
+import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from "react-native";
 import { router, Stack } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 import type { Role } from "@/src/auth/AuthProvider";
@@ -23,6 +16,7 @@ export default function RegisterScreen() {
   const t = translations[language];
   const privacy = privacyCopy[language];
 
+  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("caregiver");
@@ -37,7 +31,15 @@ export default function RegisterScreen() {
       Alert.alert(t.prompt, privacy.required);
       return;
     }
-    if (!email.trim() || !isValidRegistrationPassword(password)) {
+    const normalizedName = displayName.normalize("NFKC").trim();
+    if (!normalizedName || normalizedName.length > 120) {
+      Alert.alert(t.prompt, t.displayNameValidation);
+      return;
+    }
+
+    const normalizedEmail = email.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+    const emailLooksValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail);
+    if (!emailLooksValid || !isValidRegistrationPassword(password)) {
       Alert.alert(t.prompt, t.registerValidation);
       return;
     }
@@ -50,11 +52,13 @@ export default function RegisterScreen() {
     try {
       setLoading(true);
 
-      await register(email, password, role, {
+      const extra = {
         privacyConsent: { accepted: privacyAccepted, version: PRIVACY_POLICY_VERSION },
+        displayName: normalizedName,
         emergencyPhone1,
         emergencyPhone2,
-      });
+      };
+      await register(email, password, role, extra);
 
       router.replace("/");
     } catch (e: any) {
@@ -67,7 +71,7 @@ export default function RegisterScreen() {
   }
 
   return (
-    <ScrollView
+    <ScreenScrollView
       contentContainerStyle={{
         flexGrow: 1,
         padding: 32,
@@ -99,7 +103,13 @@ export default function RegisterScreen() {
             {t.role}
           </Text>
 
-          <View style={{ flexDirection: "row", gap: 12 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 10,
+            }}
+          >
+            {/* 看護 */}
             <Pressable
               onPress={() => setRole("caregiver")}
               style={{
@@ -107,21 +117,25 @@ export default function RegisterScreen() {
                 padding: 14,
                 borderRadius: 12,
                 borderWidth: 2,
-                borderColor: role === "caregiver" ? "#007AFF" : "#EEE",
-                backgroundColor: role === "caregiver" ? "#E1E9FF" : "#FFF",
+                borderColor:
+                  role === "caregiver" ? "#007AFF" : "#EEE",
+                backgroundColor:
+                  role === "caregiver" ? "#E1E9FF" : "#FFF",
                 alignItems: "center",
               }}
             >
               <Text
                 style={{
                   fontWeight: "900",
-                  color: role === "caregiver" ? "#007AFF" : "#999",
+                  color:
+                    role === "caregiver" ? "#007AFF" : "#999",
                 }}
               >
                 {t.caregiver}
               </Text>
             </Pressable>
 
+            {/* 家屬 */}
             <Pressable
               onPress={() => setRole("family")}
               style={{
@@ -129,21 +143,78 @@ export default function RegisterScreen() {
                 padding: 14,
                 borderRadius: 12,
                 borderWidth: 2,
-                borderColor: role === "family" ? "#007AFF" : "#EEE",
-                backgroundColor: role === "family" ? "#E1E9FF" : "#FFF",
+                borderColor:
+                  role === "family" ? "#007AFF" : "#EEE",
+                backgroundColor:
+                  role === "family" ? "#E1E9FF" : "#FFF",
                 alignItems: "center",
               }}
             >
               <Text
                 style={{
                   fontWeight: "900",
-                  color: role === "family" ? "#007AFF" : "#999",
+                  color:
+                    role === "family" ? "#007AFF" : "#999",
                 }}
               >
                 {t.family}
               </Text>
             </Pressable>
+
+            {/* 仲介 */}
+            <Pressable
+              onPress={() => setRole("agency")}
+              style={{
+                flex: 1,
+                padding: 14,
+                borderRadius: 12,
+                borderWidth: 2,
+                borderColor:
+                  role === "agency" ? "#007AFF" : "#EEE",
+                backgroundColor:
+                  role === "agency" ? "#E1E9FF" : "#FFF",
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontWeight: "900",
+                  color:
+                    role === "agency" ? "#007AFF" : "#999",
+                }}
+              >
+                {t.agency}
+              </Text>
+            </Pressable>
           </View>
+        </View>
+
+        <View style={{ gap: 8 }}>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: "800",
+              color: "#666",
+              marginLeft: 4,
+            }}
+          >
+            {t.displayName}
+          </Text>
+          <TextInput
+            placeholder={t.displayNamePlaceholder}
+            autoCapitalize="words"
+            value={displayName}
+            onChangeText={setDisplayName}
+            maxLength={120}
+            style={{
+              backgroundColor: "#F2F2F7",
+              borderRadius: 14,
+              padding: 16,
+              fontSize: 16,
+              borderWidth: 1,
+              borderColor: "#EEE",
+            }}
+          />
         </View>
 
         <View style={{ gap: 8 }}>
@@ -162,6 +233,7 @@ export default function RegisterScreen() {
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
+            editable={!loading}
             style={{
               backgroundColor: "#F2F2F7",
               borderRadius: 14,
@@ -303,9 +375,11 @@ export default function RegisterScreen() {
         style={{ marginTop: 24, alignSelf: "center" }}
       >
         <Text style={{ color: "#666", fontSize: 15, fontWeight: "600" }}>
-          {t.hasAccount}<Text style={{ color: "#007AFF", fontWeight: "900" }}>{t.backLogin}</Text>
+          {t.hasAccount}<Text style={{ color: "#007AFF", fontWeight: "900" }}>
+            {t.backLogin}
+          </Text>
         </Text>
       </Pressable>
-    </ScrollView>
+    </ScreenScrollView>
   );
 }

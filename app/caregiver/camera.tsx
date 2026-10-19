@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useState } from "react";
 import {
@@ -47,7 +48,7 @@ function CameraScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 1,
       allowsEditing: true,
     });
@@ -108,7 +109,7 @@ function CameraScreen() {
       setTimeout(async () => {
         try {
           await Linking.openURL(url);
-        } catch (e) {
+        } catch {
           Alert.alert(t.cameraOpenFailed);
         }
       }, 300);
@@ -139,14 +140,8 @@ function CameraScreen() {
 
     try {
       console.log("[1] uploading image...");
-      console.log("[1] auth user.uid =", user.uid);
-      console.log("[1] activePatientId =", activePatientId);
-      console.log("[1] local imageUri =", imageUri);
-
-      const downloadURL = await uploadPrescriptionImage(imageUri, user.uid);
-      console.log("[1] downloadURL:", downloadURL);
-
-      console.log("[2] analyzing prescription...");
+      const downloadURL = await uploadPrescriptionImage(
+        imageUri, user.uid, activePatientId);
       const analyzeResult = await analyzePrescriptionByUrl(downloadURL);
       console.log("[2] analyzeResult:", analyzeResult);
 
@@ -157,7 +152,7 @@ function CameraScreen() {
       console.log("[3] draftTitle =", draftTitle);
 
       router.replace({
-        pathname: (user?.role === "family" ? "/family/scan-result" : "/caregiver/result") as any,
+        pathname: "/caregiver/result" as any,
         params: {
           imageUrl: encodeURIComponent(downloadURL),
           draftTitle,
@@ -211,12 +206,12 @@ function CameraScreen() {
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      <View style={styles.topBar}>
+      <ScreenHeader style={styles.topBar}>
         <Pressable onPress={() => router.replace(user?.role === "family" ? "/family" : "/caregiver")} style={styles.topBarBack} hitSlop={8}>
           <Ionicons name="chevron-back" size={24} color="#111827" />
           <Text style={styles.topBarBackText}>{t.back}</Text>
         </Pressable>
-      </View>
+      </ScreenHeader>
 
       <ScrollView key={refreshKey} contentContainerStyle={styles.container}>
       <View style={styles.header}>
@@ -279,7 +274,7 @@ function CameraScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#FFFFFF" },
-  topBar: { paddingTop: 54, paddingBottom: 16, paddingHorizontal: 20 },
+  topBar: { paddingTop: 12, paddingBottom: 16, paddingHorizontal: 20, minHeight: 56 },
   topBarBack: { flexDirection: "row", alignItems: "center", gap: 6 },
   topBarBackText: { fontSize: 17, fontWeight: "700", color: "#111827" },
 
@@ -291,41 +286,14 @@ const styles = StyleSheet.create({
 
   actions: { marginBottom: 20 },
 
-  primaryBtn: {
-    flexDirection: "row",
-    gap: 8,
-    paddingVertical: 18,
-    backgroundColor: "#007AFF",
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  primaryBtnText: { fontSize: 18, fontWeight: "900", color: "#fff" },
+  primaryBtn: { flexDirection: "row", gap: 8, paddingVertical: 18, backgroundColor: "#007AFF", borderRadius: 14, alignItems: "center", justifyContent: "center", marginBottom: 12, paddingHorizontal: 14 },
+  primaryBtnText: { fontSize: 18, fontWeight: "900", color: "#fff", flexShrink: 1, textAlign: "center" },
 
-  outlineBtn: {
-    flexDirection: "row",
-    gap: 8,
-    paddingVertical: 18,
-    borderWidth: 2,
-    borderColor: "#007AFF",
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  outlineBtnText: { fontSize: 18, fontWeight: "900", color: "#007AFF" },
+  outlineBtn: { flexDirection: "row", gap: 8, paddingVertical: 18, borderWidth: 2, borderColor: "#007AFF", borderRadius: 14, alignItems: "center", justifyContent: "center", marginBottom: 12, paddingHorizontal: 14 },
+  outlineBtnText: { fontSize: 18, fontWeight: "900", color: "#007AFF", flexShrink: 1, textAlign: "center" },
 
-  qrBtn: {
-    flexDirection: "row",
-    gap: 8,
-    paddingVertical: 18,
-    backgroundColor: "#333",
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qrBtnText: { fontSize: 18, fontWeight: "900", color: "#fff" },
+  qrBtn: { flexDirection: "row", gap: 8, paddingVertical: 18, backgroundColor: "#333", borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 14 },
+  qrBtnText: { fontSize: 18, fontWeight: "900", color: "#fff", flexShrink: 1, textAlign: "center" },
 
   previewWrap: { marginTop: 10 },
   previewCard: {
@@ -336,17 +304,10 @@ const styles = StyleSheet.create({
   },
   previewImg: { width: "100%", height: 380, borderRadius: 12 },
 
-  successBtn: {
-    paddingVertical: 18,
-    backgroundColor: "#34C759",
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-  },
+  successBtn: { paddingVertical: 18, backgroundColor: "#34C759", borderRadius: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", paddingHorizontal: 14 },
   successBtnDisabled: { opacity: 0.7 },
   successBtnSpinner: { marginRight: 8 },
-  successBtnText: { fontSize: 18, fontWeight: "900", color: "#fff" },
+  successBtnText: { fontSize: 18, fontWeight: "900", color: "#fff", flexShrink: 1, textAlign: "center" },
 
   emptyBox: {
     paddingVertical: 60,

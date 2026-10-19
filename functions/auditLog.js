@@ -15,8 +15,13 @@ function buildChange(event, kind) {
   const fields = [...new Set([...Object.keys(before || {}),
     ...Object.keys(after || {})])].filter((key) =>
     !isDeepStrictEqual(before && before[key], after && after[key])).sort();
-  const relevant = kind === "members" ?
-    fields.filter((key) => ["families", "caregivers"].includes(key)) : fields;
+  const trackedFields = {
+    members: ["families", "caregivers", "primaryFamilyUid"],
+    profile: ["displayName", "emergencyPhone1", "emergencyPhone2",
+      "activePatientId"],
+  };
+  const relevant = trackedFields[kind] ?
+    fields.filter((key) => trackedFields[kind].includes(key)) : fields;
   if (!relevant.length) return null;
   const source = after || before;
   return {

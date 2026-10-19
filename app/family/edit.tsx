@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -235,12 +236,12 @@ function FamilyEditScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={28} color="#333" />
           <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
-      </View>
+      </ScreenHeader>
 
       <View style={styles.titleRow}>
         <Text style={styles.pageTitle}>{t.editPrescriptionInfo}</Text>
@@ -380,25 +381,11 @@ function FamilyEditScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  header: {
-    backgroundColor: "#F4E770",
-    height: 100,
-    paddingTop: 50,
-    paddingHorizontal: 15,
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  header: { backgroundColor: "#F4E770", paddingTop: 12, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", minHeight: 56 },
   backBtn: { flexDirection: "row", alignItems: "center" },
   backText: { fontSize: 20, fontWeight: "bold", color: "#333", marginLeft: 2 },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: "#fff",
-  },
-  pageTitle: { fontSize: 26, fontWeight: "900", color: "#000" },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 15, backgroundColor: "#fff", flexWrap: "wrap", gap: 12 },
+  pageTitle: { fontSize: 26, fontWeight: "900", color: "#000", flexShrink: 1 },
   saveBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
   saveBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
   scrollContent: { padding: 20, gap: 20 },
@@ -416,7 +403,7 @@ const styles = StyleSheet.create({
   inputBox: { gap: 8 },
   label: { fontSize: 15, color: "#666", fontWeight: "600" },
   input: { backgroundColor: "#F5F5F5", padding: 12, borderRadius: 10, fontSize: 16, color: "#333" },
-  memoInput: { height: 80, textAlignVertical: "top" },
+  memoInput: { textAlignVertical: "top", minHeight: 100 },
   helperText: { fontSize: 12, color: "#888", lineHeight: 18 },
 });
 

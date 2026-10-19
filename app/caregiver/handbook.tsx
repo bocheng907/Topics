@@ -1,5 +1,7 @@
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { HandoverStatus } from "@/src/care-target/HandoverStatus";
+import { versionOf } from "@/src/care-target/reliableWrites";
 import { translations, type Language } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
@@ -71,6 +73,13 @@ export default function CaregiverHandbookScreen() {
   const [handbook, setHandbook] = useState<CareHandbookDocument>(EMPTY_HANDBOOK);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [revision, setRevision] = useState('');
+  const scope = `${ready}/${activePatientId}`;
+  const [previousScope, setPreviousScope] = useState<string | null>(null);
+  if (previousScope !== scope) {
+    setPreviousScope(scope); setHandbook(EMPTY_HANDBOOK); setLoadError(false);
+    setRevision(''); setLoading(Boolean(ready && activePatientId));
+  }
 
   const categories: { key: HandbookField; label: string; icon: IoniconName }[] = [
     { key: "dailyRoutine", label: t.dailyRoutine, icon: "time-outline" },
@@ -85,18 +94,15 @@ export default function CaregiverHandbookScreen() {
   ];
 
   useEffect(() => {
-    setHandbook(EMPTY_HANDBOOK);
-    setLoadError(false);
 
     if (!ready || !activePatientId) {
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
     const unsubscribe = onSnapshot(
       doc(db, "patients", activePatientId, "care_handbook", "main"),
       (snapshot) => {
+        setRevision(versionOf(snapshot.data()));
         if (!snapshot.exists()) {
           setHandbook({ ...EMPTY_HANDBOOK, patientId: activePatientId });
         } else {
@@ -186,6 +192,8 @@ export default function CaregiverHandbookScreen() {
             )}
           </>
         )}
+        {ready && !loading && !loadError && activePatientId &&
+          <HandoverStatus key={activePatientId} patientId={activePatientId} revision={revision} canAcknowledge />}
       </ScrollView>
     </View>
   );
@@ -193,20 +201,11 @@ export default function CaregiverHandbookScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F2F7F6" },
-  header: {
-    minHeight: 86,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    backgroundColor: "#FFFFFF",
-    flexDirection: "row",
-    alignItems: "flex-end",
-    borderBottomWidth: 1,
-    borderBottomColor: "#DDE8E6",
-  },
-  backButton: { flex: 1, flexDirection: "row", alignItems: "center" },
-  backText: { color: "#163B3C", fontSize: 16, fontWeight: "600" },
-  title: { color: "#163B3C", fontSize: 22, fontWeight: "800" },
-  headerSpacer: { flex: 1 },
+  header: { minHeight: 86, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#DDE8E6", flexWrap: "wrap", gap: 8 },
+  backButton: { flexDirection: "row", alignItems: "center", flexShrink: 1, minHeight: 44, maxWidth: "100%" },
+  backText: { color: "#163B3C", fontSize: 16, fontWeight: "600", flexShrink: 1 },
+  title: { color: "#163B3C", fontSize: 22, fontWeight: "800", flex: 1, minWidth: 0, textAlign: "center" },
+  headerSpacer: { width: 28 },
   content: { padding: 18 },
   introCard: {
     backgroundColor: "#DDF3EF",

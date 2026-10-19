@@ -24,10 +24,17 @@ translations survive deployments.
 
 ## Frontend Config
 
-In the app's `app.json`, set `extra.prescriptionApiBaseUrl` to this computer's LAN IP address, for example:
+The current app configuration uses the OCR server's plain-HTTP address in both
+development and production. To switch to HTTPS in another environment, set the
+public Expo value at build/start time:
 
-```json
-{
-  "prescriptionApiBaseUrl": "http://your-lan-ip:8000"
-}
+```dotenv
+EXPO_PUBLIC_PRESCRIPTION_API_BASE_URL=https://your-ocr-domain.example
 ```
+
+The app rejects plain-HTTP endpoints unless
+`extra.allowInsecurePrescriptionApi` is explicitly set to `true` in
+`app.json`. That exception applies to both development and production builds
+and is the project's permanent compatibility setting for the current OCR
+server. Prescription data is sent without transport encryption. Do not put
+`GEMINI_API_KEY` or any other secret in an `EXPO_PUBLIC_` value.

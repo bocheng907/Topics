@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
@@ -11,7 +12,6 @@ import {
   collection,
   doc,
   onSnapshot,
-  orderBy,
   query,
   updateDoc,
   where,
@@ -57,6 +57,10 @@ export function NotificationListView({ detailRoute }: Props) {
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [category, setCategory] = useState<NotificationCategoryId>("all");
   const [patientFilter, setPatientFilter] = useState<string>("all");
+  const [previousUid, setPreviousUid] = useState(currentUser?.uid);
+  if (previousUid !== currentUser?.uid) {
+    setPreviousUid(currentUser?.uid); setNotifications([]); setPatientFilter("all");
+  }
 
   const patientNameById = useMemo(
     () => new Map(linkedCareTargets.map((patient) => [patient.id, patient.name])),
@@ -65,21 +69,21 @@ export function NotificationListView({ detailRoute }: Props) {
 
   useEffect(() => {
     if (!currentUser?.uid) {
-      setNotifications([]);
       return;
     }
 
     const q = query(
       collection(db, NOTIFICATIONS_COLLECTION),
-      where("recipientUid", "==", currentUser.uid),
-      orderBy("createdAt", "desc")
+      where("recipientUid", "==", currentUser.uid)
     );
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         setNotifications(
-          snap.docs.map((docSnap) => ({
+          [...snap.docs]
+            .sort((a, b) => ((b.data() as any).createdAt?.toMillis?.() ?? 0) - ((a.data() as any).createdAt?.toMillis?.() ?? 0))
+            .map((docSnap) => ({
             id: docSnap.id,
             ...(docSnap.data() as NotificationDocument),
           })) as NotificationRow[]
@@ -144,14 +148,14 @@ export function NotificationListView({ detailRoute }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <ScreenHeader menuSpace style={styles.header}>
         <Text style={styles.headerTitle}>{t.notification}</Text>
         {unreadCount > 0 ? (
           <View style={styles.unreadBadge}>
             <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
           </View>
         ) : null}
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         horizontal
@@ -297,32 +301,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FAFAFA",
   },
-  header: {
-    minHeight: 112,
-    flexShrink: 0,
-    flexGrow: 0,
-    backgroundColor: "#D9D4F3",
-    paddingTop: 54,
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#111827",
-  },
-  unreadBadge: {
-    minWidth: 24,
-    height: 24,
-    paddingHorizontal: 7,
-    borderRadius: 12,
-    backgroundColor: "#EF4444",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  header: { minHeight: 112, flexShrink: 0, flexGrow: 0, backgroundColor: "#D9D4F3", paddingTop: 12, paddingHorizontal: 20, paddingBottom: 16, flexDirection: "row", alignItems: "center", gap: 10 },
+  headerTitle: { fontSize: 22, fontWeight: "800", color: "#111827", flexShrink: 1 },
+  unreadBadge: { minWidth: 24, paddingHorizontal: 7, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", minHeight: 24 },
   unreadBadgeText: {
     fontSize: 12,
     fontWeight: "700",
@@ -463,16 +444,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: "#4B5563",
   },
-  tagRow: {
-    flexDirection: "row",
-    gap: 6,
-    marginTop: 4,
-  },
-  tag: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
+  tagRow: { flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" },
+  tag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, maxWidth: "100%" },
   tagText: {
     fontSize: 11,
     fontWeight: "700",

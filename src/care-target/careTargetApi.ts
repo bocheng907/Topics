@@ -11,8 +11,16 @@ export const joinCareTarget = httpsCallable<
   { patientId: string; alreadyJoined: boolean; status: string }
 >(functions, "joinCareTarget");
 
-export type InvitationState = { code: string; status: string; expiresAt: number; requestId: string; role: string; applicantUid: string };
+export const leaveCareTarget = httpsCallable<
+  { patientId: string },
+  { patientId: string; alreadyLeft: boolean }
+>(functions, "leaveCareTarget");
+
+export type InvitationState = { code: string; status: string; expiresAt: number;
+  requestId: string; role: string; applicantUid: string;
+  secondaryFamilyUids: string[] };
 export const manageInvitation = httpsCallable<
-  { patientId: string; action: "get" | "regenerate" | "revoke" | "approve" | "reject"; requestId?: string },
+  { patientId: string; action: "get" | "regenerate" | "revoke" | "approve" |
+    "reject" | "transfer"; requestId?: string; targetUid?: string },
   InvitationState
 >(functions, "manageInvitation");

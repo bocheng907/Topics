@@ -14,6 +14,8 @@ export default function Index() {
   // 💡 修正這裡：依照身分派發，而不是一律去 select
   if (user.role === "family") {
     return <Redirect href="/family" />;
+  } else if (user.role === "agency") {
+    return <Redirect href="/agency" />;
   } else {
     return <Redirect href="/caregiver" />;
   }

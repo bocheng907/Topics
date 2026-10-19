@@ -5,6 +5,7 @@ import {
   onAuthStateChanged,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  type User,
 } from "firebase/auth";
 import {
   collection,
@@ -12,15 +13,18 @@ import {
   getDocs,
   query,
   serverTimestamp,
-  setDoc,
+  writeBatch,
   where,
+  limit,
 } from "firebase/firestore";
 import { auth, db } from "@/firebase/firebaseConfig";
 import { reportSession, signOut } from "./auditSession";
 import { isValidRegistrationPassword } from "./passwordPolicy";
 import { assertPrivacyConsent, PRIVACY_POLICY_VERSION, type PrivacyConsent } from "@/src/privacy/consent";
+import { classifyProfiles, profileStateError } from "./profileState";
+import { syncUserRole } from "./userRole";
 
-export type Role = "caregiver" | "family";
+export type Role = "caregiver" | "family" | "agency";
 
 export type AuthUser = {
   uid: string;
@@ -31,6 +35,7 @@ export type AuthUser = {
 };
 
 type RegisterExtra = {
+  displayName?: string;
   privacyConsent?: PrivacyConsent;
   emergencyPhone1?: string;
   emergencyPhone2?: string;
@@ -51,11 +56,37 @@ type AuthValue = {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
+function validateRegistrationName(value?: string) {
+  const name = (value ?? "").trim();
+  if (!name || name.length > 120) throw new Error("請輸入名稱，最多 120 個字元。");
+  return name;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const registrationInProgress = useRef(false);
   const authEpoch = useRef(0);
+
+  async function profileState(fbUser: User) {
+    const snap = await getDocs(query(collection(db, "users"),
+      where("uid", "==", fbUser.uid), limit(2)));
+    const state = classifyProfiles(snap.docs.map(item => item.data()), fbUser.uid);
+    return state.kind === "ready" ? { ...state, profileId: snap.docs[0].id } : state;
+  }
+
+  function authUserFromProfile(fbUser: User,
+    profile: Extract<ReturnType<typeof classifyProfiles>, {kind: "ready"}>): AuthUser {
+    const data = profile.data as any;
+    return {
+      uid: fbUser.uid,
+      email: fbUser.email ?? "",
+      role: profile.role,
+      accountStatus: data.accountStatus === "pending_deletion" ?
+        "pending_deletion" : "active",
+      deletionScheduledFor: data.deletionScheduledFor?.toDate?.(),
+    };
+  }
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
@@ -68,25 +99,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const q = query(collection(db, "users"), where("uid", "==", fbUser.uid));
-        const snap = await getDocs(q);
+        const state = await profileState(fbUser);
         if (epoch !== authEpoch.current || registrationInProgress.current) return;
 
-        if (!snap.empty) {
-          const data = snap.docs[0].data() as any;
-
-          setUser({
-            uid: fbUser.uid,
-            email: fbUser.email ?? "",
-            role: (data.role as Role) ?? "family",
-            accountStatus: data.accountStatus === "pending_deletion" ?
-              "pending_deletion" : "active",
-            deletionScheduledFor: data.deletionScheduledFor?.toDate?.(),
-          });
+        if (state.kind === "ready") {
+          if (state.data.accountStatus !== "pending_deletion") {
+            await syncUserRole(fbUser.uid, state.role, state.profileId);
+            if (epoch !== authEpoch.current || registrationInProgress.current) return;
+          }
+          setUser(authUserFromProfile(fbUser, state));
         } else {
           // Never fabricate a role or policy agreement during login.
           // An interrupted registration can be completed explicitly on the registration page.
           setUser(null);
+          if (state.kind !== "missing") {
+            console.warn("[AuthProvider] rejected account profile:", state.kind);
+          }
         }
       } catch (e) {
         if (epoch !== authEpoch.current || registrationInProgress.current) return;
@@ -101,6 +129,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<AuthValue>(() => {
+    async function createProfile(fbUser: User, role: Role, extra?: RegisterExtra) {
+      assertPrivacyConsent(extra?.privacyConsent);
+      const displayName = validateRegistrationName(extra?.displayName);
+      const emergencyPhone1 = (extra?.emergencyPhone1 ?? "").trim();
+      const emergencyPhone2 = (extra?.emergencyPhone2 ?? "").trim();
+      if (role === "family" && (!emergencyPhone1 || !emergencyPhone2)) {
+        throw new Error("家屬帳號請填寫 2 組緊急聯絡電話");
+      }
+      const existing = await profileState(fbUser);
+      if (existing.kind !== "missing") {
+        if (existing.kind === "ready") {
+          throw Object.assign(new Error("Account already registered"),
+            {code: "auth/email-already-in-use"});
+        }
+        throw profileStateError(existing);
+      }
+      const now = new Date();
+      const timeString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}-${String(now.getSeconds()).padStart(2, "0")}`;
+      const docRef = doc(db, "users", `${timeString}_user_${fbUser.uid.slice(-4)}`);
+      const batch = writeBatch(db);
+      batch.set(docRef, {
+        uid: fbUser.uid,
+        email: (fbUser.email || "").trim().toLowerCase(),
+        role,
+        displayName,
+        avatarUrl: "",
+        createdAt: serverTimestamp(),
+        activePatientId: "",
+        emergencyPhone1: role === "family" ? emergencyPhone1 : "",
+        emergencyPhone2: role === "family" ? emergencyPhone2 : "",
+        privacyConsent: {
+          accepted: true,
+          version: PRIVACY_POLICY_VERSION,
+          acceptedAt: serverTimestamp(),
+        },
+      });
+      await batch.commit();
+      await syncUserRole(fbUser.uid, role, docRef.id);
+      setUser({uid: fbUser.uid, email: fbUser.email || "", role,
+        accountStatus: "active"});
+    }
+
     async function register(
       email: string,
       password: string,
@@ -109,6 +179,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ) {
       email = email.trim().toLowerCase();
       assertPrivacyConsent(extra?.privacyConsent);
+      validateRegistrationName(extra?.displayName);
+      if (!["family", "caregiver", "agency"].includes(role)) throw new Error("Invalid account role");
       if (registrationInProgress.current) throw new Error("Registration already in progress");
 
       if (!email || !password) {
@@ -121,15 +193,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      const emergencyPhone1 = (extra?.emergencyPhone1 ?? "").trim();
-      const emergencyPhone2 = (extra?.emergencyPhone2 ?? "").trim();
-
-      if (role === "family") {
-        if (!emergencyPhone1 || !emergencyPhone2) {
-          throw new Error("家屬帳號請填寫 2 組緊急聯絡電話");
-        }
-      }
-
       registrationInProgress.current = true;
       authEpoch.current++;
       try {
@@ -137,49 +200,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (fbUser && fbUser.email?.toLowerCase() === email) {
           // Retry a profile write only after re-verifying this exact account.
           await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(email, password));
-          const existing = await getDocs(query(collection(db, "users"), where("uid", "==", fbUser.uid)));
-          if (!existing.empty) throw Object.assign(new Error("Account already registered"), { code: "auth/email-already-in-use" });
+          const existing = await profileState(fbUser);
+          if (existing.kind !== "missing") throw Object.assign(
+            new Error("Account already registered"), {code: "auth/email-already-in-use"});
         } else {
           const cred = await createUserWithEmailAndPassword(auth, email, password);
           fbUser = cred.user;
         }
 
-        const now = new Date();
-        const yyyy = now.getFullYear();
-        const mm = String(now.getMonth() + 1).padStart(2, "0");
-        const dd = String(now.getDate()).padStart(2, "0");
-        const hh = String(now.getHours()).padStart(2, "0");
-        const min = String(now.getMinutes()).padStart(2, "0");
-        const ss = String(now.getSeconds()).padStart(2, "0");
-
-        const timeString = `${yyyy}-${mm}-${dd}_${hh}-${min}-${ss}`;
-        const shortId = fbUser.uid.slice(-4);
-        const customDocId = `${timeString}_user_${shortId}`;
-
-        const payload = {
-          uid: fbUser.uid,
-          email,
-          role,
-          createdAt: serverTimestamp(),
-          activePatientId: "",
-          emergencyPhone1: role === "family" ? emergencyPhone1 : "",
-          emergencyPhone2: role === "family" ? emergencyPhone2 : "",
-          privacyConsent: {
-            accepted: true,
-            version: PRIVACY_POLICY_VERSION,
-            acceptedAt: serverTimestamp(),
-          },
-        };
-
-        const docRef = doc(db, "users", customDocId);
-        await setDoc(docRef, payload);
-
-        setUser({
-          uid: fbUser.uid,
-          email,
-          role,
-          accountStatus: "active",
-        });
+        await createProfile(fbUser, role, extra);
       } catch (e: any) {
         console.log("[register] error code =", e?.code);
         console.log("[register] error message =", e?.message);

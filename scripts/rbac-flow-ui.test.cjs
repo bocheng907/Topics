@@ -46,7 +46,14 @@ test('Web confirmation executes only confirmed actions and handles cancellation'
 function selection(overrides = {}) {
   const source = ts.createSourceFile('provider.tsx', read('src/care-target/useActiveCareTarget.tsx'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let node;
-  function visit(n) { if (ts.isFunctionDeclaration(n) && n.name?.text === 'setActivePatientId') node = n; ts.forEachChild(n, visit); }
+  function visit(n) {
+    if (ts.isFunctionDeclaration(n) && n.name?.text === 'setActivePatientId') node = n;
+    if (ts.isVariableDeclaration(n) && n.name.getText(source) === 'setActivePatientId' &&
+        ts.isCallExpression(n.initializer) && n.initializer.expression.getText(source) === 'useCallback') {
+      node = n.initializer.arguments[0];
+    }
+    ts.forEachChild(n, visit);
+  }
   visit(source); assert.ok(node);
   const effects = [];
   const context = {user: {uid: 'owner', role: 'family'}, auth: {currentUser: {uid: 'owner'}}, db: {},
@@ -74,10 +81,29 @@ for (const [name, overrides] of [
 });
 test('flow routes and confirmations use the corrected entry points', () => {
   for (const name of ['create', 'join', 'invitations']) assert.match(read('app/care-target/' + name + '.tsx'), /AppAlert as Alert/);
-  assert.match(read('app/family/index.tsx'), /isPrimaryFamily && <Pressable/);
-  assert.match(read('app/family/index.tsx'), /\/family\/camera/);
+  // Current integration: caregiver creates/scans; family uses existing prescriptions.
+  assert.doesNotMatch(read('app/family/index.tsx'), /router\.push\(["']\/family\/camera/);
+  assert.match(read('app/family/index.tsx'), /\/family\/list/);
   assert.ok(read('app/caregiver/index.tsx').includes('router.push("/caregiver/camera")'));
-  assert.match(read('app/caregiver/camera.tsx'), /\/family\/scan-result/);
+  assert.match(read('app/caregiver/camera.tsx'), /pathname: "\/caregiver\/result"/);
   assert.match(read('app/caregiver/result.tsx'), /user\?\.role === "family" \? "\/family\/list"/);
-  assert.match(read('app/care-target/create.tsx'), /created.current\?\.uid === user.uid/);
+  assert.match(read('app/care-target/create.tsx'), /created\?\.uid === user.uid/);
+});
+
+test('account change during server write cannot update target or cache', async () => {
+  const auth = {currentUser: {uid: 'owner'}};
+  const {run, effects} = selection({auth, updateDoc: async () => {
+    auth.currentUser = {uid: 'other'};
+  }});
+  await assert.rejects(run('patient'), /Account changed/);
+  assert.deepEqual(effects, []);
+});
+
+test('account change during cache write cannot update visible care target', async () => {
+  const auth = {currentUser: {uid: 'owner'}};
+  const {run, effects} = selection({auth, AsyncStorage: {setItem: async () => {
+    auth.currentUser = {uid: 'other'};
+  }}});
+  await assert.rejects(run('patient'), /Account changed/);
+  assert.deepEqual(effects, ['server']);
 });

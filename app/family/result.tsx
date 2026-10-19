@@ -1,15 +1,7 @@
+import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import { useEffect, useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  Image,
-  ActivityIndicator,
-  ScrollView,
-  Pressable,
-  TextInput,
-  Alert,
-} from "react-native";
+import { View, Text, Image, ActivityIndicator, Pressable, TextInput, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   collection,
@@ -88,26 +80,19 @@ function ResultScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [finalImageUri, setFinalImageUri] = useState<string | undefined>(imageUri);
 
+  const resultScope = JSON.stringify([id, editedItems, language]);
+  const [previousResultScope, setPreviousResultScope] = useState<string | null>(null);
+  if (previousResultScope !== resultScope) {
+    setPreviousResultScope(resultScope);
+    setItems(editedItems ?? []);
+    setStatus(editedItems || !id ? "done" : "loading");
+  }
   // ✅ 核心：以 Firestore 為主
   useEffect(() => {
-    // 1) 如果是從 edit 回來（有 itemsJson），直接顯示 editedItems（不再塞假資料）
-    if (editedItems) {
-      setItems(editedItems);
-      setStatus("done");
-      return;
-    }
-
-    // 2) 沒 itemsJson：就必須用 id 去 Firestore 讀（否則這頁根本沒真資料）
-    if (!id) {
-      setStatus("done");
-      setItems([]);
-      return;
-    }
+    if (editedItems || !id) return;
 
     (async () => {
       try {
-        setStatus("loading");
-
         // 讀主文件
         const presRef = doc(db, "prescriptions", id);
         const presSnap = await getDoc(presRef);
@@ -256,7 +241,7 @@ function ResultScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 90, gap: 16 }}>
+    <ScreenScrollView contentContainerStyle={{ padding: 20, paddingTop: 20, gap: 16 }}>
       <Text style={{ fontSize: 24, fontWeight: "900", color: "#333" }}>
         {status === "loading" ? t.resultLoadingTitle : t.resultDoneTitle}
       </Text>
@@ -358,7 +343,7 @@ function ResultScreen() {
           </View>
         </View>
       )}
-    </ScrollView>
+    </ScreenScrollView>
   );
 }
 

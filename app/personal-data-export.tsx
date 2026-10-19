@@ -1,3 +1,4 @@
+import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import { auth, functions } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import { exportCopy } from "@/src/export/exportCopy";
@@ -5,12 +6,11 @@ import { exportDiagnostic, exportDiagnosticHint, type ExportStage } from "@/src/
 import { type ExportPayload, validateExportPayload } from "@/src/export/exportPayload";
 import { saveExport } from "@/src/export/saveExport";
 import { useLanguage } from "@/src/store/LanguageContext";
-import { EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
+import { reauthenticateUser, requiresPasswordReauthentication } from "@/src/auth/reauthenticate";
 import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, StyleSheet,
-  Text, TextInput, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 export default function PersonalDataExportScreen() {
   const {user} = useAuth();
@@ -21,13 +21,16 @@ export default function PersonalDataExportScreen() {
   const [status, setStatus] = useState("");
   const [diagnostic, setDiagnostic] = useState("");
   const [prepared, setPrepared] = useState<{payload: ExportPayload; uid: string; at: number} | null>(null);
+  const passwordRequired = requiresPasswordReauthentication(auth.currentUser);
   const locked = useRef(false);
   const epoch = useRef(0);
+  const [accountScope, setAccountScope] = useState(user?.uid);
+  if (accountScope !== user?.uid) {
+    setAccountScope(user?.uid);
+    setPrepared(null); setPassword(""); setDiagnostic("");
+  }
   useEffect(() => {
     epoch.current++;
-    setPrepared(null);
-    setPassword("");
-    setDiagnostic("");
     // This numeric generation guard intentionally invalidates pending requests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { epoch.current++; };
@@ -53,7 +56,8 @@ export default function PersonalDataExportScreen() {
 
   async function generate() {
     const current = auth.currentUser;
-    if (locked.current || !current?.email || !password || current.uid !== user?.uid) return;
+    if (locked.current || !current || (passwordRequired && !password) ||
+        current.uid !== user?.uid) return;
     locked.current = true;
     setBusy(true);
     setStatus("");
@@ -63,9 +67,8 @@ export default function PersonalDataExportScreen() {
     let verified = false;
     let stage: ExportStage = "reauth";
     try {
-      const credential = EmailAuthProvider.credential(current.email, password);
       setPassword("");
-      await reauthenticateWithCredential(current, credential);
+      await reauthenticateUser(current, password);
       stage = "token";
       await current.getIdToken(true);
       verified = true;
@@ -119,18 +122,19 @@ export default function PersonalDataExportScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScreenScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Pressable onPress={() => router.back()} disabled={busy} accessibilityRole="button">
         <Text style={styles.link}>{t.back}</Text>
       </Pressable>
       <Text style={styles.title}>{t.title}</Text>
       <Text style={styles.body}>{t.description}</Text>
       <View style={styles.warning}><Text style={styles.body}>{t.warning}</Text></View>
-      <TextInput secureTextEntry value={password} onChangeText={setPassword}
+      {passwordRequired && <TextInput secureTextEntry value={password} onChangeText={setPassword}
         placeholder={t.password} accessibilityLabel={t.password} autoCapitalize="none"
-        autoCorrect={false} editable={!busy} style={styles.input} />
-      <Pressable onPress={generate} disabled={busy || !password}
-        accessibilityRole="button" style={[styles.button, (busy || !password) && styles.disabled]}>
+        autoCorrect={false} editable={!busy} style={styles.input} />}
+      <Pressable onPress={generate} disabled={busy || (passwordRequired && !password)}
+        accessibilityRole="button" style={[styles.button,
+          (busy || (passwordRequired && !password)) && styles.disabled]}>
         <Text style={styles.buttonText}>{busy ? t.busy : t.generate}</Text>
       </Pressable>
       {busy && <ActivityIndicator />}
@@ -144,11 +148,11 @@ export default function PersonalDataExportScreen() {
       </View>}
       {!!status && <Text accessibilityRole="alert" style={styles.body}>{status}</Text>}
       {!!diagnostic && <Text selectable style={styles.body}>{diagnostic}</Text>}
-    </ScrollView>
+    </ScreenScrollView>
   );
 }
 const styles = StyleSheet.create({
-  container: {padding: 24, paddingTop: 60, gap: 18, maxWidth: 720, width: "100%", alignSelf: "center"},
+  container: { padding: 24, paddingTop: 20, gap: 18, maxWidth: 720, width: "100%", alignSelf: "center", paddingBottom: 40 },
   title: {fontSize: 26, fontWeight: "700"}, subtitle: {fontSize: 19, fontWeight: "600"},
   body: {fontSize: 16, lineHeight: 25}, link: {color: "#1264A3", fontSize: 16},
   warning: {backgroundColor: "#FFF3D6", padding: 16, borderRadius: 12},

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="care-app 隱私權政策：資料用途、保存、安全措施與您的資料權利。">
+  <title>隱私權政策｜care-app</title>
+  <link rel="stylesheet" href="/privacy.css">
+  <link rel="icon" type="image/svg+xml" href="/privacy-icon.svg">
+</head>
+<body><main>
+<header>
+  <p class="eyebrow">care-app · 資料與隱私</p>
+  <h1>隱私權政策</h1>
+  <p class="meta">版本：2026-09-22.v2<br>發布與生效日期：2026 年 9 月 22 日</p>
+  <p>服務提供者：<strong>暨南大學資管系，智慧醫療團隊</strong><br>
+  隱私聯絡信箱：<a href="mailto:bocheng5204@gmail.com">bocheng5204@gmail.com</a></p>
+</header>
+<aside aria-label="重要說明">
+  <strong>健康資訊與 AI 使用提醒</strong>
+  <p>本服務用於照護資訊整理與協作，不提供診斷。OCR、翻譯及 AI 輸出可能有誤，應由使用者與醫療專業人員核對。提供他人資料前，請先確認具有合法權限。</p>
+  <p>Firebase 服務使用 HTTPS；藥單辨識及翻譯服務目前使用 HTTP，傳輸未加密，影像存取資訊、影像或文字在傳輸途中可能被攔截或修改。此設定適用於開發版及正式版。</p>
+</aside>
+<nav aria-label="政策目錄">
+  <a href="#purpose">目的</a><a href="#data">資料類型</a><a href="#sharing">利用與供應商</a>
+  <a href="#location">處理地區</a><a href="#retention">保存期間</a><a href="#rights">您的權利</a>
+  <a href="#deletion">帳號刪除</a><a href="#security">安全措施</a><a href="#updates">政策更新</a>
+</nav>
+<section id="purpose"><h2>一、適用範圍與蒐集目的</h2>
+  <p>本政策說明我們提供帳號管理、照護關係、藥單與健康紀錄、照護溝通、提醒通知、資料匯出、帳號刪除及安全稽核時，如何蒐集、處理及利用個人資料。</p>
+</section>
+<section id="data"><h2>二、我們處理哪些資料</h2>
+  <ul>
+    <li><strong>帳號與同意：</strong>Email、Firebase 帳號識別碼、登入提供者、角色、帳號狀態，以及同意的政策版本與時間。密碼由 Firebase Authentication 處理，App 資料庫不儲存明文密碼。</li>
+    <li><strong>聯絡與照護關係：</strong>顯示名稱、緊急聯絡電話、照顧對象資料，以及主要家屬、次要家屬與照護員關係。</li>
+    <li><strong>健康與用藥：</strong>健康量測、異常紀錄、藥單圖片、藥品、用法用量與照護備註。</li>
+    <li><strong>使用者內容：</strong>訊息、圖片、錄影、語音、行事曆、記事及照護紀錄。</li>
+    <li><strong>裝置與安全：</strong>推播識別碼、登入或登出回報、資料異動欄位名稱、操作時間、錯誤及系統紀錄。稽核紀錄不保存完整修改前後的健康內容。</li>
+  </ul>
+  <p>請勿提供與照護目的無關的資料。您的同意不代表長者、親屬或其他當事人已同意，也不取代處理健康資料所需的個別告知及合法依據。</p>
+</section>
+<section id="sharing"><h2>三、資料如何使用及提供給哪些對象</h2>
+  <p>資料僅在提供功能、安全維護、處理問題及回應資料權利請求所需範圍使用。我們不出售個人資料。</p>
+  <ul>
+    <li><strong>Google Firebase：</strong>帳號驗證、資料庫、檔案儲存、後端處理及網站託管。</li>
+    <li><strong>Google 登入：</strong>選擇 Google 登入時處理 Google 帳號基本識別資料；系統仍要求使用者自行選擇照護角色及同意政策。</li>
+    <li><strong>OCR 後端與 Google Gemini：</strong>使用藥單辨識或翻譯時，影像、影像存取資訊或文字可能送交服務處理；App 與 OCR 後端之間使用未加密的 HTTP 傳輸。</li>
+    <li><strong>Expo 與裝置平台服務：</strong>處理推播識別資訊及通知內容。</li>
+  </ul>
+  <p>第三方服務可能依其服務條款與政策處理資料。若將資料用於未告知的研究、廣告或其他用途，我們會先確認合法依據，並於需要時另行取得同意。</p>
+</section>
+<section id="location"><h2>四、處理地區與方式</h2>
+  <p>資料以電子方式經網路傳輸、儲存及處理。Firestore 目前設定於美國多區域 nam5；Firebase、Google、Expo 或其他供應商亦可能在臺灣境外處理資料。</p>
+</section>
+<section id="retention"><h2>五、保存期間</h2>
+  <table><caption>排程管理的資料保存期限</caption><thead><tr><th scope="col">資料類型</th><th scope="col">期間</th></tr></thead>
+    <tbody><tr><td>健康紀錄</td><td>60 個月</td></tr><tr><td>藥單</td><td>36 個月</td></tr><tr><td>異常紀錄</td><td>12 個月</td></tr><tr><td>聊天訊息</td><td>6 個月</td></tr><tr><td>通知</td><td>3 個月</td></tr><tr><td>Audit Log</td><td>12 個月</td></tr></tbody>
+  </table>
+  <p>清除排程依系統設定週期執行；執行失敗時會重試，因此到期不代表同一瞬間即完成刪除。帳號、政策同意、共享照護資料、備份及第三方紀錄，依帳號存續、其他成員權益、安全及法令需要保留。正式環境排程狀態可向聯絡窗口查詢。</p>
+</section>
+<section id="rights"><h2>六、您的權利與自助功能</h2>
+  <p>App 的「我的資料」提供帳號資料、本人紀錄與媒體數量及近 30 天操作摘要；「更正個人資料」可修改顯示名稱與緊急聯絡電話；「匯出個人資料」可在重新驗證後產生 JSON。</p>
+  <p>匯出範圍是本人建立且目前仍有權存取的紀錄，不包含其他成員帳號、其他人建立的內容、完整照顧對象檔案、媒體檔案本體或可長期存取的媒體連結。</p>
+  <p>您也可寄信至 <a href="mailto:bocheng5204@gmail.com">bocheng5204@gmail.com</a>，提出查詢、閱覽、取得複製本、補充、更正、停止處理利用或刪除請求。我們會核對身分與範圍後依法處理。</p>
+</section>
+<section id="deletion"><h2>七、帳號刪除</h2>
+  <p>您可在重新驗證後申請刪除帳號。申請後進入 30 天緩衝期，期間可重新驗證並取消；到期後由排程刪除帳號、個人設定及本人建立或上傳且可安全歸屬的內容。</p>
+  <p>其他成員建立的內容不會因您的帳號刪除而被刪除；仍有其他成員使用的共享照護資料會保留並移除您的成員關係。備份、第三方留存、安全紀錄或他人另存副本不保證同步立即刪除。</p>
+</section>
+<section id="security"><h2>八、安全措施與角色權限</h2>
+  <ul>
+    <li>Email／密碼及 Web Google 登入由 Firebase Authentication 驗證；新 Email 密碼至少 8 碼，含小寫英文字母及數字。</li>
+    <li>照護資料以成員關係限制讀取；主要家屬管理照顧對象、門檻、邀請及藥單異動，次要家屬以檢視及照護溝通為主，照護員可新增健康紀錄並依流程掃描建立藥單。</li>
+    <li>邀請碼具有 24 小時期限、單次使用、核准、拒絕、撤銷及重新產碼；主要家屬轉移須指定現有次要家屬。</li>
+    <li>新上傳檔名使用不可預測 UUID；檔案規則驗證登入狀態、照護關係、路徑、類型及大小。</li>
+    <li>關鍵異動由後端寫入 Audit Log；登入與登出屬用戶端訊號，不能單獨證明實際工作階段起訖。</li>
+    <li>後端 Gemini 金鑰使用執行環境秘密或環境變數，不寫入 App 公開設定。</li>
+  </ul>
+  <p>網路、裝置、第三方服務及 AI 仍有風險。若發現疑似外洩、誤授權或不正確內容，請停止使用相關功能並聯絡我們。</p>
+</section>
+<section id="updates"><h2>九、政策更新與同意範圍</h2>
+  <p>新註冊帳號記錄同意的版本及伺服器時間。政策更新會建立新網址與版本，舊版保留供查閱，不直接覆蓋既有同意紀錄。用途、提供對象等重要事項變更時，將依法通知並於需要時重新取得同意。</p>
+</section>
+<footer><p>服務提供者：暨南大學資管系，智慧醫療團隊<br>聯絡：<a href="mailto:bocheng5204@gmail.com">bocheng5204@gmail.com</a><br>政策版本：2026-09-22.v2 · 本頁以繁體中文提供。</p></footer>
+</main></body></html>

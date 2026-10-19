@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 // app/family/dashboard.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { db } from "@/firebase/firebaseConfig";
@@ -11,12 +12,11 @@ import {
   useHealthChartData,
 } from "@/src/health/useHealthChartData";
 import { PatientThresholds, useHealthThresholds } from "@/src/health/useHealthThresholds";
+import { usePrimaryFamily } from "@/src/care-target/usePrimaryFamily";
 import { router } from "expo-router";
 import {
   collection,
-  limit,
   onSnapshot,
-  orderBy,
   query,
   where,
 } from "firebase/firestore";
@@ -61,6 +61,7 @@ export default function FamilyDashboardScreen() {
   const { ready, activePatient, activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
+  const isPrimaryFamily = usePrimaryFamily(activePatientId);
 
   const [activeTab, setActiveTab] = useState<"history" | "today" | "settings">("today");
   const [chartDataType, setChartDataType] = useState<ChartDataType>("體溫");
@@ -77,15 +78,22 @@ export default function FamilyDashboardScreen() {
 
   const { thresholds: dbThresholds, loading: thresholdsLoading, saveThresholds } = useHealthThresholds(
     activePatientId ?? "",
-    activePatient?.patientsId
+    activePatient?.patientsId,
+    isPrimaryFamily
   );
   const [localThresholds, setLocalThresholds] = useState<PatientThresholds>(dbThresholds);
 
+  const [previousThresholds, setPreviousThresholds] = useState(dbThresholds);
+  if (!thresholdsLoading && previousThresholds !== dbThresholds) {
+    setPreviousThresholds(dbThresholds);
+    setLocalThresholds(dbThresholds);
+  }
+  if (!isPrimaryFamily && activeTab === "settings") setActiveTab("today");
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!thresholdsLoading) {
-      setLocalThresholds(dbThresholds);
-    }
-  }, [dbThresholds, thresholdsLoading]);
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const [vitals, setVitals] = useState<VitalsState>({
     temp: null, hr: null, bp: null, sugarFasting: null, sugarAfter: null, hasAnyData: false,
@@ -96,9 +104,7 @@ export default function FamilyDashboardScreen() {
 
     const q = query(
       collection(db, "health_records"),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc"),
-      limit(20)
+      where("patientId", "==", activePatientId)
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -106,7 +112,10 @@ export default function FamilyDashboardScreen() {
       let sugarFasting: SingleVital = null; let sugarAfter: SingleVital = null;
       let hasAnyData = false; let hasFoundLatestSugar = false;
 
-      snap.docs.forEach((doc) => {
+      const newestDocs = [...snap.docs]
+        .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+        .slice(0, 20);
+      newestDocs.forEach((doc) => {
         const d = doc.data() as any;
         const ts = d.createdAt?.toMillis ? d.createdAt.toMillis() : Date.now();
         hasAnyData = true;
@@ -142,7 +151,7 @@ export default function FamilyDashboardScreen() {
     let latestTs = data?.ts || 0;
     if (sugarData2?.ts && sugarData2.ts > latestTs) latestTs = sugarData2.ts;
 
-    const isOutdated = Date.now() - latestTs > 24 * 60 * 60 * 1000;
+    const isOutdated = now - latestTs > 24 * 60 * 60 * 1000;
     if (isOutdated && latestTs !== 0) return "outdated";
 
     if (type === "temp" && data && "val" in data) {
@@ -334,7 +343,7 @@ export default function FamilyDashboardScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.topContainer}>
+      <ScreenHeader style={styles.topContainer}>
         {activeTab === "settings" ? (
           <View style={[styles.headerRow, styles.settingsHeader]}>
             <Pressable onPress={handleBackPress} style={styles.settingsBackButton} hitSlop={8}>
@@ -388,7 +397,7 @@ export default function FamilyDashboardScreen() {
             </View>
           </>
         )}
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
@@ -435,12 +444,12 @@ export default function FamilyDashboardScreen() {
         {/* ================= 本日紀錄 ================= */}
         {activeTab === "today" && (
           <View style={styles.tabContent}>
-            <View style={{ alignItems: 'flex-end', marginBottom: 16 }}>
+            {isPrimaryFamily && <View style={{ alignItems: 'flex-end', marginBottom: 16 }}>
               <Pressable onPress={() => setActiveTab("settings")} style={styles.settingsBtn}>
                 <Ionicons name="settings" size={14} color="#D37B2B" />
                 <Text style={styles.settingsBtnText}>{t.settingsButtonLabel}</Text>
               </Pressable>
-            </View>
+            </View>}
 
             <View style={styles.gridRow}>
               <View style={styles.gridCard}>
@@ -727,13 +736,13 @@ export default function FamilyDashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FAFAFA" },
-  topContainer: { backgroundColor: "#F3CDAD", paddingTop: 54, zIndex: 10 },
+  topContainer: { backgroundColor: "#F3CDAD", paddingTop: 12, zIndex: 10, minHeight: 56 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, paddingBottom: 10 },
   backButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 },
   backButtonText: { fontSize: 17, fontWeight: "700", color: "#111827" },
-  settingsHeader: { justifyContent: "center", position: "relative", paddingVertical: 10 },
-  settingsBackButton: { flexDirection: "row", alignItems: "center", gap: 6, position: "absolute", left: 20, zIndex: 1, paddingVertical: 8 },
-  settingsTitle: { fontSize: 18, fontWeight: "800", color: "#111827" },
+  settingsHeader: { justifyContent: "flex-start", position: "relative", paddingVertical: 10, flexWrap: "wrap", gap: 12 },
+  settingsBackButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 },
+  settingsTitle: { fontSize: 18, fontWeight: "800", color: "#111827", flexShrink: 1 },
   tabRow: { flexDirection: "row", width: "100%" },
   tabButton: { flex: 1, paddingVertical: 16, alignItems: "center", justifyContent: "center" },
   tabButtonActive: { backgroundColor: "#E69A57" },
@@ -767,16 +776,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  valueRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 4,
-    marginBottom: 12,
-  },
-  valueMain: { fontSize: 36, fontWeight: "500", color: "#000" },
+  valueRow: { flexDirection: "row", alignItems: "baseline", gap: 4, marginBottom: 12, flexWrap: "wrap", justifyContent: "center", maxWidth: "100%" },
+  valueMain: { fontSize: 36, fontWeight: "500", color: "#000", maxWidth: "100%", textAlign: "center" },
   valueUnit: { fontSize: 24, fontWeight: "500", color: "#000" },
-  timeBadge: { backgroundColor: "rgba(0,0,0,0.25)", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 4 },
-  timeBadgeText: { color: "#FFF", fontSize: 14, fontWeight: "bold", letterSpacing: 1 },
+  timeBadge: { backgroundColor: "rgba(0,0,0,0.25)", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 4, maxWidth: "100%" },
+  timeBadgeText: { color: "#FFF", fontSize: 14, fontWeight: "bold", letterSpacing: 1, textAlign: "center" },
   fullCard: { borderRadius: 16, overflow: "hidden", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, marginBottom: 16 },
   fullCardHeader: { paddingTop: 8, paddingBottom: 4, alignItems: "center" },
   headerSubRow: { flexDirection: "row", marginTop: 4, width: "100%" },
@@ -785,8 +789,8 @@ const styles = StyleSheet.create({
   fullCardValueRow: { flexDirection: "row", width: "100%", marginBottom: 12 },
   valueCol: { flex: 1, alignItems: "center" },
   valueUnitLarge: { fontSize: 22, fontWeight: "500", color: "#000" },
-  settingsBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FFF4E5", borderColor: "#F2A25B", borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
-  settingsBtnText: { color: "#D37B2B", fontWeight: "bold", fontSize: 14 },
+  settingsBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FFF4E5", borderColor: "#F2A25B", borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1, maxWidth: "100%" },
+  settingsBtnText: { color: "#D37B2B", fontWeight: "bold", fontSize: 14, flexShrink: 1, textAlign: "center" },
   settingsContent: { flex: 1 },
   infoBanner: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#FFF4E5", borderColor: "#F2A25B", borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 20 },
   infoBannerIcon: { marginTop: 2 },
@@ -794,8 +798,8 @@ const styles = StyleSheet.create({
   settingCard: { backgroundColor: "#FFF", borderWidth: 2, borderRadius: 20, padding: 16, marginBottom: 16 },
   settingCardActive: { borderColor: "#E59752", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
   settingCardInactive: { borderColor: "#E5E5E5", opacity: 0.7 },
-  settingCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  settingCardTitle: { fontSize: 20, fontWeight: "bold", color: "#000" },
+  settingCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 12 },
+  settingCardTitle: { fontSize: 20, fontWeight: "bold", color: "#000", flexShrink: 1 },
   switchContainer: { flexDirection: "row", alignItems: "center", gap: 8 },
   switchLabel: { fontSize: 14, fontWeight: "bold" },
   switchLabelActive: { color: "#4A8B46" },
@@ -804,11 +808,11 @@ const styles = StyleSheet.create({
   settingInputRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   inputCol: { flex: 1, flexDirection: "column" },
   inputLabel: { fontSize: 12, color: "#6B7280", fontWeight: "bold", marginBottom: 4, marginLeft: 4 },
-  textInput: { backgroundColor: "#F5F5F5", height: 48, borderRadius: 12, textAlign: "center", fontSize: 20, fontWeight: "bold", color: "#000" },
+  textInput: { backgroundColor: "#F5F5F5", borderRadius: 12, textAlign: "center", fontSize: 20, fontWeight: "bold", color: "#000", minHeight: 48, paddingVertical: 8, minWidth: 0 },
   inputTilde: { fontSize: 24, color: "#9CA3AF", marginHorizontal: 12, marginTop: 16 },
   inputSideLabel: { fontSize: 14, fontWeight: "bold", color: "#374151", width: 48, textAlign: "center" },
-  textInputFlex: { flex: 1, backgroundColor: "#F5F5F5", height: 48, borderRadius: 12, textAlign: "center", fontSize: 20, fontWeight: "bold", color: "#000" },
+  textInputFlex: { flex: 1, backgroundColor: "#F5F5F5", borderRadius: 12, textAlign: "center", fontSize: 20, fontWeight: "bold", color: "#000", minHeight: 48, paddingVertical: 8, minWidth: 0 },
   inputTildeSmall: { fontSize: 20, color: "#9CA3AF", marginHorizontal: 8 },
   saveBtn: { backgroundColor: "#4F59D5", borderRadius: 18, paddingVertical: 16, alignItems: "center", marginTop: 16, shadowColor: "#4F59D5", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-  saveBtnText: { color: "#FFF", fontSize: 22, fontWeight: "bold", letterSpacing: 2 },
+  saveBtnText: { color: "#FFF", fontSize: 22, fontWeight: "bold", letterSpacing: 2, width: "100%", textAlign: "center" },
 });

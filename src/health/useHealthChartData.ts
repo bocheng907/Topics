@@ -2,9 +2,7 @@ import { db } from "@/firebase/firebaseConfig";
 import { useEffect, useState } from "react";
 import {
   collection,
-  limit,
   onSnapshot,
-  orderBy,
   query,
   where,
 } from "firebase/firestore";
@@ -143,28 +141,18 @@ export function useHealthChartData({
     bpDiaData: [],
   });
 
+  const scope = `${patientId}/${chartDataType}/${chartTimeRange}`;
+  const [previousScope, setPreviousScope] = useState<string | null>(null);
+  if (previousScope !== scope) {
+    setPreviousScope(scope);
+    setState({loading: Boolean(patientId), empty: true, lineData: [], bpSysData: [], bpDiaData: []});
+  }
   useEffect(() => {
-    if (!patientId) {
-      setState({
-        loading: false,
-        empty: true,
-        lineData: [],
-        bpSysData: [],
-        bpDiaData: [],
-      });
-      return;
-    }
-
-    setState((prev) => ({
-      ...prev,
-      loading: true,
-    }));
+    if (!patientId) return;
 
     const q = query(
       collection(db, "health_records"),
-      where("patientId", "==", patientId),
-      orderBy("createdAt", "desc"),
-      limit(300)
+      where("patientId", "==", patientId)
     );
 
     const unsub = onSnapshot(
@@ -172,7 +160,10 @@ export function useHealthChartData({
       (snap) => {
         const rangeStart = getRangeStart(chartTimeRange);
 
-        const raw: HealthRecordItem[] = snap.docs.map((docSnap) => {
+        const raw: HealthRecordItem[] = [...snap.docs]
+          .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+          .slice(0, 300)
+          .map((docSnap) => {
           const d = docSnap.data() as any;
           return {
             id: docSnap.id,

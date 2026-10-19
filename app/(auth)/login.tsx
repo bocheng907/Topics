@@ -1,4 +1,5 @@
 // app/(auth)/login.tsx
+import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import { useAuth } from "@/src/auth/useAuth";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { translations } from "@/src/i18n/translations";
@@ -36,7 +37,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={{ flex: 1, padding: 32, backgroundColor: "#FFF", justifyContent: "center" }}>
+    <ScreenScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ flexGrow: 1, padding: 24, backgroundColor: "#FFF", justifyContent: "center" }}>
       <Stack.Screen options={{ headerShown: false }} />
       
       <View style={{ marginBottom: 40 }}>
@@ -110,6 +111,6 @@ export default function LoginScreen() {
           </Text>
         </Pressable>
       </View>
-    </View>
+    </ScreenScrollView>
   );
 }

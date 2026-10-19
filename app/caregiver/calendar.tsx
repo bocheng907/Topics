@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -7,7 +8,6 @@ import {
   doc,
   getDocs,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -240,10 +240,13 @@ function formatEventDateKey(date: Date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-function makeCalendarEventDocId(eventDate: string, activePatientId?: string | null) {
+// Readable and unique per save: {eventDate}_{HH-mm-ss-SSS}_{patient suffix}.
+// (A date-only ID made every new event on the same day overwrite the previous one.)
+function makeCalendarEventDocId(eventDate: string, activePatientId?: string | null, now = new Date()) {
   const patientSuffix = activePatientId?.trim().slice(-4);
   if (!patientSuffix) return "";
-  return `${eventDate}_${patientSuffix}`;
+  const timePart = `${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}-${String(now.getMilliseconds()).padStart(3, "0")}`;
+  return `${eventDate}_${timePart}_${patientSuffix}`;
 }
 
 function makeLegacyTopLevelDailyChecklistDocIds(
@@ -548,33 +551,42 @@ export default function CaregiverCalendarScreen() {
     [dailyChecklistItems]
   );
 
-  useEffect(() => {
+  const [previousMonth, setPreviousMonth] = useState(currentMonth);
+  if (previousMonth !== currentMonth) {
+    setPreviousMonth(currentMonth);
     setMonthMenuOpen(false);
-  }, [currentMonth]);
-
-  useEffect(() => {
+  }
+  const checklistScope = `${user?.uid}:${activePatientId}:${selectedDateKey}`;
+  const [previousChecklistScope, setPreviousChecklistScope] = useState(checklistScope);
+  if (previousChecklistScope !== checklistScope) {
+    setPreviousChecklistScope(checklistScope);
     setDailyChecklistInput("");
     setEditingChecklistItemId(null);
     setDailyChecklistExpanded(true);
-  }, [selectedDateKey]);
+    setDailyChecklistItems([]);
+    setDailyChecklistError("");
+  }
+  const [previousPatientId, setPreviousPatientId] = useState(activePatientId);
+  if (previousPatientId !== activePatientId) {
+    setPreviousPatientId(activePatientId);
+    setEvents([]);
+  }
 
   useEffect(() => {
-    if (!activePatientId) {
-      setEvents([]);
-      return;
-    }
+    if (!activePatientId) return;
 
     const q = query(
       collection(db, CALENDAR_EVENTS_COLLECTION),
-      where("patientId", "==", activePatientId),
-      orderBy("createdAt", "desc")
+      where("patientId", "==", activePatientId)
     );
 
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
         setEvents(
-          snap.docs.map((docSnap) => ({
+          [...snap.docs]
+            .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+            .map((docSnap) => ({
             id: docSnap.id,
             ...(docSnap.data() as Omit<CalendarEventRecord, "id">),
           }))
@@ -590,11 +602,7 @@ export default function CaregiverCalendarScreen() {
   }, [activePatientId]);
 
   useEffect(() => {
-    if (!activePatientId || !user?.uid) {
-      setDailyChecklistItems([]);
-      setDailyChecklistError("");
-      return;
-    }
+    if (!activePatientId || !user?.uid) return;
 
     const checklistRef = doc(db, "daily_checklist_items", dailyChecklistDocId);
     const itemsRef = collection(db, "daily_checklist_items", dailyChecklistDocId, "items");
@@ -849,6 +857,7 @@ export default function CaregiverCalendarScreen() {
     activePatientId,
     activePatientsId,
     dailyChecklistDocId,
+    legacyPatientDocChecklistDocId,
     legacyPatientsIdChecklistDocId,
     legacyTopLevelChecklistDocIds,
     selectedDateKey,
@@ -956,7 +965,7 @@ export default function CaregiverCalendarScreen() {
 
     const startDate = buildEventDate(selectedDate, formHour, formMinute, formPeriod);
     const eventDate = formatEventDateKey(startDate);
-    const calendarEventDocId = makeCalendarEventDocId(eventDate, activePatientId);
+    const calendarEventDocId = editingEventId || makeCalendarEventDocId(eventDate, activePatientId);
     if (!calendarEventDocId) return;
 
     const eventRef = doc(db, CALENDAR_EVENTS_COLLECTION, calendarEventDocId);
@@ -989,24 +998,22 @@ export default function CaregiverCalendarScreen() {
     };
 
     try {
-      await setDoc(eventRef, createPayload);
-    } catch (createError) {
-      try {
+      if (editingEventId) {
         await updateDoc(eventRef, mutablePayload);
-      } catch (updateError) {
-        console.log("save calendar event failed:", {
-          calendarEventDocId,
-          eventRefPath: eventRef.path,
-          createErrorCode: getErrorCode(createError),
-          updateErrorCode: getErrorCode(updateError),
-          createPayloadKeys: Object.keys(createPayload),
-          mutablePayloadKeys: Object.keys(mutablePayload),
-          authCurrentUserUid: auth.currentUser?.uid,
-          createError,
-          updateError,
-        });
-        return;
+      } else {
+        await setDoc(eventRef, createPayload);
       }
+    } catch (saveError) {
+      console.log("save calendar event failed:", {
+        calendarEventDocId,
+        eventRefPath: eventRef.path,
+        editing: Boolean(editingEventId),
+        errorCode: getErrorCode(saveError),
+        payloadKeys: Object.keys(editingEventId ? mutablePayload : createPayload),
+        authCurrentUserUid: auth.currentUser?.uid,
+        saveError,
+      });
+      return;
     }
 
     setFormOpen(false);
@@ -1230,12 +1237,12 @@ export default function CaregiverCalendarScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      <ScreenHeader menuSpace style={styles.header}>
         <View style={styles.topBar}>
           <View style={styles.topBarSpacer} />
           <View style={styles.topBarSpacer} />
         </View>
-      </View>
+      </ScreenHeader>
 
       <View style={styles.contentCard}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -1646,12 +1653,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F4F2F0",
   },
-  header: {
-    backgroundColor: "#F67578",
-    paddingTop: 58,
-    paddingHorizontal: 22,
-    paddingBottom: 22,
-  },
+  header: { backgroundColor: "#F67578", paddingTop: 12, paddingHorizontal: 22, paddingBottom: 16 },
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1668,17 +1670,7 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: 168,
   },
-  controlsCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 0.5,
-    borderColor: "#D8D8D8",
-    backgroundColor: "#FFF",
-  },
+  controlsCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingHorizontal: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderColor: "#D8D8D8", backgroundColor: "#FFF", flexWrap: "wrap" },
   yearRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1699,37 +1691,9 @@ const styles = StyleSheet.create({
   monthWrap: {
     position: "relative",
   },
-  monthButton: {
-    minWidth: 180,
-    height: 28,
-    borderWidth: 0.8,
-    borderColor: "#D4D4D4",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FAFAFA",
-  },
-  monthButtonText: {
-    fontSize: 12,
-    color: "#4A4A4A",
-  },
-  monthMenu: {
-    position: "absolute",
-    top: 34,
-    right: 0,
-    width: 180,
-    backgroundColor: "#FFF",
-    borderRadius: 10,
-    borderWidth: 0.8,
-    borderColor: "#E4E4E4",
-    zIndex: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 5,
-  },
+  monthButton: { minWidth: 180, borderWidth: 0.8, borderColor: "#D4D4D4", borderRadius: 8, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#FAFAFA", minHeight: 32, maxWidth: "100%", paddingVertical: 4, gap: 8 },
+  monthButtonText: { fontSize: 12, color: "#4A4A4A", flexShrink: 1 },
+  monthMenu: { position: "absolute", top: "100%", right: 0, width: 180, backgroundColor: "#FFF", borderRadius: 10, borderWidth: 0.8, borderColor: "#E4E4E4", zIndex: 20, shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 6, elevation: 5, maxWidth: "100%" },
   monthMenuItem: {
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -1825,11 +1789,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  dailyChecklistHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
+  dailyChecklistHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   dailyChecklistTitleBlock: {
     flex: 1,
   },
@@ -1851,15 +1811,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  dailyChecklistProgressBadge: {
-    minWidth: 52,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#F67578",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-  },
+  dailyChecklistProgressBadge: { minWidth: 52, borderRadius: 15, backgroundColor: "#F67578", alignItems: "center", justifyContent: "center", paddingHorizontal: 10, minHeight: 30, paddingVertical: 6 },
   dailyChecklistProgressText: {
     fontSize: 14,
     lineHeight: 17,
@@ -1937,15 +1889,7 @@ const styles = StyleSheet.create({
     borderColor: "#F2DFCC",
     padding: 10,
   },
-  dailyChecklistStatusButton: {
-    minWidth: 68,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#FFF1E6",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-  },
+  dailyChecklistStatusButton: { minWidth: 68, borderRadius: 15, backgroundColor: "#FFF1E6", alignItems: "center", justifyContent: "center", paddingHorizontal: 10, minHeight: 30, paddingVertical: 6 },
   dailyChecklistStatusPending: {
     backgroundColor: "#FFF1E6",
   },
@@ -2041,13 +1985,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 6,
   },
-  eventMetaPill: {
-    maxWidth: "100%",
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.42)",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
+  eventMetaPill: { maxWidth: "100%", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.42)", paddingHorizontal: 9, paddingVertical: 4 },
   eventMetaText: {
     fontSize: 13,
     lineHeight: 17,
@@ -2081,15 +2019,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 2,
   },
-  eventStatusButton: {
-    minWidth: 70,
-    height: 30,
-    borderRadius: 15,
-    paddingHorizontal: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 6,
-  },
+  eventStatusButton: { minWidth: 70, borderRadius: 15, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", marginRight: 6, minHeight: 30, paddingVertical: 5 },
   eventStatusButtonPending: {
     backgroundColor: "rgba(255,255,255,0.66)",
   },
@@ -2125,7 +2055,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   formOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.08)",
     justifyContent: "flex-start",
   },
@@ -2185,13 +2115,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     gap: 16,
   },
-  colorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 18,
-    marginBottom: 4,
-    paddingLeft: 2,
-  },
+  colorRow: { flexDirection: "row", alignItems: "center", gap: 18, marginBottom: 4, paddingLeft: 2, flexWrap: "wrap" },
   colorSwatch: {
     width: 34,
     height: 34,
@@ -2210,16 +2134,7 @@ const styles = StyleSheet.create({
     color: "#111",
     fontWeight: "700",
   },
-  fieldInput: {
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: "#DCDDDF",
-    paddingHorizontal: 14,
-    fontSize: 18,
-    color: "#111",
-    marginLeft: 74,
-    marginTop: -34,
-  },
+  fieldInput: { borderRadius: 12, backgroundColor: "#DCDDDF", paddingHorizontal: 14, fontSize: 18, color: "#111", marginLeft: 74, marginTop: -34, minHeight: 44, paddingVertical: 8 },
   timeField: {
     minHeight: 170,
     borderRadius: 12,

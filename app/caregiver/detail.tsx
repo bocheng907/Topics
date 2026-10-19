@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import React, { useCallback, useState } from "react";
 import { View, Text, Pressable, ScrollView, Image, Alert, StyleSheet, StatusBar } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -105,12 +106,12 @@ export default function CaregiverDetailScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color="#333" />
           <Text style={styles.backText}>{t.back}</Text>
         </Pressable>
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.titleRow}>
@@ -207,15 +208,15 @@ export default function CaregiverDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#F4E770", height: 100, paddingTop: 50, paddingHorizontal: 15, justifyContent: "center" },
+  header: { backgroundColor: "#F4E770", paddingTop: 12, paddingHorizontal: 15, justifyContent: "center", minHeight: 56 },
   backButton: { flexDirection: "row", alignItems: "center" },
   backText: { fontSize: 20, fontWeight: "bold", color: "#333", marginLeft: 2 },
-  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 15 },
+  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 15, flexWrap: "wrap", gap: 12 },
   mainTitle: { fontSize: 28, fontWeight: "900", color: "#333" },
   subInfo: { color: "#999", marginBottom: 10 },
   editBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
   editBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
-  scrollContent: { padding: 20 },
+  scrollContent: { padding: 20, paddingBottom: 48 },
   img: { width: "100%", height: 300, borderRadius: 12, backgroundColor: "#eee", marginBottom: 20 },
   prescriptionNoteCard: { padding: 16, borderRadius: 12, backgroundColor: "#F7F7F7", marginBottom: 20 },
   prescriptionNoteLabel: { fontSize: 16, color: "#555", fontWeight: "700", marginBottom: 6 },

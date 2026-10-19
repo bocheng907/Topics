@@ -36,14 +36,30 @@ export interface BatchTranslationResult {
 }
 
 function getPrescriptionApiBaseUrl() {
-  const baseUrl = Constants.expoConfig?.extra?.prescriptionApiBaseUrl;
+  const baseUrl = process.env.EXPO_PUBLIC_PRESCRIPTION_API_BASE_URL ||
+    Constants.expoConfig?.extra?.prescriptionApiBaseUrl;
 
   if (typeof baseUrl !== "string" || !baseUrl.trim()) {
     throw new Error(
-      "Missing Expo config: expo.extra.prescriptionApiBaseUrl is not set"
+      "OCR is unavailable: configure EXPO_PUBLIC_PRESCRIPTION_API_BASE_URL"
     );
   }
 
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error("OCR is unavailable: invalid API URL");
+  }
+  const allowInsecureHttp =
+    Constants.expoConfig?.extra?.allowInsecurePrescriptionApi === true &&
+    parsed.protocol === "http:";
+  if (parsed.protocol !== "https:" && !allowInsecureHttp) {
+    throw new Error("OCR is unavailable: insecure HTTP endpoints are blocked");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("OCR is unavailable: credentials cannot be embedded in the URL");
+  }
   return baseUrl.replace(/\/+$/, "");
 }
 

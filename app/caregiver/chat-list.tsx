@@ -1,12 +1,6 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Platform,
-} from "react-native";
+import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
@@ -19,10 +13,11 @@ export default function CaregiverChatListScreen() {
   const { language } = useLanguage();
   const t = translations[language];
   const [lastMessage, setLastMessage] = useState<any>(null);
+  const [previousPatient, setPreviousPatient] = useState(activePatientId);
+  if (previousPatient !== activePatientId) { setPreviousPatient(activePatientId); setLastMessage(null); }
 
   useEffect(() => {
     if (!activePatientId) {
-      setLastMessage(null);
       return;
     }
 
@@ -50,9 +45,11 @@ export default function CaregiverChatListScreen() {
     return () => unsub();
   }, [activePatientId]);
 
+
+
   return (
     <View style={styles.container}>
-      <View style={styles.headerSpacer} />
+      <ScreenHeader menuSpace style={styles.headerSpacer} />
 
       <ScrollView>
         <Pressable
@@ -104,7 +101,6 @@ export default function CaregiverChatListScreen() {
           </View>
         </Pressable>
 
-        <View style={styles.divider} />
       </ScrollView>
     </View>
   );
@@ -112,14 +108,7 @@ export default function CaregiverChatListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF" },
-  headerSpacer: {
-    backgroundColor: "#9999E5",
-    paddingTop: Platform.OS === "ios" ? 90 : 50,
-    paddingBottom: 25,
-    width: "100%",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
-  },
+  headerSpacer: { backgroundColor: "#9999E5", paddingTop: 12, paddingBottom: 16, width: "100%", borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.05)" },
   chatItem: {
     flexDirection: "row",
     padding: 20,
@@ -143,16 +132,8 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 5,
   },
-  chatHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  caregiverName: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#000",
-  },
+  chatHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 },
+  caregiverName: { fontSize: 20, fontWeight: "900", color: "#000", flexShrink: 1, minWidth: 0 },
   timeText: {
     fontSize: 14,
     color: "#999",
@@ -160,10 +141,5 @@ const styles = StyleSheet.create({
   lastMsgText: {
     fontSize: 16,
     color: "#666",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#EEE",
-    marginHorizontal: 20,
   },
 });

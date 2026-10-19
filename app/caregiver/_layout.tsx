@@ -3,24 +3,28 @@ import { exportCopy } from "@/src/export/exportCopy";
 import AuditMenuLink from "@/src/audit/AuditMenuLink";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { useSyncCaregiverServices } from "@/src/agency/useSyncCaregiverServices";
 import { translations } from "@/src/i18n/translations";
+import { myDataCopy } from "@/src/profile/myDataCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router, useSegments } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import { doc, getDoc } from "firebase/firestore";
-import React, { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Dimensions, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Alert, Animated, Platform, ScrollView, useWindowDimensions, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const DRAWER_WIDTH = SCREEN_WIDTH * 0.55;
 
 export default function CaregiverLayout() {
+  const { width } = useWindowDimensions();
+  const drawerWidth = Math.min(width - 24, Math.max(280, width * 0.82));
   const segments = useSegments() as string[];
   const currentPage = segments[segments.length - 1];
   const insets = useSafeAreaInsets();
   const { language, setLanguage } = useLanguage();
+
+  useSyncCaregiverServices();
 
   const hideBottomNavRoutes = [
     "chat-room",
@@ -35,12 +39,14 @@ export default function CaregiverLayout() {
     "notebook",
     "handbook",
     "notification-detail",
+    "account-settings",
+    "agency-binding",
     "result",
   ];
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [slideAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.timing(slideAnim, {
@@ -52,7 +58,7 @@ export default function CaregiverLayout() {
 
   const translateX = slideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [DRAWER_WIDTH, 0],
+    outputRange: [drawerWidth, 0],
   });
 
   const overlayOpacity = slideAnim.interpolate({
@@ -118,7 +124,28 @@ export default function CaregiverLayout() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Web 測試
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "確定要登出目前帳號嗎？"
+      );
+
+      if (!confirmed) return;
+
+      try {
+        await signOut(auth);
+        setIsSidebarOpen(false);
+        router.replace("/");
+      } catch (error) {
+        console.log("登出失敗:", error);
+        window.alert("登出失敗，請稍後再試");
+      }
+
+      return;
+    }
+
+    //手機版
     Alert.alert("登出系統", "確定要登出目前帳號嗎？", [
       { text: "取消", style: "cancel" },
       {
@@ -145,7 +172,7 @@ export default function CaregiverLayout() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.content}>
+      <View style={[styles.content, hideBottomNav && { paddingBottom: insets.bottom }]}>
         <Stack
           screenOptions={{
             headerShown: false,
@@ -164,7 +191,7 @@ export default function CaregiverLayout() {
         </Pressable>
       )}
 
-      {!hideBottomNav && (
+      {!hideBottomNav && !!activePatientId && (
         <View style={styles.footerWrapper} pointerEvents="box-none">
           <View style={styles.fabContainer} pointerEvents="box-none">
             <Pressable style={styles.fabButton} onPress={onEmergencyCall}>
@@ -191,7 +218,7 @@ export default function CaregiverLayout() {
 
       <Animated.View
         pointerEvents={isSidebarOpen ? "auto" : "none"}
-        style={[StyleSheet.absoluteFillObject, styles.overlay, { opacity: overlayOpacity }]}
+        style={[StyleSheet.absoluteFill, styles.overlay, { opacity: overlayOpacity }]}
       >
         <Pressable style={{ flex: 1 }} onPress={() => setIsSidebarOpen(false)} />
       </Animated.View>
@@ -200,8 +227,9 @@ export default function CaregiverLayout() {
         style={[
           styles.drawer,
           {
+            width: drawerWidth,
             transform: [{ translateX }],
-            paddingTop: insets.top + 40,
+            paddingTop: insets.top + 16,
           },
         ]}
       >
@@ -211,9 +239,15 @@ export default function CaregiverLayout() {
           </View>
         </View>
 
-        <View style={styles.menuContainer}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.menuContainer, { paddingBottom: insets.bottom + 24 }]}>
           <AuditMenuLink onNavigate={() => setIsSidebarOpen(false)} />
           <PrivacyPolicyLink />
+          <Pressable style={styles.menuItem} onPress={() => {
+            setIsSidebarOpen(false);
+            router.push("/my-data" as any);
+          }}>
+            <Text style={styles.menuItemText}>{myDataCopy[language].title}</Text>
+          </Pressable>
           <View style={styles.menuItem}>
             <Text style={styles.menuItemText}>語言</Text>
             <View style={styles.languageOptions}>
@@ -259,7 +293,37 @@ export default function CaregiverLayout() {
             <Text style={styles.menuItemText}>{translations[language].handbook}</Text>
           </Pressable>
 
-          <Pressable style={styles.menuItem} onPress={() => Alert.alert("警告", "確定要解除連結嗎？")}>
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/account-settings" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>帳號設定</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.menuItem}
+            onPress={() => {
+              setIsSidebarOpen(false);
+              router.push("/caregiver/agency-binding" as any);
+            }}
+          >
+            <Text style={styles.menuItemText}>綁定仲介</Text>
+          </Pressable>
+
+          <Pressable style={styles.menuItem} onPress={() => {
+            setIsSidebarOpen(false);
+            router.push("/care-target/select");
+          }}>
+            <Text style={styles.menuItemText}>{translations[language].selectCareTarget}</Text>
+          </Pressable>
+
+          <Pressable style={styles.menuItem} onPress={() => {
+            setIsSidebarOpen(false);
+            router.push("/care-target/leave");
+          }}>
             <Text style={styles.menuItemTextDanger}>解除連結</Text>
           </Pressable>
 
@@ -284,7 +348,7 @@ export default function CaregiverLayout() {
           >
             <Text style={styles.menuItemTextDanger}>刪除帳號</Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </Animated.View>
     </View>
   );
@@ -351,26 +415,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.4)",
     zIndex: 100,
   },
-  drawer: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: DRAWER_WIDTH,
-    backgroundColor: "#FFF",
-    zIndex: 101,
-    borderLeftWidth: 2,
-    borderLeftColor: "#000",
-    shadowColor: "#000",
-    shadowOffset: { width: -5, height: 0 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 20,
-  },
-  badgeContainer: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
+  drawer: { position: "absolute", top: 0, right: 0, bottom: 0, backgroundColor: "#FFF", zIndex: 101, borderLeftWidth: 2, borderLeftColor: "#000", shadowColor: "#000", shadowOffset: { width: -5, height: 0 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 20 },
+  badgeContainer: { alignItems: "center", marginBottom: 16 },
   badge: {
     backgroundColor: "#52D052",
     paddingHorizontal: 20,
@@ -400,8 +446,11 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     color: "#000",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
   languageOptions: {
     marginTop: 10,
@@ -411,13 +460,19 @@ const styles = StyleSheet.create({
     color: "#555",
     fontSize: 16,
     fontWeight: "700",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 22,
   },
   languageOptionActive: {
     color: "#007AFF",
   },
   menuItemTextDanger: {
     color: "#E33B3B",
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "bold",
+    flexShrink: 1,
+    flexWrap: "wrap",
+    lineHeight: 25,
   },
 });

@@ -3,17 +3,14 @@ import { signOut } from "@/src/auth/auditSession";
 import { useAuth } from "@/src/auth/useAuth";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { router } from "expo-router";
-import {
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-} from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
+import { reauthenticateUser, requiresPasswordReauthentication } from "@/src/auth/reauthenticate";
+import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -79,14 +76,16 @@ export default function AccountDeletionScreen() {
   const pending = user?.accountStatus === "pending_deletion";
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const passwordRequired = requiresPasswordReauthentication(auth.currentUser);
   const scheduled = useMemo(() => user?.deletionScheduledFor?.toLocaleString(),
     [user?.deletionScheduledFor]);
 
   async function reauthenticate() {
     const currentUser = auth.currentUser;
-    if (!currentUser?.email || !password) throw new Error("missing-credential");
-    const credential = EmailAuthProvider.credential(currentUser.email, password);
-    await reauthenticateWithCredential(currentUser, credential);
+    if (!currentUser || (passwordRequired && !password)) {
+      throw new Error("missing-credential");
+    }
+    await reauthenticateUser(currentUser, password);
     await currentUser.getIdToken(true);
   }
 
@@ -120,7 +119,7 @@ export default function AccountDeletionScreen() {
             <Text style={styles.scheduled}>{t.scheduled}：{scheduled}</Text>
           ) : null}
         </View>
-        <TextInput
+        {passwordRequired && <TextInput
           value={password}
           onChangeText={setPassword}
           placeholder={t.password}
@@ -128,11 +127,12 @@ export default function AccountDeletionScreen() {
           autoCapitalize="none"
           editable={!busy}
           style={styles.input}
-        />
+        />}
         <Pressable
           onPress={submit}
-          disabled={busy || !password}
-          style={[styles.primary, (busy || !password) && styles.disabled]}
+          disabled={busy || (passwordRequired && !password)}
+          style={[styles.primary,
+            (busy || (passwordRequired && !password)) && styles.disabled]}
         >
           {busy ? <ActivityIndicator color="#fff" /> : (
             <Text style={styles.primaryText}>
@@ -152,7 +152,7 @@ export default function AccountDeletionScreen() {
 
 const styles = StyleSheet.create({
   safeArea: {flex: 1, backgroundColor: "#fff"},
-  content: {padding: 24, paddingTop: 72, gap: 20},
+  content: { padding: 24, paddingTop: 24, gap: 20 },
   title: {fontSize: 28, fontWeight: "900", color: "#161616"},
   warningBox: {backgroundColor: "#FFF1F1", borderColor: "#E33B3B",
     borderWidth: 1, borderRadius: 12, padding: 16, gap: 12},
@@ -160,10 +160,9 @@ const styles = StyleSheet.create({
   scheduled: {fontSize: 16, fontWeight: "800", color: "#8B1D1D"},
   input: {borderWidth: 1, borderColor: "#B8B8B8", borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 14, fontSize: 16},
-  primary: {backgroundColor: "#C92A2A", minHeight: 52, borderRadius: 10,
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 16},
+  primary: { backgroundColor: "#C92A2A", minHeight: 52, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 16, paddingVertical: 14 },
   disabled: {opacity: 0.45},
-  primaryText: {color: "#fff", fontSize: 17, fontWeight: "800"},
+  primaryText: { color: "#fff", fontSize: 17, fontWeight: "800", textAlign: "center", width: "100%" },
   back: {minHeight: 48, alignItems: "center", justifyContent: "center"},
   backText: {fontSize: 16, color: "#444", fontWeight: "700"},
 });

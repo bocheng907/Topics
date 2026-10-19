@@ -9,7 +9,7 @@ const ts = require('typescript');
 // Only this local demo emulator is allowed; never use production credentials.
 const project = 'demo-invite-expiry';
 const host = process.env.FIRESTORE_EMULATOR_HOST;
-if (!['127.0.0.1:8189', '127.0.0.1:8198'].includes(host)) throw new Error('Run with the invite-test or privacy-test emulator configuration');
+if (!['127.0.0.1:8189', '127.0.0.1:8198', '127.0.0.1:18198'].includes(host)) throw new Error('Run with an isolated invite/privacy demo emulator configuration');
 const base = `http://${host}/v1/projects/${project}/databases/(default)/documents`;
 const day = 86400000;
 const source = fs.readFileSync(path.join(__dirname, '../src/care-target/inviteExpiry.ts'), 'utf8');

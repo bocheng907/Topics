@@ -5,7 +5,6 @@ import {
   getDocs,
   limit,
   query,
-  QueryDocumentSnapshot,
   where,
 } from "firebase/firestore";
 
@@ -13,10 +12,11 @@ export async function getUserDocSnapshotByUid(uid: string) {
   const q = query(
     collection(db, "users"),
     where("uid", "==", uid),
-    limit(1)
+    limit(2)
   );
 
   const snap = await getDocs(q);
+  if (snap.size > 1) throw new Error("Duplicate account profiles require administrator review.");
 
   if (snap.empty) {
     return null;

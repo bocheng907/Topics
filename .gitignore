@@ -47,3 +47,10 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Local test output, recordings, account fixtures and merge recovery snapshots
+/output/
+/.playwright-cli/
+/.tmp-*/
+*-debug.log
+*-debug.*.log

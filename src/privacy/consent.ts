@@ -1,5 +1,5 @@
-export const PRIVACY_POLICY_VERSION = "2026-09-12.v1";
-export const PRIVACY_POLICY_URL = "https://smart-care-system-1a41e.web.app/privacy/2026-09-12-v1";
+export const PRIVACY_POLICY_VERSION = "2026-09-22.v2";
+export const PRIVACY_POLICY_URL = "https://smart-care-system-1a41e.web.app/privacy/2026-09-22-v2";
 
 export type PrivacyConsent = { accepted: boolean; version: string };
 

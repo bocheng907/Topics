@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/src/ui/ScreenLayout";
 // app/caregiver/medication-detail.tsx
 import React, { useLayoutEffect, useMemo } from "react";
 import {
@@ -84,12 +85,12 @@ export default function CaregiverMedicationDetailScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={30} color="#111" />
           <Text style={styles.backText}>返回</Text>
         </Pressable>
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.summaryCard}>
@@ -194,18 +195,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
-  header: {
-    backgroundColor: "#F4E770",
-    height: 100,
-    paddingTop: 50,
-    paddingHorizontal: 15,
-    justifyContent: "center",
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    height: 44,
-  },
+  header: { backgroundColor: "#F4E770", paddingTop: 12, paddingHorizontal: 15, justifyContent: "center", minHeight: 56 },
+  backButton: { flexDirection: "row", alignItems: "center", minHeight: 44, paddingVertical: 8 },
   backText: {
     fontSize: 20,
     fontWeight: "bold",
@@ -262,12 +253,7 @@ const styles = StyleSheet.create({
     color: "#777",
     marginRight: 4,
   },
-  purposeTag: {
-    backgroundColor: "#FFF3A8",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
+  purposeTag: { backgroundColor: "#FFF3A8", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 5, maxWidth: "100%" },
   purposeTagText: {
     fontSize: 18,
     fontWeight: "900",

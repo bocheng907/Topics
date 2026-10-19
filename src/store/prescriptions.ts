@@ -16,14 +16,14 @@ export type AddPrescriptionInput = {
   sourceImageUrl?: string;            // 圖片路徑
   status: "parsed" | "need_manual_fix";
   ocrRawText?: string;
-  items: Array<{
+  items: {
     drug_name_zh: string;
     drug_name_translated?: string;
     dose: string;
     time_of_day: TimeOfDay[];
     note_zh?: string;
     note_translated?: string;
-  }>;
+  }[];
 };
 
 export function usePrescriptionsRepo() {

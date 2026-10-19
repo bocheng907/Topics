@@ -35,7 +35,7 @@ export default function AuditLogs() {
 
   const load = useCallback(async (reset: boolean) => {
     if (!access.allowed || loading.current) return;
-    loading.current = true; setBusy(true); setError("");
+    loading.current = true;
     const current = generation.current;
     try {
       const base = [orderBy("createdAt", "desc"), limit(50)];
@@ -56,9 +56,20 @@ export default function AuditLogs() {
     }
   }, [access.allowed, access.uid]);
 
+  const accessScope = `${access.ready}:${access.allowed}:${access.uid}`;
+  const [previousAccessScope, setPreviousAccessScope] = useState<string | null>(null);
+  if (previousAccessScope !== accessScope) {
+    setPreviousAccessScope(accessScope);
+    setRows([]); setMore(false); setError("");
+    setBusy(access.ready && access.allowed); setExpanded(null);
+  }
+  const requestLoad = (reset: boolean) => {
+    if (!access.allowed || loading.current) return;
+    setBusy(true); setError("");
+    void load(reset);
+  };
   useEffect(() => {
     generation.current++; loading.current = false; cursor.current = null;
-    setRows([]); setMore(false); setError(""); setBusy(false); setExpanded(null);
     if (access.ready && access.allowed) void load(true);
     const activeGeneration = generation;
     return () => { activeGeneration.current++; };
@@ -80,7 +91,7 @@ export default function AuditLogs() {
       <View style={styles.toolbar}><Text style={styles.muted}>最新紀錄優先 · 台灣時間 · 每次載入 50 筆</Text>
         <TextInput accessibilityLabel="搜尋已載入的操作紀錄" placeholder="搜尋已載入紀錄：操作、身分或資源" value={search} onChangeText={setSearch} style={styles.search} />
         <View style={styles.row}><Text style={styles.muted}>已載入 {rows.length} 筆 · 顯示 {visible.length} 筆</Text>
-          <Pressable accessibilityRole="button" disabled={busy} style={styles.button} onPress={() => void load(true)}><Text style={styles.link}>重新整理</Text></Pressable></View>
+          <Pressable accessibilityRole="button" disabled={busy} style={styles.button} onPress={() => requestLoad(true)}><Text style={styles.link}>重新整理</Text></Pressable></View>
         {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       </View>
       <FlatList data={visible} keyExtractor={item => item.id} contentContainerStyle={styles.list}
@@ -100,7 +111,7 @@ export default function AuditLogs() {
             {item.data.source === "authenticated_client_signal" && <Text style={styles.muted}>此為 App 回報；登出請求不代表已完成登出。</Text>}
           </View>}
         </Pressable>}
-        ListFooterComponent={<View style={styles.footer}>{busy ? <ActivityIndicator accessibilityLabel="載入紀錄中" /> : more ? <Pressable accessibilityRole="button" style={styles.button} onPress={() => void load(false)}><Text style={styles.link}>載入更多</Text></Pressable> : rows.length > 0 ? <Text style={styles.muted}>已載入全部可查閱紀錄</Text> : null}</View>} />
+        ListFooterComponent={<View style={styles.footer}>{busy ? <ActivityIndicator accessibilityLabel="載入紀錄中" /> : more ? <Pressable accessibilityRole="button" style={styles.button} onPress={() => requestLoad(false)}><Text style={styles.link}>載入更多</Text></Pressable> : rows.length > 0 ? <Text style={styles.muted}>已載入全部可查閱紀錄</Text> : null}</View>} />
     </>}
   </View>;
 }
