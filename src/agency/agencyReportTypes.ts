@@ -9,6 +9,12 @@ export type AgencyReportStatus =
   | "open"
   | "resolved";
 
+export type AgencyReportCategory =
+  | "communication"
+  | "schedule"
+  | "service"
+  | "other";
+
 export type AgencyReport = {
   id: string;
 
@@ -23,6 +29,8 @@ export type AgencyReport = {
   reporterUid: string;
   reporterRole: "family" | "caregiver";
   reporterName: string;
+
+  category?: AgencyReportCategory;
 
   title: string;
   description: string;
