@@ -1,0 +1,6 @@
+export const createRetryCopy = {
+  zh: { pending: "上次建立結果尚未確認。請重試同一筆資料，系統會取回原結果，不會重複建立。", retry: "確認原建立結果", failed: "尚未確認建立結果，請稍後按「確認原建立結果」。不要另外建立同一位長者。", storage: "無法保存建立請求，尚未送出。請確認裝置儲存空間後重試。" },
+  en: { pending: "The previous result is unconfirmed. Retry this request to recover it without creating a duplicate.", retry: "Check original request", failed: "The result is unconfirmed. Check the original request again; do not create the same person separately.", storage: "Could not save the request. Nothing was sent. Check device storage and retry." },
+  vi: { pending: "Chưa xác nhận kết quả trước đó. Thử lại cùng yêu cầu để lấy kết quả, không tạo trùng.", retry: "Kiểm tra yêu cầu cũ", failed: "Chưa xác nhận kết quả. Hãy kiểm tra lại yêu cầu cũ, không tạo thêm cùng người.", storage: "Không lưu được yêu cầu nên chưa gửi. Kiểm tra bộ nhớ rồi thử lại." },
+  id: { pending: "Hasil sebelumnya belum terkonfirmasi. Ulangi permintaan yang sama tanpa membuat duplikat.", retry: "Periksa permintaan awal", failed: "Hasil belum terkonfirmasi. Periksa permintaan awal lagi; jangan membuat orang yang sama secara terpisah.", storage: "Permintaan tidak dapat disimpan dan belum dikirim. Periksa penyimpanan lalu coba lagi." },
+};

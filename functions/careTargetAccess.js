@@ -1,5 +1,5 @@
 /* eslint-disable require-jsdoc */
-const {randomInt} = require("node:crypto");
+const {randomInt, createHash} = require("node:crypto");
 const {FieldValue, Timestamp} = require("firebase-admin/firestore");
 const {HttpsError} = require("firebase-functions/v2/https");
 const {primaryUid} = require("./careRoles");
@@ -152,15 +152,52 @@ function createCareTargetService(db, clock = () => Date.now()) {
     });
   }
   async function createCareTarget(request) {
-    const uid = await authorize(request, "create");
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Sign in required.");
+    }
+    const uid = request.auth.uid;
     const input = request.data || {};
     const name = text(input.name, 200, true);
     const notes = text(input.notes === undefined ? "" : input.notes, 5000);
+    // Optional for compatibility with older clients; new clients always send it.
+    const requestId = input.requestId;
+    if (requestId !== undefined && (typeof requestId !== "string" ||
+        !/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(requestId))) {
+      throw new HttpsError("invalid-argument", "Invalid request ID.");
+    }
+    const fingerprint = createHash("sha256")
+        .update(JSON.stringify([name, notes])).digest("hex");
     return db.runTransaction(async (tx) => {
       const user = await profile(tx, uid);
       const data = user.data();
       if (data.role !== "family") {
         throw new HttpsError("permission-denied", "Family account required.");
+      }
+      // Server-only receipt, scoped to the authenticated profile and deleted with it.
+      const receiptRef = requestId ? user.ref.collection("_care_target_requests")
+          .doc(requestId.toLowerCase()) : null;
+      const receipt = receiptRef ? await tx.get(receiptRef) : null;
+      if (receipt?.exists) {
+        const saved = receipt.data();
+        if (saved.fingerprint !== fingerprint) {
+          throw new HttpsError("failed-precondition",
+              "Retry with the original input.");
+        }
+        const target = await tx.get(db.doc("patients/" + saved.patientId));
+        if (!target.exists || !target.data().families?.includes(uid)) {
+          throw new HttpsError("permission-denied", "Target no longer available.");
+        }
+        return {patientId: target.id, inviteCode: target.data().inviteCode};
+      }
+      // Count committed new targets, not network retries of the same request.
+      const limitRef = user.ref.collection("_care_target_limits").doc("create");
+      const limitSnap = await tx.get(limitRef);
+      const old = limitSnap.exists ? limitSnap.data() : {};
+      const now = clock();
+      const active = Number.isFinite(old.start) && now < old.start + DAY;
+      const count = active ? old.count : 0;
+      if (count >= 10) {
+        throw new HttpsError("resource-exhausted", "Try again later.");
       }
       // Serialize creates so concurrent requests cannot reuse an ID or invite.
       const lock = db.doc("_care_target_locks/create");
@@ -197,6 +234,11 @@ function createCareTargetService(db, clock = () => Date.now()) {
           issuedAt: Timestamp.fromMillis(clock()),
         });
         tx.set(lock, {updatedAt: FieldValue.serverTimestamp()});
+        tx.set(limitRef, {start: active ? old.start : now, count: count + 1});
+        if (receiptRef) {
+          tx.create(receiptRef, {patientId, fingerprint,
+            createdAt: FieldValue.serverTimestamp()});
+        }
         return {patientId, inviteCode};
       }
       throw new HttpsError("aborted", "Please retry creation.");

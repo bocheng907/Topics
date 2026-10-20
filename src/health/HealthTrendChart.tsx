@@ -6,7 +6,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { LineChart } from "react-native-gifted-charts";
+import { LineChart } from "./HealthLineChart";
 import type { ChartDataType } from "./useHealthChartData";
 
 type ChartPoint = {

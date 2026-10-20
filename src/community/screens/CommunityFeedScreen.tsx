@@ -200,6 +200,8 @@ export default function CommunityHomeScreen() {
 
       {/* 發文浮動鍵 */}
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="發表文章"
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
         onPress={() => router.push(routes.newPost() as any)}
       >

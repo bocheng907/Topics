@@ -2,7 +2,7 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "@/firebase/firebaseConfig";
 
 export const createCareTarget = httpsCallable<
-  { name: string; notes: string },
+  { name: string; notes: string; requestId: string },
   { patientId: string; inviteCode: string }
 >(functions, "createCareTarget");
 

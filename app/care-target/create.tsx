@@ -6,7 +6,10 @@ import { useLanguage } from "@/src/store/LanguageContext";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { randomUUID } from "expo-crypto";
+import { createRetryCopy } from "@/src/care-target/createRetryCopy";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Pressable, Text, TextInput, View } from "react-native";
 
@@ -15,6 +18,11 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { invitationCopy } from "@/src/care-target/invitationCopy";
 
 export default function CareTargetCreateScreen() {
+  const { user } = useAuth();
+  return <CareTargetCreateForm key={user?.uid || "signed-out"} />;
+}
+
+function CareTargetCreateForm() {
   const { user } = useAuth();
   const { setActivePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
@@ -26,9 +34,30 @@ export default function CareTargetCreateScreen() {
   const [joining, setJoining] = useState(false);
   const [created, setCreated] = useState<{uid: string; patientId: string; inviteCode: string} | null>(null);
   const submitting = useRef(false);
+  const [pending, setPending] = useState<{uid: string; requestId: string; name: string; notes: string} | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [retryNotice, setRetryNotice] = useState("");
+  const [storageError, setStorageError] = useState(false);
+  const retryCopy = createRetryCopy[language];
+  useEffect(() => {
+    let cancelled = false;
+    if (!user?.uid) return;
+    const uid = user.uid;
+    AsyncStorage.getItem(`care-create-pending:${uid}`).then(raw => {
+      if (cancelled) return;
+      if (raw) {
+        const value = JSON.parse(raw);
+        if (value.uid !== uid || typeof value.requestId !== "string" ||
+            typeof value.name !== "string" || typeof value.notes !== "string") throw Error("invalid-draft");
+        setPending(value); setName(value.name); setNotes(value.notes);
+      }
+      setDraftReady(true);
+    }).catch(() => { if (!cancelled) setStorageError(true); });
+    return () => { cancelled = true; };
+  }, [user?.uid]);
 
   const onCreate = async () => {
-    if (!user || busy || submitting.current) return;
+    if (!user || !draftReady || busy || submitting.current) return;
 
     if (user.role !== "family") {
       Alert.alert(t.cannotCreate, t.createFamilyOnly);
@@ -45,12 +74,24 @@ export default function CareTargetCreateScreen() {
 
     setBusy(true);
     submitting.current = true;
+    const uid = user.uid;
+    let sent = false;
     try {
+      const attempt = pending?.uid === uid ? pending :
+        {uid, requestId: randomUUID(), name: trimmedName, notes: trimmedNotes};
+      // Persist before sending: leaving/reloading the page must reuse the same ID.
+      await AsyncStorage.setItem(`care-create-pending:${uid}`, JSON.stringify(attempt));
+      if (auth.currentUser?.uid !== uid) return;
+      setPending(attempt); setRetryNotice("");
+      sent = true;
       const result = created?.uid === user.uid ? created :
-        (await createCareTarget({ name: trimmedName, notes: trimmedNotes })).data;
+        (await createCareTarget({ name: attempt.name, notes: attempt.notes, requestId: attempt.requestId })).data;
+      if (auth.currentUser?.uid !== uid) return;
       setCreated({ ...result, uid: user.uid });
       const code = result.inviteCode;
       await setActivePatientId(result.patientId);
+      await AsyncStorage.removeItem(`care-create-pending:${uid}`);
+      setPending(null);
 
       Alert.alert(
         t.createSuccess,
@@ -67,14 +108,29 @@ export default function CareTargetCreateScreen() {
         ]
       );
     } catch (e: any) {
+      if (auth.currentUser?.uid !== uid) return;
       console.log("create patient error:", e);
+      // These server responses guarantee that no new target was committed.
+      // Unknown/network failures must retain their original request ID.
+      if (!created && ["functions/invalid-argument", "functions/resource-exhausted"].includes(e?.code)) {
+        try {
+          await AsyncStorage.removeItem(`care-create-pending:${uid}`);
+          setPending(null);
+          setRetryNotice("");
+          Alert.alert(t.createFailed, t.tryLater);
+          return;
+        } catch {
+          // Keep the saved request locked if clearing local storage fails.
+        }
+      }
+      setRetryNotice(sent ? retryCopy.failed : retryCopy.storage);
 
       if (e?.code === "functions/permission-denied") {
         Alert.alert(t.createFailed, t.noCreatePermission);
         return;
       }
 
-      Alert.alert(t.createFailed, t.tryLater);
+      Alert.alert(t.prompt, sent ? retryCopy.failed : retryCopy.storage);
     } finally {
       setBusy(false);
       submitting.current = false;
@@ -111,12 +167,15 @@ export default function CareTargetCreateScreen() {
   return (
     <ScreenScrollView contentContainerStyle={{ padding: 24, paddingTop: 20, gap: 20 }}>
       <Text style={{ fontSize: 28, fontWeight: "900" }}>{t.createCareTarget}</Text>
+      {!busy && !!(storageError || retryNotice || pending) && <Text accessibilityRole="alert" style={{color: "#8A4300", lineHeight: 24}}>
+        {storageError ? retryCopy.storage : retryNotice || retryCopy.pending}
+      </Text>}
 
       <View style={{ gap: 8 }}>
         <Text style={{ fontSize: 16, fontWeight: "800", color: "#444" }}>{t.elderName}</Text>
         <TextInput
           value={name}
-          editable={!created && !busy}
+          editable={draftReady && !pending && !created && !busy}
           maxLength={200}
           onChangeText={setName}
           placeholder={t.elderNamePlaceholder}
@@ -135,7 +194,7 @@ export default function CareTargetCreateScreen() {
         <Text style={{ fontSize: 16, fontWeight: "800", color: "#444" }}>{t.careNotesOptional}</Text>
         <TextInput
           value={notes}
-          editable={!created && !busy}
+          editable={draftReady && !pending && !created && !busy}
           maxLength={5000}
           onChangeText={setNotes}
           placeholder={t.careNotesPlaceholder}
@@ -182,16 +241,16 @@ export default function CareTargetCreateScreen() {
 
       <Pressable
         onPress={onCreate}
-        disabled={busy || !name.trim()}
+        disabled={!draftReady || busy || !name.trim()}
         style={{
-          backgroundColor: name.trim() && !busy ? "#007AFF" : "#CCC",
+          backgroundColor: draftReady && name.trim() && !busy ? "#007AFF" : "#CCC",
           padding: 18,
           borderRadius: 12,
           marginTop: 10,
         }}
       >
         <Text style={{ color: "#FFF", textAlign: "center", fontWeight: "900", fontSize: 18 }}>
-          {t.confirmCreate}
+          {pending ? retryCopy.retry : t.confirmCreate}
         </Text>
       </Pressable>
 

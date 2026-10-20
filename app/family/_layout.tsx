@@ -41,6 +41,7 @@ export default function FamilyLayout() {
     "account-settings",
     "emergency-contacts",
     "report-care-issue",
+    "new-post",
   ];
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
 
@@ -117,7 +118,7 @@ export default function FamilyLayout() {
         <Stack screenOptions={{ headerShown: false, gestureEnabled: false }} />
       </View>
 
-      {!hideBottomNav && (
+      {!hideBottomNav && !segments.includes("community") && (
         <Pressable
           style={[styles.hamburgerBtn, { top: insets.top + 10 }]}
           onPress={() => setIsSidebarOpen(true)}
