@@ -31,6 +31,12 @@ type CaregiverOption = {
   caregiverName: string;
 };
 
+type ReportCategory =
+  | "communication"
+  | "schedule"
+  | "service"
+  | "other";
+
 const copy = {
   zh: {
     pageTitle: "回報照護問題",
@@ -46,10 +52,11 @@ const copy = {
     submit: "送出回報",
     submitting: "送出中…",
 
-    medication: "用藥問題",
-    communication: "溝通問題",
-    care: "照護問題",
+    communication: "溝通協調",
+    schedule: "排班／出勤",
+    service: "服務內容",
     other: "其他",
+    selectCategory: "請先選擇問題類型。",
 
     noPatientTitle: "尚未選擇照護對象",
     noPatientText: "請先選擇一位照護對象，再進行問題回報。",
@@ -76,17 +83,18 @@ const copy = {
     caregiverSuffix: "Caregiver",
     category: "Issue type",
     title: "Report title",
-    titlePlaceholder: "e.g. Please help check medication status",
+    titlePlaceholder:"e.g. Please help coordinate with the caregiver",
     description: "Description",
     descriptionPlaceholder:
       "Describe the issue and what assistance you would like from the agency.",
     submit: "Submit report",
     submitting: "Submitting…",
 
-    medication: "Medication",
     communication: "Communication",
-    care: "Care",
+    schedule: "Schedule / Attendance",
+    service: "Service",
     other: "Other",
+    selectCategory: "Please select an issue type.",
 
     noPatientTitle: "No care recipient selected",
     noPatientText:
@@ -115,17 +123,18 @@ const copy = {
     caregiverSuffix: "Người chăm sóc",
     category: "Loại vấn đề",
     title: "Tiêu đề báo cáo",
-    titlePlaceholder: "Ví dụ: Nhờ hỗ trợ kiểm tra việc dùng thuốc",
+    titlePlaceholder:  "Ví dụ: Mong được hỗ trợ trao đổi với người chăm sóc",
     description: "Mô tả vấn đề",
     descriptionPlaceholder:
       "Vui lòng mô tả tình hình và nội dung cần đơn vị môi giới hỗ trợ.",
     submit: "Gửi báo cáo",
     submitting: "Đang gửi…",
 
-    medication: "Thuốc",
     communication: "Giao tiếp",
-    care: "Chăm sóc",
+    schedule: "Lịch làm việc / Chấm công",
+    service: "Nội dung dịch vụ",
     other: "Khác",
+    selectCategory: "Vui lòng chọn loại vấn đề.",
 
     noPatientTitle: "Chưa chọn người được chăm sóc",
     noPatientText:
@@ -155,17 +164,18 @@ const copy = {
     category: "Jenis masalah",
     title: "Judul laporan",
     titlePlaceholder:
-      "Contoh: Mohon bantu periksa penggunaan obat",
+       "Contoh: Mohon bantuan berkoordinasi dengan pengasuh",
     description: "Penjelasan masalah",
     descriptionPlaceholder:
       "Jelaskan situasi dan bantuan yang dibutuhkan dari agen.",
     submit: "Kirim laporan",
     submitting: "Mengirim…",
 
-    medication: "Obat",
     communication: "Komunikasi",
-    care: "Perawatan",
+    schedule: "Jadwal / Kehadiran",
+    service: "Layanan",
     other: "Lainnya",
+    selectCategory: "Pilih jenis masalah terlebih dahulu.",
 
     noPatientTitle: "Belum memilih penerima perawatan",
     noPatientText:
@@ -200,6 +210,31 @@ export default function ReportCareIssueScreen() {
   } = useActiveCareTarget();
 
   const t = copy[language];
+
+  const categoryOptions: {
+    key: ReportCategory;
+    label: string;
+  }[] = [
+    {
+      key: "communication",
+      label: t.communication,
+    },
+    {
+      key: "schedule",
+      label: t.schedule,
+    },
+    {
+      key: "service",
+      label: t.service,
+    },
+    {
+      key: "other",
+      label: t.other,
+    },
+  ];
+
+  const [category, setCategory] =
+    useState<ReportCategory | "">("");
 
   const [
     caregivers,
@@ -334,6 +369,14 @@ export default function ReportCareIssueScreen() {
       return;
     }
 
+    if (!category) {
+      Alert.alert(
+        t.requiredTitle,
+        t.selectCategory
+      );
+      return;
+    }
+
     const cleanTitle = title.trim();
     const cleanDescription =
       description.trim();
@@ -360,6 +403,7 @@ export default function ReportCareIssueScreen() {
       await createAgencyReport({
         patientId: activePatientId,
         caregiverUid: selectedCaregiverUid,
+        category,
         title: cleanTitle,
         description: cleanDescription,
       });
@@ -681,6 +725,58 @@ export default function ReportCareIssueScreen() {
           </View>
 
           <Text style={styles.label}>
+            {t.category}
+          </Text>
+
+          <View style={styles.categoryGrid}>
+            {categoryOptions.map((item) => {
+              const selected =
+                category === item.key;
+
+              return (
+                <Pressable
+                  key={item.key}
+                  disabled={submitting}
+                  onPress={() =>
+                    setCategory(item.key)
+                  }
+                  style={[
+                    styles.categoryCard,
+                    selected &&
+                      styles.categoryCardSelected,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.categoryRadio,
+                      selected &&
+                        styles.categoryRadioSelected,
+                    ]}
+                  >
+                    {selected && (
+                      <Ionicons
+                        name="checkmark"
+                        size={15}
+                        color="#FFFFFF"
+                      />
+                    )}
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      selected &&
+                        styles.categoryTextSelected,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={styles.label}>
             {t.title}
           </Text>
 
@@ -926,5 +1022,56 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     marginTop: 8,
     textAlign: "center",
+  },
+
+  categoryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+
+  categoryCard: {
+    width: "48%",
+    minHeight: 58,
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: "#E1E1E8",
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+
+  categoryCardSelected: {
+    borderColor: "#4F59D5",
+    backgroundColor: "#F3F4FF",
+  },
+
+  categoryRadio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: "#C7C9D9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  categoryRadioSelected: {
+    borderColor: "#4F59D5",
+    backgroundColor: "#4F59D5",
+  },
+
+  categoryText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#374151",
+  },
+
+  categoryTextSelected: {
+    color: "#3730A3",
+    fontWeight: "800",
   },
 });

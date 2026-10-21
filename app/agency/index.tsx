@@ -143,6 +143,38 @@ export default function AgencyHomeScreen() {
           </Pressable>
         </View>
 
+        {/* 回報統計入口 */}
+        <Pressable
+          style={styles.analyticsCard}
+          onPress={() =>
+            router.push("/agency/analytics" as any)
+          }
+        >
+          <View style={styles.analyticsIcon}>
+            <Ionicons
+              name="bar-chart-outline"
+              size={27}
+              color="#4F59D5"
+            />
+          </View>
+
+          <View style={styles.analyticsContent}>
+            <Text style={styles.analyticsTitle}>
+              回報統計
+            </Text>
+
+            <Text style={styles.analyticsSubtitle}>
+              查看問題類型與每日回報趨勢
+            </Text>
+          </View>
+
+          <Ionicons
+            name="chevron-forward"
+            size={22}
+            color="#A1A1AA"
+          />
+        </Pressable>
+
         {/* 旗下看護 */}
         <View style={styles.sectionHeader}>
           <View>
@@ -404,6 +436,56 @@ const styles = StyleSheet.create({
     color: "#4F59D5",
     fontSize: 14,
     fontWeight: "700",
+  },
+
+  analyticsCard: {
+    minHeight: 86,
+    marginBottom: 28,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#DDE3FF",
+    backgroundColor: "#F5F7FF",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.03,
+    shadowRadius: 5,
+    elevation: 1,
+  },
+
+  analyticsIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 15,
+    backgroundColor: "#E1E9FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 13,
+  },
+
+  analyticsContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  analyticsTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  analyticsSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#6B7280",
   },
 
   sectionTitle: {
