@@ -1,4 +1,5 @@
 import { ScreenScrollView } from "@/src/ui/ScreenLayout";
+import { userErrorCopy } from "@/src/ui/userErrorMessages";
 import { auth, functions } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import { exportCopy } from "@/src/export/exportCopy";
@@ -16,10 +17,12 @@ export default function PersonalDataExportScreen() {
   const {user} = useAuth();
   const {language} = useLanguage();
   const t = exportCopy[language];
+  const errorCopy = userErrorCopy[language];
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [diagnostic, setDiagnostic] = useState("");
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [prepared, setPrepared] = useState<{payload: ExportPayload; uid: string; at: number} | null>(null);
   const passwordRequired = requiresPasswordReauthentication(auth.currentUser);
   const locked = useRef(false);
@@ -28,6 +31,7 @@ export default function PersonalDataExportScreen() {
   if (accountScope !== user?.uid) {
     setAccountScope(user?.uid);
     setPrepared(null); setPassword(""); setDiagnostic("");
+    setShowDiagnostic(false);
   }
   useEffect(() => {
     epoch.current++;
@@ -61,6 +65,7 @@ export default function PersonalDataExportScreen() {
     locked.current = true;
     setBusy(true);
     setStatus("");
+    setShowDiagnostic(false);
     setDiagnostic("");
     setPrepared(null);
     const attempt = epoch.current;
@@ -106,6 +111,7 @@ export default function PersonalDataExportScreen() {
     locked.current = true;
     setBusy(true);
     setDiagnostic("");
+    setShowDiagnostic(false);
     try {
       await saveExport(prepared.payload, prepared.uid);
       setStatus(t.done);
@@ -147,7 +153,16 @@ export default function PersonalDataExportScreen() {
         </Pressable>
       </View>}
       {!!status && <Text accessibilityRole="alert" style={styles.body}>{status}</Text>}
-      {!!diagnostic && <Text selectable style={styles.body}>{diagnostic}</Text>}
+      {!!diagnostic && <View style={styles.result}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: showDiagnostic }}
+          onPress={() => setShowDiagnostic(value => !value)}>
+          <Text style={styles.link}>{showDiagnostic ? errorCopy.hideDetails : errorCopy.details}</Text>
+        </Pressable>
+        {showDiagnostic && <View>
+          <Text style={styles.body}>{errorCopy.detailsHint}</Text>
+          <Text selectable style={styles.body}>{diagnostic}</Text>
+        </View>}
+      </View>}
     </ScreenScrollView>
   );
 }

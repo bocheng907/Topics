@@ -5,6 +5,7 @@ import {
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { userErrorMessage } from "@/src/ui/userErrorMessages";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -428,30 +429,9 @@ export default function ReportCareIssueScreen() {
         error
       );
 
-      let message =
-        t.sendFailedDefault;
-
-      if (
-        error?.code ===
-        "functions/failed-precondition"
-      ) {
-        message =
-          error?.message ||
-          t.sendFailedDefault;
-      }
-
-      if (
-        error?.code ===
-        "functions/permission-denied"
-      ) {
-        message =
-          error?.message ||
-          t.sendFailedDefault;
-      }
-
       Alert.alert(
         t.sendFailed,
-        message
+        userErrorMessage(error, "report", language)
       );
     } finally {
       setSubmitting(false);

@@ -1,5 +1,6 @@
 // app/(auth)/login.tsx
 import { ScreenScrollView } from "@/src/ui/ScreenLayout";
+import { userErrorMessage } from "@/src/ui/userErrorMessages";
 import { useAuth } from "@/src/auth/useAuth";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { translations } from "@/src/i18n/translations";
@@ -15,8 +16,10 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   async function onLogin() {
+    setErrorMessage("");
     if (!email || !password) {
       Alert.alert(t.prompt, t.loginRequiredFields);
       return;
@@ -29,8 +32,10 @@ export default function LoginScreen() {
       // 轉運站會自動根據使用者的身分 (role)，派發到 /family 或 /caregiver 的主畫面
       //router.replace("/");
       
-    } catch (e: any) {
-      Alert.alert(t.loginFailed, e?.message ?? t.loginFailedFallback);
+    } catch (e: unknown) {
+      const message = userErrorMessage(e, "login", language);
+      setErrorMessage(message);
+      Alert.alert(t.loginFailed, message);
     } finally {
       setLoading(false);
     }
@@ -83,6 +88,7 @@ export default function LoginScreen() {
           />
         </View>
 
+        {!!errorMessage && <Text accessibilityRole="alert" style={{ color: "#B42318", fontSize: 15 }}>{errorMessage}</Text>}
         <Pressable
           onPress={onLogin}
           disabled={loading}

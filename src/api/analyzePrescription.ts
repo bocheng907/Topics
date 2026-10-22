@@ -72,29 +72,29 @@ function getPrescriptionTranslateUrl() {
 }
 
 export async function analyzePrescriptionByUrl(imageUrl: string): Promise<AnalyzeResult> {
+  const failure = (code: string) => Object.assign(new Error("Prescription analysis failed"), { code });
+  let url: string;
+  try { url = getPrescriptionAnalyzeUrl(); } catch { throw failure("ocr/unavailable"); }
   let response: Response;
 
   try {
-    response = await fetch(getPrescriptionAnalyzeUrl(), {
+    response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image_url: imageUrl }),
     });
-  } catch (err: any) {
-    // 這裡抓到的通常就是 ATS / 連線層問題
-    throw new Error(`Network request failed: ${String(err?.message ?? err)}`);
+  } catch {
+    throw failure("ocr/network");
   }
-
-  const text = await response.text(); // 先拿原始內容，避免 json() 把線索吃掉
-
   if (!response.ok) {
-    throw new Error(`AI analyze failed (${response.status}): ${text}`);
+    throw failure(response.status === 429 ? "ocr/busy" : response.status >= 500 ? "ocr/unavailable" : "ocr/recognition");
   }
-
+  let text: string;
+  try { text = await response.text(); } catch { throw failure("ocr/network"); }
   try {
     return JSON.parse(text) as AnalyzeResult;
   } catch {
-    throw new Error(`AI analyze returned non-JSON: ${text}`);
+    throw failure("ocr/recognition");
   }
 }
 

@@ -37,6 +37,7 @@ import {
   pickDynamicLocalizedString,
 } from "@/src/i18n/dynamicTranslation";
 import { translations, type Language } from "@/src/i18n/translations";
+import { userErrorCopy } from "@/src/ui/userErrorMessages";
 import { useLanguage } from "@/src/store/LanguageContext";
 
 type CalendarEventRecord = {
@@ -801,9 +802,7 @@ export default function CaregiverCalendarScreen() {
                 error,
               });
               setDailyChecklistError(
-                `每日任務建立失敗${firestoreError.code ? `（${firestoreError.code}）` : ""}：${
-                  firestoreError.message ?? "請稍後再試。"
-                }`
+                userErrorCopy[language].taskCreate
               );
             } finally {
               if (dailyChecklistInitializationRef.current === dailyChecklistDocId) {
@@ -846,7 +845,7 @@ export default function CaregiverCalendarScreen() {
           error,
         });
         setDailyChecklistError(
-          `每日任務讀取失敗${error.code ? `（${error.code}）` : ""}，請稍後再試。`
+          userErrorCopy[language].taskLoad
         );
         setDailyChecklistItems([]);
       }
@@ -860,6 +859,7 @@ export default function CaregiverCalendarScreen() {
     legacyPatientDocChecklistDocId,
     legacyPatientsIdChecklistDocId,
     legacyTopLevelChecklistDocIds,
+    language,
     selectedDateKey,
     user?.uid,
   ]);

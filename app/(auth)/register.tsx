@@ -9,6 +9,7 @@ import { useLanguage } from "@/src/store/LanguageContext";
 import { isValidRegistrationPassword } from "@/src/auth/passwordPolicy";
 import { PRIVACY_POLICY_VERSION, privacyCopy } from "@/src/privacy/consent";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
+import { registrationErrorMessage } from "@/src/auth/registrationError";
 
 export default function RegisterScreen() {
   const { register } = useAuth();
@@ -24,9 +25,11 @@ export default function RegisterScreen() {
   const [emergencyPhone2, setEmergencyPhone2] = useState("");
   const [loading, setLoading] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [registrationError, setRegistrationError] = useState("");
 
   async function onRegister() {
     if (loading) return;
+    setRegistrationError("");
     if (!privacyAccepted) {
       Alert.alert(t.prompt, privacy.required);
       return;
@@ -61,10 +64,10 @@ export default function RegisterScreen() {
       await register(email, password, role, extra);
 
       router.replace("/");
-    } catch (e: any) {
-      const weakPassword = e?.code === "auth/weak-password" || e?.code === "auth/password-does-not-meet-requirements";
-      Alert.alert(t.registerFailed, e?.code === "privacy/consent-required" ? privacy.required :
-        weakPassword ? t.registerValidation : e?.message ?? t.registerFailedFallback);
+    } catch (e: unknown) {
+      const message = registrationErrorMessage(e, t, privacy.required);
+      setRegistrationError(message);
+      Alert.alert(t.registerFailed, message);
     } finally {
       setLoading(false);
     }
@@ -232,7 +235,7 @@ export default function RegisterScreen() {
             placeholder="example@mail.com"
             autoCapitalize="none"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={value => { setEmail(value); setRegistrationError(""); }}
             editable={!loading}
             style={{
               backgroundColor: "#F2F2F7",
@@ -347,6 +350,12 @@ export default function RegisterScreen() {
           </Pressable>
           <Text style={{ fontSize: 12, lineHeight: 19, color: "#666" }}>{privacy.scope}</Text>
         </View>
+
+        {registrationError ? (
+          <Text accessibilityRole="alert" style={{ color: "#B42318", fontSize: 15, lineHeight: 23 }}>
+            {registrationError}
+          </Text>
+        ) : null}
 
         <Pressable
           onPress={onRegister}

@@ -1,4 +1,5 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { userErrorMessage } from "@/src/ui/userErrorMessages";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useState } from "react";
 import {
@@ -159,21 +160,8 @@ function CameraScreen() {
           analyzeResult: JSON.stringify(safe),
         },
       });
-    } catch (e: any) {
-      console.log("❌ ERROR:", e);
-      console.log("❌ MESSAGE:", e?.message);
-
-      const msg = String(e?.message ?? e ?? "");
-
-      if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
-        Alert.alert(
-          t.cameraAiLimitTitle,
-          t.cameraAiLimitMessage
-        );
-        return;
-      }
-
-      Alert.alert(t.cameraProcessFailed, msg || t.cameraUnknownError);
+    } catch (e: unknown) {
+      Alert.alert(t.cameraProcessFailed, userErrorMessage(e, "ocr", language));
     } finally {
       setIsAnalyzing(false);
     }
