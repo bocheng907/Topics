@@ -119,6 +119,13 @@ test('rules: agency sees only bound limited data; own profile atomic sync; summa
   await denied(reportService.getAgencyReportContext(request(f.outsider, {patientId: f.patientId})));
   const created = await reportService.createAgencyReport(request(f.family, {patientId: f.patientId, caregiverUid: f.caregiver, title: 'Synthetic', description: 'Test only'}));
   const reportPath = 'agency_reports/' + created.reportId;
+  assert.equal((await db.doc(reportPath).get()).data().category, 'other');
+  for (const category of ['', null, 123, 'unknown']) {
+    await assert.rejects(reportService.createAgencyReport(request(f.family, {
+      patientId: f.patientId, caregiverUid: f.caregiver,
+      title: 'Invalid category', description: 'Validation', category,
+    })), {code: 'invalid-argument'});
+  }
   await clientDb.getDocs(clientDb.query(clientDb.collection(a, 'agency_reports'), clientDb.where('agencyUid', '==', f.agency), clientDb.where('caregiverUid', '==', f.caregiver)));
   await denied(clientDb.getDoc(clientDb.doc(other, reportPath)));
   await clientDb.updateDoc(clientDb.doc(a, reportPath), {status: 'resolved', level: 'normal', handlingNote: 'Resolved', updatedAt: clientDb.serverTimestamp(), handledAt: clientDb.serverTimestamp(), handledBy: f.agency});

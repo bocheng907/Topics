@@ -302,16 +302,23 @@ function ReportTrendChart({
 }
 
 export default function AgencyAnalyticsScreen() {
+  const [attempt, setAttempt] = useState(0);
+  return <AgencyAnalyticsContent key={attempt} onRetry={() => setAttempt(value => value + 1)} />;
+}
+
+function AgencyAnalyticsContent({ onRetry }: { onRetry: () => void }) {
   const insets = useSafeAreaInsets();
 
   const {
     reports,
     loading: reportLoading,
+    error: reportError,
   } = useAgencyReports();
 
   const {
     caregivers,
     loading: caregiverLoading,
+    error: caregiverError,
   } = useAgencyCaregivers();
 
   const totalReports = reports.length;
@@ -577,7 +584,16 @@ export default function AgencyAnalyticsScreen() {
         <View style={styles.headerSide} />
       </View>
 
-      {loading ? (
+      {reportError || caregiverError ? (
+        <View style={styles.loadingState}>
+          <Text accessibilityRole="alert" style={styles.loadingText}>
+            統計資料載入失敗，暫時無法顯示完整統計。請確認網路連線及帳號權限後重試。
+          </Text>
+          <Pressable accessibilityRole="button" onPress={onRetry} style={{ padding: 16 }}>
+            <Text style={styles.loadingText}>重新載入</Text>
+          </Pressable>
+        </View>
+      ) : loading ? (
         <View style={styles.loadingState}>
           <ActivityIndicator
             size="large"

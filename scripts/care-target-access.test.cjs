@@ -391,7 +391,7 @@ test('server creation preserves schema and rejects role and ownership spoofing',
   await rest('/patients/' + result.patientId, f.owner, 200, null, 'GET');
   await rest('/patients/' + result.patientId, f.outsider, 403, null, 'GET');
 });
-test('server creation validates bounds and limits attempts', async () => {
+test('server creation validates bounds without charging invalid attempts', async () => {
   const f = await fixture();
   for (const input of [{name: ''}, {name: 123}, {name: 'x'.repeat(201)},
     {name: 'Test', notes: 'x'.repeat(5001)}]) {
@@ -399,6 +399,10 @@ test('server creation validates bounds and limits attempts', async () => {
   }
   for (let i = 0; i < 6; i++) {
     await assert.rejects(f.service.createCareTarget(req(f.owner, {name: ''})), {code: 'invalid-argument'});
+  }
+  for (let i = 0; i < 10; i++) {
+    const created = await f.service.createCareTarget(req(f.owner, {name: 'Test'}));
+    assert.ok(created.patientId);
   }
   await assert.rejects(f.service.createCareTarget(req(f.owner, {name: 'Test'})), {code: 'resource-exhausted'});
 });

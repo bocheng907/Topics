@@ -149,9 +149,9 @@ function createAgencyReportService(db) {
         data.caregiverUid || "",
     ).trim();
 
-    const category = String(
-      data.category || "",
-  ).trim();
+    // Older clients do not send category. Explicit invalid values still fail.
+    const category = data.category === undefined ? "other" :
+      (typeof data.category === "string" ? data.category.trim() : "");
 
     const title = String(
         data.title || "",
