@@ -1,4 +1,5 @@
 import { auth, functions } from "@/firebase/firebaseConfig";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { signOut } from "@/src/auth/auditSession";
 import { useAuth } from "@/src/auth/useAuth";
 import { useLanguage } from "@/src/store/LanguageContext";
@@ -9,7 +10,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,

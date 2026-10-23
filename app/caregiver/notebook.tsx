@@ -1,4 +1,5 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
@@ -16,7 +17,6 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,

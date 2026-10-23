@@ -1,4 +1,5 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 // app/family/voice.tsx
 import { Feather, Ionicons } from '@expo/vector-icons'; // 💡 引入專業圖示庫
 import {
@@ -11,7 +12,7 @@ import {
 } from 'expo-audio';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 // Firebase 相關
 import { db } from '@/firebase/firebaseConfig';
@@ -470,7 +471,7 @@ const styles = StyleSheet.create({
   
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
   taskCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', paddingVertical: 14, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexWrap: "wrap", gap: 12 },
-  taskLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  taskLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 200 },
   imageBox: { width: 90, height: 90, backgroundColor: '#F0F0F0', borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden' },
   taskImage: { width: 100, height: 100 },
   taskInfo: { justifyContent: 'center', flex: 1, minWidth: 0 },
@@ -483,7 +484,7 @@ const styles = StyleSheet.create({
   waveContainer: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 16 },
   waveBar: { width: 3, backgroundColor: '#000', borderRadius: 2 },
   
-  taskRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
+  taskRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 'auto' },
   iconBtn: { padding: 10 },
   
   modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', zIndex: 50 },

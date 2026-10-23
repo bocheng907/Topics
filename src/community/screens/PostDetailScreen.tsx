@@ -517,6 +517,8 @@ export default function PostDetailScreen() {
         />
         <Pressable
           onPress={handleSubmitComment}
+          accessibilityRole="button"
+          accessibilityLabel="傳送留言"
           disabled={post.status !== "published" || commentText.trim() === "" || sendingComment}
           style={[
             styles.sendBtn,

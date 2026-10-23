@@ -11,7 +11,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, router, useSegments } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import React, { useEffect, useState } from "react";
-import { Alert, Animated, Platform, ScrollView, useWindowDimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Platform, ScrollView, useWindowDimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 
@@ -52,7 +53,7 @@ export default function FamilyLayout() {
     Animated.timing(slideAnim, {
       toValue: isSidebarOpen ? 1 : 0,
       duration: 300,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start();
   }, [isSidebarOpen, slideAnim]);
 
@@ -120,6 +121,9 @@ export default function FamilyLayout() {
 
       {!hideBottomNav && !segments.includes("community") && (
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={{ zh: "開啟選單", en: "Open menu", vi: "Mở menu", id: "Buka menu" }[language]}
+          accessibilityState={{ expanded: isSidebarOpen }}
           style={[styles.hamburgerBtn, { top: insets.top + 10 }]}
           onPress={() => setIsSidebarOpen(true)}
         >
@@ -158,6 +162,7 @@ export default function FamilyLayout() {
         style={[
           styles.drawer,
           {
+            display: isSidebarOpen ? "flex" : "none",
             width: drawerWidth,
             transform: [{ translateX }],
             paddingTop: insets.top + 16,
@@ -172,7 +177,7 @@ export default function FamilyLayout() {
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.menuContainer, { paddingBottom: insets.bottom + 24 }]}>
           <AuditMenuLink onNavigate={() => setIsSidebarOpen(false)} />
-          <PrivacyPolicyLink />
+          <PrivacyPolicyLink variant="menu" />
           <Pressable style={styles.menuItem} onPress={() => {
             setIsSidebarOpen(false);
             router.push("/family/community" as any);
@@ -291,7 +296,7 @@ export default function FamilyLayout() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF" },
+  container: { flex: 1, backgroundColor: "#FFF", overflow: "hidden" },
   content: { flex: 1 },
   hamburgerBtn: {
     position: "absolute",

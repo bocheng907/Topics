@@ -306,6 +306,7 @@ export default function NewPostScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* 分類選擇 */}
+        {category === "" && <Text style={{ color: COMMUNITY_COLORS.textSecondary, marginBottom: 8, paddingHorizontal: 20 }}>請先選擇文章分類，再填寫標題與內容。</Text>}
         <View style={styles.categoryRow}>
           {POST_CATEGORIES.map((item) => {
             const style = getCategoryStyle(item);
@@ -314,6 +315,8 @@ export default function NewPostScreen() {
             return (
               <Pressable
                 key={item}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected, disabled: publishing }}
                 onPress={() => setCategory(item)}
                 disabled={publishing}
                 style={[
@@ -439,6 +442,9 @@ export default function NewPostScreen() {
 
         <Pressable
           onPress={handlePublish}
+          accessibilityRole="button"
+          accessibilityLabel={submitLabel}
+          accessibilityState={{ disabled: !canPublish, busy: publishing }}
           disabled={!canPublish}
           style={[styles.headerSide, styles.publishBtn]}
           hitSlop={8}

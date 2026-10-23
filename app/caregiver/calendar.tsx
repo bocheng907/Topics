@@ -1,4 +1,5 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -17,7 +18,6 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import {
-  Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
@@ -685,7 +685,9 @@ export default function CaregiverCalendarScreen() {
 
         if (oldDocs.length === 0) {
           for (const legacyItemsRef of legacyItemRefs) {
-            const candidateSnap = await getDocs(legacyItemsRef);
+            const candidateSnap = await getDocs(
+              query(legacyItemsRef, where("patientId", "==", activePatientId))
+            );
             if (!candidateSnap.empty) {
               oldDocs = candidateSnap.docs;
               break;
@@ -1013,6 +1015,7 @@ export default function CaregiverCalendarScreen() {
         authCurrentUserUid: auth.currentUser?.uid,
         saveError,
       });
+      Alert.alert("儲存失敗", "行程尚未儲存，請檢查網路後再試。");
       return;
     }
 
@@ -1025,6 +1028,7 @@ export default function CaregiverCalendarScreen() {
       await deleteDoc(doc(db, CALENDAR_EVENTS_COLLECTION, eventId));
     } catch (error) {
       console.log("delete calendar event failed:", error);
+      Alert.alert("刪除失敗", "行程未能刪除，請稍後再試。");
     }
   };
 
@@ -1055,6 +1059,7 @@ export default function CaregiverCalendarScreen() {
       });
     } catch (error) {
       console.log("toggle calendar event completed failed:", error);
+      Alert.alert("操作失敗", "無法更新行程狀態，請稍後再試。");
       setEvents((prevEvents) =>
         prevEvents.map((item) => (item.id === event.id ? { ...item, isCompleted: event.resolvedIsCompleted } : item))
       );
@@ -1358,6 +1363,9 @@ export default function CaregiverCalendarScreen() {
                   {sortedDailyChecklistItems.map((item) => (
                     <View key={item.id} style={styles.dailyChecklistItemRow}>
                       <Pressable
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={getDailyChecklistItemTitle(item, t, language)}
+                        accessibilityState={{ checked: item.completed }}
                         style={[
                           styles.dailyChecklistStatusButton,
                           item.completed
@@ -1390,6 +1398,8 @@ export default function CaregiverCalendarScreen() {
 
                       <Pressable
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`編輯 ${getDailyChecklistItemTitle(item, t, language)}`}
                         style={styles.dailyChecklistIconButton}
                         onPress={() => startEditDailyChecklistItem(item)}
                       >
@@ -1397,6 +1407,8 @@ export default function CaregiverCalendarScreen() {
                       </Pressable>
                       <Pressable
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`刪除 ${getDailyChecklistItemTitle(item, t, language)}`}
                         style={styles.dailyChecklistIconButton}
                         onPress={() => confirmDeleteDailyChecklistItem(item)}
                       >
@@ -1464,14 +1476,14 @@ export default function CaregiverCalendarScreen() {
                           {eventPersonName || eventTitle || t.unnamedRecord}
                         </Text>
 
-                        {eventTitle && eventTitle !== eventPersonName && (
+                        {!!eventTitle && eventTitle !== eventPersonName && (
                           <Text style={[styles.eventTitleText, primaryTextStyle, completedTextStyle]} numberOfLines={2}>
                             {eventTitle}
                           </Text>
                         )}
 
                         <View style={styles.eventMetaWrap}>
-                          {eventTitle && (
+                          {!!eventTitle && (
                             <View style={styles.eventMetaPill}>
                               <Text style={[styles.eventMetaText, secondaryTextStyle, completedTextStyle]} numberOfLines={1}>
                                 {t.calendarType}: {eventTitle}
@@ -1479,7 +1491,7 @@ export default function CaregiverCalendarScreen() {
                             </View>
                           )}
 
-                          {eventLocation && (
+                          {!!eventLocation && (
                             <View style={styles.eventMetaPill}>
                               <Text style={[styles.eventMetaText, secondaryTextStyle, completedTextStyle]} numberOfLines={1}>
                                 {t.calendarLocation}: {eventLocation}
@@ -1488,7 +1500,7 @@ export default function CaregiverCalendarScreen() {
                           )}
                         </View>
 
-                        {eventDescription && (
+                        {!!eventDescription && (
                           <Text style={[styles.eventDescriptionText, secondaryTextStyle, completedTextStyle]}>
                             {eventDescription}
                           </Text>
@@ -1532,7 +1544,7 @@ export default function CaregiverCalendarScreen() {
         </ScrollView>
       </View>
 
-      <Pressable style={styles.plusButton} onPress={openCreateForm}>
+      <Pressable accessibilityRole="button" accessibilityLabel="新增行程" style={styles.plusButton} onPress={openCreateForm}>
         <Ionicons name="add" size={38} color="#FFF" />
       </Pressable>
 
@@ -1552,6 +1564,8 @@ export default function CaregiverCalendarScreen() {
           <View style={styles.formSheet}>
             <View style={styles.formHeader}>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="取消編輯行程"
                 onPress={() => {
                   setFormOpen(false);
                   resetForm();
@@ -1561,7 +1575,7 @@ export default function CaregiverCalendarScreen() {
               >
                 <Text style={styles.formHeaderIcon}>X</Text>
               </Pressable>
-              <Pressable onPress={confirmEvent} hitSlop={12} style={styles.formConfirmButton}>
+              <Pressable accessibilityRole="button" accessibilityLabel="儲存行程" onPress={confirmEvent} hitSlop={12} style={styles.formConfirmButton}>
                 <Ionicons name="checkmark" size={34} color="#111" />
               </Pressable>
             </View>

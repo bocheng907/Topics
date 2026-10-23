@@ -1,4 +1,5 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -7,7 +8,6 @@ import {
   TextInput,
   ScrollView,
   Pressable,
-  Alert,
   StyleSheet,
   StatusBar,
   KeyboardAvoidingView, 
@@ -223,7 +223,7 @@ function FamilyEditScreen() {
           feeding_times: normalizeExplicitScheduleTimes(it.feeding_times),
         })),
       });
-      Alert.alert(t.saveSuccessTitle, t.saveSuccessMessage, [{ text: t.confirm, onPress: () => router.back() }]);
+      Alert.alert(t.saveSuccessTitle, t.saveSuccessMessage, [{ text: t.confirm, onPress: () => router.canGoBack() ? router.back() : router.replace("/family/list") }]);
     } catch (e) {
       console.error("更新失敗:", e);
       Alert.alert(t.resultSaveFailedTitle, t.resultSaveFailedMessage);

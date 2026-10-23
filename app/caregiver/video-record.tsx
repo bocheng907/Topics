@@ -1,11 +1,12 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Feather, Ionicons } from '@expo/vector-icons';
 import VideoPlayerView from '@/src/media/VideoPlayerView';
 import * as ImagePicker from 'expo-image-picker';
 import { randomUUID } from 'expo-crypto';
 import { router, useNavigation } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 // Firebase 相關
 import { db, storage } from '@/firebase/firebaseConfig';
@@ -173,6 +174,8 @@ export default function AbnormalRecordScreen() {
   };
 
   const handlePickMedia = () => {
+    // Web file picker supports choosing local images/videos; native retains camera choice.
+    if (Platform.OS === 'web') { void openGallery(); return; }
     Alert.alert(t.method, t.cameraStartAnalyze, [
       { text: t.cameraTakePhoto, onPress: openCamera },
       { text: t.cameraPickImage, onPress: openGallery },

@@ -1,4 +1,5 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 // app/family/list.tsx
 import React, { useEffect, useState } from "react";
 import {
@@ -8,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   StatusBar,
-  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";

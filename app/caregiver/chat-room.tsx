@@ -1,5 +1,7 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
-import React, { useEffect, useRef, useState } from "react";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { chatCopy } from "@/src/chat/chatCopy";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +13,6 @@ import {
   Platform,
   ActivityIndicator,
   Image,
-  Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -46,6 +47,11 @@ export default function CaregiverChatRoomScreen() {
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const sendLock = useRef(false);
+  const uploadLock = useRef(false);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [senderProfile, setSenderProfile] = useState({ displayName: "", avatarUrl: "" });
   const chatScrollRef = useRef<ScrollView>(null);
   const shouldScrollToEndRef = useRef(true);
@@ -55,6 +61,7 @@ export default function CaregiverChatRoomScreen() {
   const { user } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
+  const copy = chatCopy[language];
 
   useEffect(() => {
     let mounted = true;
@@ -80,9 +87,14 @@ export default function CaregiverChatRoomScreen() {
   const roomType = "caregiver" as const;
   const messageCollection = chatMessageCollection(roomType);
   const chatScope = `${user?.uid}/${targetId}/${messageCollection}`;
+  const currentScope = useRef(chatScope);
+  useLayoutEffect(() => {
+    currentScope.current = chatScope;
+    return () => { currentScope.current = ""; };
+  }, [chatScope]);
   const [previousChatScope, setPreviousChatScope] = useState<string | null>(null);
   if (previousChatScope !== chatScope) {
-    setPreviousChatScope(chatScope); setMessages([]); setInputText(""); setLoading(Boolean(targetId));
+    setPreviousChatScope(chatScope); setMessages([]); setInputText(""); setLoading(Boolean(targetId)); setLoadError(false);
   }
 
   const generateCustomId = (pId: string) => {
@@ -105,10 +117,10 @@ export default function CaregiverChatRoomScreen() {
   };
 
   useEffect(() => {
-    if (!targetId) {
+    if (!targetId || !user?.uid) {
       return;
     }
-
+    let active = true;
     const q = query(
       collection(db, "chats", targetId, messageCollection),
       orderBy("createdAt", "asc")
@@ -117,19 +129,24 @@ export default function CaregiverChatRoomScreen() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
+        if (!active) return;
         const msgs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         shouldScrollToEndRef.current = true;
         setMessages(msgs);
         setLoading(false);
+        setLoadError(false);
       },
       (error) => {
+        if (!active) return;
         console.error("Firebase 錯誤：", error);
+        setMessages([]);
+        setLoadError(true);
         setLoading(false);
       }
     );
 
-    return () => unsubscribe();
-  }, [targetId, messageCollection]);
+    return () => { active = false; unsubscribe(); };
+  }, [targetId, messageCollection, user?.uid, retry]);
 
   useEffect(() => {
     if (!targetId || language === "zh") return;
@@ -167,7 +184,9 @@ export default function CaregiverChatRoomScreen() {
   };
 
   const uploadImage = async (uri: string) => {
-    if (!targetId || !user) return;
+    if (!targetId || !user || uploadLock.current) return;
+    uploadLock.current = true;
+    const scope = chatScope;
     setUploading(true);
 
     try {
@@ -179,37 +198,30 @@ export default function CaregiverChatRoomScreen() {
         customMetadata: {uploaderUid: user.uid, patientId: targetId},
       });
 
-      uploadTask.on(
-        "state_changed",
-        undefined,
-        (error) => {
-          console.error("上傳失敗:", error);
-          setUploading(false);
-        },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const customId = generateCustomId(targetId) + "_" + randomUUID();
+      const snapshot = await uploadTask;
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      const customId = generateCustomId(targetId) + "_" + randomUUID();
+      await setDoc(doc(db, "chats", targetId, messageCollection, customId), {
+        imageUrl: downloadURL,
+        senderId: user.uid,
+        senderName: senderProfile.displayName || t.caregiver,
+        senderAvatarUrl: senderProfile.avatarUrl,
+        createdAt: serverTimestamp(),
+      });
 
-          await setDoc(doc(db, "chats", targetId, messageCollection, customId), {
-            imageUrl: downloadURL,
-            senderId: user.uid,
-            senderName: senderProfile.displayName || t.caregiver,
-            senderAvatarUrl: senderProfile.avatarUrl,
-            createdAt: serverTimestamp(),
-          });
-
-          setUploading(false);
-        }
-      );
     } catch (e) {
       console.error("圖片處理失敗", e);
+      if (currentScope.current === scope) Alert.alert(t.resultErrorTitle, copy.photoFailed);
+    } finally {
+      uploadLock.current = false;
       setUploading(false);
     }
   };
 
   const sendMessage = async () => {
-    if (!inputText.trim() || !targetId || !user) return;
-
+    if (!inputText.trim() || !targetId || !user || sendLock.current) return;
+    sendLock.current = true; setSending(true);
+    const scope = chatScope;
     try {
       const customId = generateCustomId(targetId) + "_" + randomUUID();
 
@@ -223,9 +235,12 @@ export default function CaregiverChatRoomScreen() {
         createdAt: serverTimestamp(),
       });
 
-      setInputText("");
+      if (currentScope.current === scope) setInputText("");
     } catch (e) {
       console.error("發送失敗", e);
+      if (currentScope.current === scope) Alert.alert(t.resultErrorTitle, copy.sendFailed);
+    } finally {
+      sendLock.current = false; setSending(false);
     }
   };
 
@@ -251,7 +266,14 @@ export default function CaregiverChatRoomScreen() {
         <View style={{ width: 40 }} />
       </ScreenHeader>
 
-      {loading ? (
+      {loadError ? (
+        <View style={styles.emptyContainer}>
+          <Text accessibilityRole="alert" style={styles.emptySubText}>{copy.loadFailed}</Text>
+          <Pressable accessibilityRole="button" onPress={() => { setLoadError(false); setLoading(true); setRetry(value => value + 1); }} style={{padding: 16}}>
+            <Text>{copy.retry}</Text>
+          </Pressable>
+        </View>
+      ) : loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#9999E5" />
           <Text style={styles.loadingText}>{t.loadingMessages}</Text>
@@ -339,7 +361,7 @@ export default function CaregiverChatRoomScreen() {
       )}
 
       <View style={styles.inputArea}>
-        <Pressable onPress={pickImageAndSend} style={styles.photoBtn} disabled={uploading}>
+        <Pressable accessibilityRole="button" accessibilityLabel={copy.photo} onPress={pickImageAndSend} style={styles.photoBtn} disabled={uploading}>
           <View
             style={[
               styles.iconCircle,
@@ -359,17 +381,20 @@ export default function CaregiverChatRoomScreen() {
           value={inputText}
           onChangeText={setInputText}
           placeholder={t.inputMessage}
+          editable={!sending && !loading && !loadError && !!user && !!targetId}
           multiline
         />
 
         <Pressable
           onPress={sendMessage}
+          accessibilityRole="button"
+          accessibilityLabel={copy.send}
           style={({ pressed }) => [
             styles.sendBtn,
             !inputText.trim() && { opacity: 0.5 },
             pressed && { opacity: 0.7 },
           ]}
-          disabled={!inputText.trim()}
+          disabled={!inputText.trim() || sending}
         >
           <View style={styles.iconCircle}>
             <Ionicons name="send" size={20} color="#FFF" style={{ marginLeft: 3 }} />

@@ -12,25 +12,20 @@ service firebase.storage {
         /databases/(default)/documents/patients/$(patientId));
     }
 
-    function patientExists(patientId) {
-      return signedIn() && firestore.exists(
-        /databases/(default)/documents/patients/$(patientId));
-    }
-
     function isFamily(patientId) {
-      return patientExists(patientId)
-        && patient(patientId).data.families is list
-        && request.auth.uid in patient(patientId).data.families;
+      return signedIn() && request.auth.uid in patient(patientId).data.get('families', []);
     }
 
     function isCaregiver(patientId) {
-      return patientExists(patientId)
-        && patient(patientId).data.caregivers is list
-        && request.auth.uid in patient(patientId).data.caregivers;
+      return signedIn() && request.auth.uid in patient(patientId).data.get('caregivers', []);
     }
 
     function isLinked(patientId) {
-      return isFamily(patientId) || isCaregiver(patientId);
+      // Two cross-service documents only: account state and patient. Avoid
+      // repeated exists/get chains, especially the non-family caregiver path.
+      let data = patient(patientId).data;
+      return signedIn() && (request.auth.uid in data.get('families', [])
+        || request.auth.uid in data.get('caregivers', []));
     }
 
     function uuidFile(fileName, extensions) {

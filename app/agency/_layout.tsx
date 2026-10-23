@@ -1,4 +1,5 @@
 // app/agency/_layout.tsx
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { auth } from "@/firebase/firebaseConfig";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Stack, router, useSegments } from "expo-router";
@@ -8,7 +9,6 @@ import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import AuditMenuLink from "@/src/audit/AuditMenuLink";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Animated,
   ScrollView,
   useWindowDimensions,
@@ -40,7 +40,7 @@ export default function AgencyLayout() {
     Animated.timing(slideAnim, {
       toValue: isSidebarOpen ? 1 : 0,
       duration: 300,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start();
   }, [isSidebarOpen, slideAnim]);
 
@@ -120,6 +120,9 @@ export default function AgencyLayout() {
       {/* 仲介首頁右上角漢堡 */}
       {isAgencyHome && (
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="開啟選單"
+          accessibilityState={{ expanded: isSidebarOpen }}
           style={[styles.hamburgerBtn, { top: insets.top + 10 }]}
           onPress={() => setIsSidebarOpen(true)}
         >
@@ -147,6 +150,7 @@ export default function AgencyLayout() {
         style={[
           styles.drawer,
           {
+            display: isSidebarOpen ? "flex" : "none",
             width: DRAWER_WIDTH,
             transform: [{ translateX }],
             paddingTop: insets.top + 40,
@@ -173,7 +177,7 @@ export default function AgencyLayout() {
           <Pressable style={styles.menuItem} onPress={() => goTo("/account-deletion")}>
             <Text style={styles.menuItemText}>帳號刪除</Text>
           </Pressable>
-          <PrivacyPolicyLink />
+          <PrivacyPolicyLink variant="menu" />
           <AuditMenuLink onNavigate={() => setIsSidebarOpen(false)} />
 
           <Pressable
@@ -199,6 +203,7 @@ export default function AgencyLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    overflow: "hidden",
     backgroundColor: "#FFFFFF",
   },
 

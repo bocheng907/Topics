@@ -29,7 +29,7 @@ export async function createEnv({ storage = false } = {}) {
     ...(storage ? {
       storage: {
         ...hostPort(process.env.FIREBASE_STORAGE_EMULATOR_HOST, 9299),
-        rules: readFileSync(join(root, "storage.rules"), "utf8"),
+        rules: readFileSync(join(root, process.env.STORAGE_RULES_CANDIDATE || "storage.rules"), "utf8"),
       },
     } : {}),
   });

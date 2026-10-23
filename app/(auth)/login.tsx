@@ -19,8 +19,10 @@ export default function LoginScreen() {
   const [errorMessage, setErrorMessage] = useState("");
 
   async function onLogin() {
+    if (loading) return;
     setErrorMessage("");
-    if (!email || !password) {
+    if (!email.trim() || !password) {
+      setErrorMessage(t.loginRequiredFields);
       Alert.alert(t.prompt, t.loginRequiredFields);
       return;
     }
@@ -90,6 +92,7 @@ export default function LoginScreen() {
 
         {!!errorMessage && <Text accessibilityRole="alert" style={{ color: "#B42318", fontSize: 15 }}>{errorMessage}</Text>}
         <Pressable
+          accessibilityRole="button"
           onPress={onLogin}
           disabled={loading}
           style={({ pressed }) => ({

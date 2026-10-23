@@ -1,7 +1,8 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, TextInput, ScrollView, Pressable, Alert, StyleSheet, StatusBar, KeyboardAvoidingView, Platform, } from "react-native";
+import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, StatusBar, KeyboardAvoidingView, Platform, } from "react-native";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
@@ -221,7 +222,7 @@ function CaregiverEditScreen() {
           [
             {
               text: t.confirm,
-              onPress: () => router.back(),
+              onPress: () => router.canGoBack() ? router.back() : router.replace("/caregiver/list"),
             },
           ]
         );
@@ -237,7 +238,7 @@ function CaregiverEditScreen() {
           [
             {
               text: t.confirm,
-              onPress: () => router.back(),
+              onPress: () => router.canGoBack() ? router.back() : router.replace("/caregiver/list"),
             },
           ]
         );

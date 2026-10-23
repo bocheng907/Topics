@@ -1,4 +1,5 @@
 // app/caregiver/index.tsx
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { getHomeLayout } from "@/src/ui/homeLayout";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { db } from "@/firebase/firebaseConfig";
@@ -16,7 +17,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   useWindowDimensions,
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,

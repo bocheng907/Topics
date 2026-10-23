@@ -31,11 +31,13 @@ export default function RegisterScreen() {
     if (loading) return;
     setRegistrationError("");
     if (!privacyAccepted) {
+      setRegistrationError(privacy.required);
       Alert.alert(t.prompt, privacy.required);
       return;
     }
     const normalizedName = displayName.normalize("NFKC").trim();
     if (!normalizedName || normalizedName.length > 120) {
+      setRegistrationError(t.displayNameValidation);
       Alert.alert(t.prompt, t.displayNameValidation);
       return;
     }
@@ -43,11 +45,13 @@ export default function RegisterScreen() {
     const normalizedEmail = email.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
     const emailLooksValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail);
     if (!emailLooksValid || !isValidRegistrationPassword(password)) {
+      setRegistrationError(t.registerValidation);
       Alert.alert(t.prompt, t.registerValidation);
       return;
     }
 
     if (role === "family" && (!emergencyPhone1.trim() || !emergencyPhone2.trim())) {
+      setRegistrationError(t.familyPhoneValidation);
       Alert.alert(t.prompt, t.familyPhoneValidation);
       return;
     }
@@ -342,6 +346,7 @@ export default function RegisterScreen() {
         <View style={{ gap: 8 }}>
           <PrivacyPolicyLink />
           <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: privacyAccepted, disabled: loading }}
+            aria-checked={privacyAccepted} aria-disabled={loading}
             accessibilityLabel={privacy.consent} disabled={loading}
             onPress={() => setPrivacyAccepted(value => !value)}
             style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 8 }}>
@@ -358,6 +363,7 @@ export default function RegisterScreen() {
         ) : null}
 
         <Pressable
+          accessibilityRole="button"
           onPress={onRegister}
           disabled={loading || !privacyAccepted}
           style={({ pressed }) => ({

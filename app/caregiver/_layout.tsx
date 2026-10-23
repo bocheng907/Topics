@@ -52,7 +52,7 @@ export default function CaregiverLayout() {
     Animated.timing(slideAnim, {
       toValue: isSidebarOpen ? 1 : 0,
       duration: 300,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start();
   }, [isSidebarOpen, slideAnim]);
 
@@ -184,6 +184,9 @@ export default function CaregiverLayout() {
 
       {!hideBottomNav && (
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={{ zh: "開啟選單", en: "Open menu", vi: "Mở menu", id: "Buka menu" }[language]}
+          accessibilityState={{ expanded: isSidebarOpen }}
           style={[styles.hamburgerBtn, { top: insets.top + 10 }]}
           onPress={() => setIsSidebarOpen(true)}
         >
@@ -227,6 +230,7 @@ export default function CaregiverLayout() {
         style={[
           styles.drawer,
           {
+            display: isSidebarOpen ? "flex" : "none",
             width: drawerWidth,
             transform: [{ translateX }],
             paddingTop: insets.top + 16,
@@ -241,7 +245,7 @@ export default function CaregiverLayout() {
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.menuContainer, { paddingBottom: insets.bottom + 24 }]}>
           <AuditMenuLink onNavigate={() => setIsSidebarOpen(false)} />
-          <PrivacyPolicyLink />
+          <PrivacyPolicyLink variant="menu" />
           <Pressable style={styles.menuItem} onPress={() => {
             setIsSidebarOpen(false);
             router.push("/my-data" as any);
@@ -355,7 +359,7 @@ export default function CaregiverLayout() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF" },
+  container: { flex: 1, backgroundColor: "#FFF", overflow: "hidden" },
   content: { flex: 1 },
   hamburgerBtn: {
     position: "absolute",

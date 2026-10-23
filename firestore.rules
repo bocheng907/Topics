@@ -272,8 +272,9 @@ service cloud.firestore {
         ])
         && request.resource.data.role in ["family", "caregiver", "agency"]
         && validProfileExtras(request.resource.data)
-        && request.resource.data.activePatientId is string
-        && request.resource.data.email is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.activePatientId == ""
+        && boundedString(request.resource.data.email, 320)
         && request.resource.data.emergencyPhone1 is string
         && request.resource.data.emergencyPhone2 is string
         && (!('displayName' in request.resource.data) || (

@@ -39,7 +39,7 @@ const copy = {
 } as const;
 
 export default function AccountSettingsScreen() {
-  const {user} = useAuth();
+  const {user, ready} = useAuth();
   const {language} = useLanguage();
   const t = copy[language];
   const extra = {
@@ -57,8 +57,11 @@ export default function AccountSettingsScreen() {
   const [busy, setBusy] = useState(true);
   const [status, setStatus] = useState("");
   useEffect(() => {
+    if (!ready || !user?.uid) return;
     let active = true;
     (async () => {
+      setBusy(true);
+      setStatus("");
       try {
         const snap = await getDocs(query(collection(db, "users"),
           where("uid", "==", user?.uid || ""), limit(2)));
@@ -87,7 +90,7 @@ export default function AccountSettingsScreen() {
       }
     })();
     return () => { active = false; };
-  }, [t.duplicate, t.failed, user?.uid, user?.role]);
+  }, [ready, t.duplicate, t.failed, user?.uid, user?.role]);
 
   async function chooseAvatar() {
     if (!user || busy || !profileRef) return;

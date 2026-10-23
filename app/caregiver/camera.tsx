@@ -1,4 +1,5 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { userErrorMessage } from "@/src/ui/userErrorMessages";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useState } from "react";
@@ -6,7 +7,6 @@ import {
   View,
   Text,
   Image,
-  Alert,
   ActivityIndicator,
   ScrollView,
   Pressable,

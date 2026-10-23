@@ -59,6 +59,31 @@ test('backend: agency invite is private, role-checked, stable; binding is atomic
   await denied(service.bindAgency(request(other.caregiver, {code: 'BADBAD'})), 'resource-exhausted');
 });
 
+test('backend: agency invite ignores forged target, limits repeated reads, and resets after window', async () => {
+  const f = await fixture();
+  let now = 1000000;
+  const service = createAgencyAccessService(db, () => now);
+  const first = await service.getAgencyInvite(request(f.agency, {uid: f.otherAgency, agencyUid: f.otherAgency}));
+  assert.equal((await db.doc('agency_invites/' + first.inviteCode).get()).data().agencyUid, f.agency);
+  assert.equal((await db.doc('users/' + f.otherAgency).get()).data().agencyInviteCode, undefined);
+  for (let i = 1; i < 10; i++) assert.deepEqual(await service.getAgencyInvite(request(f.agency)), first);
+  await denied(service.getAgencyInvite(request(f.agency)), 'resource-exhausted');
+  now += 600000;
+  assert.deepEqual(await service.getAgencyInvite(request(f.agency)), first);
+});
+
+test('backend: agency invite denies caregiver, duplicate profiles and pending deletion without creating invitations', async () => {
+  const f = await fixture(), service = createAgencyAccessService(db);
+  await denied(service.getAgencyInvite(request(f.caregiver)));
+  await db.doc('users/duplicate-' + f.agency).set({uid: f.agency, role: 'agency'});
+  await denied(service.getAgencyInvite(request(f.agency)));
+  await db.doc('_account_deletions/' + f.otherAgency).set({pending: true});
+  await denied(service.getAgencyInvite(request(f.otherAgency)));
+  for (const uid of [f.caregiver, f.agency, f.otherAgency]) {
+    assert.equal((await db.collection('agency_invites').where('agencyUid', '==', uid).get()).size, 0);
+  }
+});
+
 test('rules: caregiver creates; linked members edit; family chat excludes caregivers and outsiders', async () => {
   const f = await fixture();
   const c = client(f.caregiver), family = client(f.family), outside = client(f.outsider), agency = client(f.agency);

@@ -530,23 +530,10 @@ function getOppositeCalendarRecipientUids(patient, actorUid) {
 }
 
 // ─────────────────────────────────────────
-// 測試用 HTTP endpoint：.../sendTestPush?uid=你的uid
+// Retired debug endpoint. Keep a safe tombstone while old links still exist.
 // ─────────────────────────────────────────
-exports.sendTestPush = onRequest(async (req, res) => {
-  try {
-    const uid = String(req.query.uid || "");
-    if (!uid) { res.status(400).send("Missing uid"); return; }
-
-    const tokens = await getUserPushTokens([uid]);
-    if (!tokens.length) { res.status(404).send("No push tokens found"); return; }
-
-    const result = await sendExpoPush(tokens, "測試通知🔥", "你已經成功打通推播系統了", {type: "test_push"});
-    res.status(200).json({ok: true, uid, tokens, result});
-  } catch (error) {
-    console.error("[sendTestPush] error =", error);
-    res.status(500).send(String(error));
-  }
-});
+exports.sendTestPush = onRequest({invoker: "private"},
+    require("./retiredTestPush").retiredTestPush);
 
 // ─────────────────────────────────────────
 // 每分鐘用藥提醒
