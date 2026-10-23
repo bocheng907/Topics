@@ -72,9 +72,11 @@ async function request(url, uid, body, method = 'POST') {
 }
 async function create(data, expected, transform = true, uid = 'privacy-user') {
   const name = `${prefix}/users/privacy_${process.pid}_${++sequence}`;
-  const write = {update: {name, fields: fields(data)}, currentDocument: {exists: false}};
+  // Match AuthProvider: profile creation and consent both use server time.
+  const write = {update: {name, fields: fields(data)}, currentDocument: {exists: false},
+    updateTransforms: [{fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME'}]};
   if (transform && data.privacyConsent) {
-    write.updateTransforms = [{fieldPath: 'privacyConsent.acceptedAt', setToServerValue: 'REQUEST_TIME'}];
+    write.updateTransforms.push({fieldPath: 'privacyConsent.acceptedAt', setToServerValue: 'REQUEST_TIME'});
   }
   const result = await request(`${base}:commit`, uid, {writes: [write]});
   assert.equal(result.status, expected, result.body);

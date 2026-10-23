@@ -271,9 +271,7 @@ function ReportTrendChart({
           {data.map(
             (item, index) => {
               const showLabel =
-                index % 2 === 0 ||
-                index ===
-                  data.length - 1;
+                index % 2 === 0;
 
               if (!showLabel) {
                 return null;
@@ -362,14 +360,14 @@ function AgencyAnalyticsContent({ onRetry }: { onRetry: () => void }) {
     );
 
     const days = Array.from(
-      { length: 14 },
+      { length: 13 },
       (_, index) => {
         const date =
           new Date(today);
 
         date.setDate(
           today.getDate() -
-            (13 - index)
+            (12 - index)
         );
 
         return {
@@ -843,7 +841,7 @@ function AgencyAnalyticsContent({ onRetry }: { onRetry: () => void }) {
               <View>
                 <View style={styles.trendHeader}>
                   <Text style={styles.trendTitle}>
-                    最近 14 天問題變化
+                    最近 13 天問題變化
                   </Text>
 
                   <Text style={styles.trendSubtitle}>
