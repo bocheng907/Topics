@@ -3,8 +3,6 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   onAuthStateChanged,
-  EmailAuthProvider,
-  reauthenticateWithCredential,
   type User,
 } from "firebase/auth";
 import {
@@ -23,6 +21,7 @@ import { isValidRegistrationPassword } from "./passwordPolicy";
 import { assertPrivacyConsent, PRIVACY_POLICY_VERSION, type PrivacyConsent } from "@/src/privacy/consent";
 import { classifyProfiles, profileStateError } from "./profileState";
 import { syncUserRole } from "./userRole";
+import { registrationAccount, normalizeRegistrationEmail } from "./registrationAccount";
 
 export type Role = "caregiver" | "family" | "agency";
 
@@ -177,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: Role,
       extra?: RegisterExtra
     ) {
-      email = email.trim().toLowerCase();
+      email = normalizeRegistrationEmail(email);
       assertPrivacyConsent(extra?.privacyConsent);
       validateRegistrationName(extra?.displayName);
       if (!["family", "caregiver", "agency"].includes(role)) throw new Error("Invalid account role");
@@ -196,22 +195,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       registrationInProgress.current = true;
       authEpoch.current++;
       try {
-        let fbUser = auth.currentUser;
-        if (fbUser && fbUser.email?.toLowerCase() === email) {
-          // Retry a profile write only after re-verifying this exact account.
-          await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(email, password));
-          const existing = await profileState(fbUser);
-          if (existing.kind !== "missing") throw Object.assign(
-            new Error("Account already registered"), {code: "auth/email-already-in-use"});
-        } else {
-          const cred = await createUserWithEmailAndPassword(auth, email, password);
-          fbUser = cred.user;
-        }
-
-        await createProfile(fbUser, role, extra);
+        const cred = await registrationAccount(
+          () => createUserWithEmailAndPassword(auth, email, password),
+          () => signInWithEmailAndPassword(auth, email, password),
+        );
+        await createProfile(cred.user, role, extra);
       } catch (e: any) {
         console.log("[register] error code =", e?.code);
-        console.log("[register] error message =", e?.message);
         throw e;
       } finally {
         registrationInProgress.current = false;

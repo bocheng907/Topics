@@ -15,8 +15,12 @@ for (const language of ['zh','en','vi','id']) {
     const t = translations[language];
     for (const [code, key] of [
       ['auth/email-already-in-use','registrationEmailInUse'],
+      ['auth/invalid-credential','registrationEmailInUse'],
+      ['auth/wrong-password','registrationEmailInUse'],
       ['auth/invalid-email','registrationInvalidEmail'],
       ['auth/network-request-failed','registrationNetworkError'],
+      ['functions/unavailable','registrationNetworkError'],
+      ['deadline-exceeded','registrationNetworkError'],
       ['auth/too-many-requests','registrationTooManyRequests'],
       ['auth/weak-password','registerValidation'],
       ['auth/password-does-not-meet-requirements','registerValidation'],

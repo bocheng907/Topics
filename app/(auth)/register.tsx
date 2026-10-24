@@ -10,6 +10,7 @@ import { isValidRegistrationPassword } from "@/src/auth/passwordPolicy";
 import { PRIVACY_POLICY_VERSION, privacyCopy } from "@/src/privacy/consent";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { registrationErrorMessage } from "@/src/auth/registrationError";
+import { normalizeRegistrationEmail } from "@/src/auth/registrationAccount";
 
 export default function RegisterScreen() {
   const { register } = useAuth();
@@ -42,7 +43,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    const normalizedEmail = email.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+    const normalizedEmail = normalizeRegistrationEmail(email);
     const emailLooksValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail);
     if (!emailLooksValid || !isValidRegistrationPassword(password)) {
       setRegistrationError(t.registerValidation);
@@ -65,7 +66,7 @@ export default function RegisterScreen() {
         emergencyPhone1,
         emergencyPhone2,
       };
-      await register(email, password, role, extra);
+      await register(normalizedEmail, password, role, extra);
 
       router.replace("/");
     } catch (e: unknown) {
