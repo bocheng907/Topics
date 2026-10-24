@@ -1,4 +1,5 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { ClientOnly } from "@/src/ui/ClientOnly";
 // app/caregiver/communication-cards.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
@@ -25,6 +26,10 @@ const initialTasks = [
 ];
 
 export default function CaregiverVoiceScreen() {
+  return <ClientOnly><CaregiverVoiceContent /></ClientOnly>;
+}
+
+function CaregiverVoiceContent() {
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];

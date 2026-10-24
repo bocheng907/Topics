@@ -35,7 +35,7 @@ export default function TabLayout() {
         options={{
           title: t.home,
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="house.fill" color={color} />
+            <IconSymbol size={28} name="house.fill" color={typeof color === "string" ? color : Colors[colorScheme ?? "light"].tint} />
           ),
         }}
       />
@@ -44,7 +44,7 @@ export default function TabLayout() {
         options={{
           title: t.handbook,
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="paperplane.fill" color={color} />
+            <IconSymbol size={28} name="paperplane.fill" color={typeof color === "string" ? color : Colors[colorScheme ?? "light"].tint} />
           ),
         }}
       />

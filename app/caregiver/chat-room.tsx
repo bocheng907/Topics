@@ -6,6 +6,7 @@ import {
   View,
   Text,
   ScrollView,
+  type ScrollViewInstance,
   TextInput,
   Pressable,
   StyleSheet,
@@ -53,7 +54,7 @@ export default function CaregiverChatRoomScreen() {
   const [loadError, setLoadError] = useState(false);
   const [retry, setRetry] = useState(0);
   const [senderProfile, setSenderProfile] = useState({ displayName: "", avatarUrl: "" });
-  const chatScrollRef = useRef<ScrollView>(null);
+  const chatScrollRef = useRef<ScrollViewInstance>(null);
   const shouldScrollToEndRef = useRef(true);
 
   const { patientId } = useLocalSearchParams<{ patientId: string }>();

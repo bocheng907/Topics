@@ -1,5 +1,5 @@
 import React, { forwardRef } from "react";
-import { ScrollView, ScrollViewProps, StyleSheet, ViewProps } from "react-native";
+import { ScrollView, ScrollViewProps, type ScrollViewInstance, StyleSheet, ViewProps } from "react-native";
 import { Edge, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 /** A fixed header that follows the device notch instead of a guessed top offset. */
@@ -13,7 +13,7 @@ export function ScreenHeader({ style, menuSpace = false, ...props }: ViewProps &
 }
 
 /** Keep scrolling forms inside the safe area, including on short/landscape screens. */
-export const ScreenScrollView = forwardRef<ScrollView, ScrollViewProps & { edges?: Edge[] }>(
+export const ScreenScrollView = forwardRef<ScrollViewInstance, ScrollViewProps & { edges?: Edge[] }>(
   function ScreenScrollView({ edges = ["top", "bottom", "left", "right"], ...props }, ref) {
     return <SafeAreaView style={styles.screen} edges={edges}>
       <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" {...props} ref={ref} />

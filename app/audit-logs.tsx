@@ -95,7 +95,7 @@ export default function AuditLogs() {
         {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       </View>
       <FlatList data={visible} keyExtractor={item => item.id} contentContainerStyle={styles.list}
-        ListEmptyComponent={!busy ? <Text style={styles.muted}>{error ? "請重試載入。" : rows.length ? "已載入的紀錄中沒有符合項目。" : "目前尚無操作紀錄。"}</Text> : null}
+        ListEmptyComponent={!busy ? <Text style={styles.muted}>{error ? "請重試載入。" : rows.length ? "已載入的紀錄中沒有符合項目。" : "目前尚無操作紀錄。"}</Text> : undefined}
         renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityState={{ expanded: expanded === item.id }} onPress={() => setExpanded(expanded === item.id ? null : item.id)} style={styles.card}>
           <Text style={styles.heading}>{labels[item.data.operation] ?? item.data.operation ?? "未知操作"}</Text>
           <Text style={styles.muted}>{time(item.data.occurredAt ?? item.data.createdAt)}</Text>

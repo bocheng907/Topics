@@ -5,6 +5,7 @@ import { ActiveCareTargetProvider } from "@/src/care-target/useActiveCareTarget"
 import { registerForPushToken } from "@/src/notifications/registerForPushToken";
 import { LanguageProvider } from "@/src/store/LanguageContext";
 import { StoreProvider } from "@/src/store/StoreProvider";
+import { ClientOnly } from "@/src/ui/ClientOnly";
 import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
 import { useEffect } from "react";
 
@@ -73,7 +74,8 @@ export default function RootLayout() {
       <LanguageProvider>
         <StoreProvider>
           <ActiveCareTargetProvider>
-            <RootLayoutNav />
+            {/* Session, locale and viewport are client-specific on web. */}
+            <ClientOnly><RootLayoutNav /></ClientOnly>
           </ActiveCareTargetProvider>
         </StoreProvider>
       </LanguageProvider>

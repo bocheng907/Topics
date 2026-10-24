@@ -2,6 +2,7 @@ import { db } from "@/firebase/firebaseConfig";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
+import { AndroidImportance } from "expo-notifications";
 import {
   collection,
   getDocs,
@@ -42,7 +43,7 @@ export async function registerForPushToken(uid: string) {
   if (Device.osName === "Android") {
     await Notifications.setNotificationChannelAsync("default", {
       name: "default",
-      importance: Notifications.AndroidImportance.MAX,
+      importance: AndroidImportance.MAX,
     });
   }
 

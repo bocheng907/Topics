@@ -1,4 +1,5 @@
 import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { ClientOnly } from "@/src/ui/ClientOnly";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 // app/family/voice.tsx
 import { Feather, Ionicons } from '@expo/vector-icons'; // 💡 引入專業圖示庫
@@ -38,6 +39,10 @@ const initialTasks = [
 ];
 
 export default function FamilyVoiceScreen() {
+  return <ClientOnly><FamilyVoiceContent /></ClientOnly>;
+}
+
+function FamilyVoiceContent() {
   const { user } = useAuth();
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();

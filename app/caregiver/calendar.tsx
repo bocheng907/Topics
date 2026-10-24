@@ -22,6 +22,7 @@ import {
   NativeSyntheticEvent,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Text,
   TextInput,
@@ -394,7 +395,7 @@ function WheelColumn<T extends string | number>({
   onChange: (value: T) => void;
   renderValue: (value: T) => string;
 }) {
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const selectedIndex = Math.max(values.findIndex((item) => item === value), 0);
   const verticalPadding = (WHEEL_HEIGHT - WHEEL_ROW_HEIGHT) / 2;
 

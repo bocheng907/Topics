@@ -4,7 +4,7 @@ import { useAuth } from "@/src/auth/useAuth";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import * as Clipboard from "expo-clipboard";
-import { router } from "expo-router";
+import { router, useCanGoBack } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import React, { useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -38,6 +38,7 @@ function CareTargetCreateForm() {
   const [draftReady, setDraftReady] = useState(false);
   const [retryNotice, setRetryNotice] = useState("");
   const [storageError, setStorageError] = useState(false);
+  const canGoBack = useCanGoBack();
   const retryCopy = createRetryCopy[language];
   useEffect(() => {
     let cancelled = false;
@@ -270,7 +271,7 @@ function CareTargetCreateForm() {
         }}
       >
         <Text style={{ color: "#666", textAlign: "center", fontWeight: "700" }}>
-          {router.canGoBack() ? t.back : t.logoutAndBack}
+          {canGoBack ? t.back : t.logoutAndBack}
         </Text>
       </Pressable>
     </ScreenScrollView>

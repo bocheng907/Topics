@@ -13,7 +13,6 @@ import {
   StyleSheet,
   Linking,
   StatusBar,
-  InteractionManager,
 } from "react-native";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -106,15 +105,15 @@ function CameraScreen() {
 
     setRefreshKey(prev => prev + 1);
 
-    InteractionManager.runAfterInteractions(() => {
-      setTimeout(async () => {
-        try {
-          await Linking.openURL(url);
-        } catch {
-          Alert.alert(t.cameraOpenFailed);
-        }
-      }, 300);
-    });
+    // Defer opening the browser until the camera has left the rendered tree.
+    // InteractionManager is no longer exported by React Native in SDK 58.
+    setTimeout(async () => {
+      try {
+        await Linking.openURL(url);
+      } catch {
+        Alert.alert(t.cameraOpenFailed);
+      }
+    }, 300);
   }
 
   async function goNext() {
@@ -170,7 +169,7 @@ function CameraScreen() {
   if (qrMode) {
     return (
       <View style={{ flex: 1, backgroundColor: "#000" }}>
-        <StatusBar barStyle="light-content" backgroundColor="#000" />
+        <StatusBar barStyle="light-content" />
 
        <CameraView
         style={{ flex: 1 }}
@@ -193,7 +192,7 @@ function CameraScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" />
       <ScreenHeader style={styles.topBar}>
         <Pressable onPress={() => router.replace(user?.role === "family" ? "/family" : "/caregiver")} style={styles.topBarBack} hitSlop={8}>
           <Ionicons name="chevron-back" size={24} color="#111827" />
