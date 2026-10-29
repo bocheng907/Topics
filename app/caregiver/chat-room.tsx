@@ -14,6 +14,7 @@ import {
   Platform,
   ActivityIndicator,
   Image,
+  useWindowDimensions,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,14 +34,14 @@ import {
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useAuth } from "@/src/auth/useAuth";
-import {
-  ensureFirestoreTranslations,
-  pickDynamicLocalizedString,
-} from "@/src/i18n/dynamicTranslation";
+import { useChatTranslation } from "@/src/chat/useChatTranslation";
+import { ChatTranslationStatus } from "@/src/chat/ChatTranslationStatus";
+import { chatLocales } from "@/src/chat/chatTranslation";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { chatMessageCollection } from "@/src/chat/rooms";
-import { getUserDocSnapshotByUid } from "@/src/user/getUserDocRefByUid";
+import { useChatProfiles } from "@/src/chat/useChatProfiles";
+import { chatIdentity } from "@/src/chat/chatIdentity";
 import { readLocalBlob } from "@/src/media/readLocalBlob";
 
 export default function CaregiverChatRoomScreen() {
@@ -53,7 +54,6 @@ export default function CaregiverChatRoomScreen() {
   const uploadLock = useRef(false);
   const [loadError, setLoadError] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [senderProfile, setSenderProfile] = useState({ displayName: "", avatarUrl: "" });
   const chatScrollRef = useRef<ScrollViewInstance>(null);
   const shouldScrollToEndRef = useRef(true);
 
@@ -63,30 +63,14 @@ export default function CaregiverChatRoomScreen() {
   const { language } = useLanguage();
   const t = translations[language];
   const copy = chatCopy[language];
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!user?.uid) return;
-      try {
-        const snap = await getUserDocSnapshotByUid(user.uid);
-        if (!mounted || !snap) return;
-        const data = snap.data() as any;
-        setSenderProfile({
-          displayName: String(data.displayName ?? "").trim(),
-          avatarUrl: String(data.avatarUrl ?? "").trim(),
-        });
-      } catch (error) {
-        console.log("load chat sender profile failed:", error);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [user?.uid]);
+  const { width } = useWindowDimensions();
+  const messageMaxWidth = Math.min(600, Math.max(120, width - 76));
 
   const targetId = patientId || activePatientId;
   // Caregivers only use the direct caregiver-family room. Family group is family-only.
   const roomType = "caregiver" as const;
   const messageCollection = chatMessageCollection(roomType);
+  const { senderProfile, profiles } = useChatProfiles(user?.uid, targetId, roomType, messages);
   const chatScope = `${user?.uid}/${targetId}/${messageCollection}`;
   const currentScope = useRef(chatScope);
   useLayoutEffect(() => {
@@ -149,22 +133,7 @@ export default function CaregiverChatRoomScreen() {
     return () => { active = false; unsubscribe(); };
   }, [targetId, messageCollection, user?.uid, retry]);
 
-  useEffect(() => {
-    if (!targetId || language === "zh") return;
-
-    messages.forEach((msg) => {
-      if (!msg.text) return;
-      void ensureFirestoreTranslations(
-        doc(db, "chats", targetId, messageCollection, msg.id),
-        msg,
-        language,
-        [{ baseName: "text", sourceKeys: ["text", "text_original"] }]
-      ).then(translated => {
-        if (Object.keys(translated).length) setMessages(current =>
-          current.map(item => item.id === msg.id ? {...item, ...translated} : item));
-      }).catch(() => console.warn("Chat translation unavailable"));
-    });
-  }, [messages, targetId, language, messageCollection]);
+  const translated = useChatTranslation(messages, language, chatScope);
 
   const pickImageAndSend = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -228,7 +197,6 @@ export default function CaregiverChatRoomScreen() {
 
       await setDoc(doc(db, "chats", targetId, messageCollection, customId), {
         text: inputText,
-        text_zh: inputText,
         text_original: inputText,
         senderId: user.uid,
         senderName: senderProfile.displayName || t.caregiver,
@@ -246,14 +214,10 @@ export default function CaregiverChatRoomScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={0}
-      style={{ flex: 1 }}
-    >
+    <View style={styles.mainContainer}>
       <ScreenHeader style={styles.header}>
         <View style={styles.headerLeft}>
-          <Pressable onPress={() => router.back()} hitSlop={20} style={styles.backBtn}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t.back} onPress={() => router.canGoBack() ? router.back() : router.replace('/caregiver/chat-list')} hitSlop={20} style={styles.backBtn}>
             <Text style={styles.backIcon}>＜</Text>
           </Pressable>
           <Text style={styles.headerTitle}>
@@ -264,8 +228,13 @@ export default function CaregiverChatRoomScreen() {
               : t.chatRoom}
           </Text>
         </View>
-        <View style={{ width: 40 }} />
       </ScreenHeader>
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+        style={{ flex: 1, minHeight: 0 }}
+      >
 
       {loadError ? (
         <View style={styles.emptyContainer}>
@@ -289,6 +258,9 @@ export default function CaregiverChatRoomScreen() {
         </ScrollView>
       ) : (
         <ScrollView
+          style={{ flex: 1, minHeight: 0 }}
+          contentInsetAdjustmentBehavior="never"
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.chatContainer}
           ref={chatScrollRef}
           onContentSizeChange={() => {
@@ -299,59 +271,47 @@ export default function CaregiverChatRoomScreen() {
         >
           {messages.map((msg) => {
             const isMe = msg.senderId === user?.uid;
-            const localizedText = pickDynamicLocalizedString(
-              msg,
-              "text",
-              language,
-              ["text", "text_original"],
-              msg.text
-            );
+            const identity = chatIdentity(msg, profiles, t.caregiver);
+            const localizedText = translated.text(msg);
             const originalText = msg.text || msg.text_original || "";
-            const showOriginal = language !== "zh" && localizedText && originalText && localizedText !== originalText;
             return (
               <View
                 key={msg.id}
                 style={[styles.bubbleWrapper, isMe ? styles.myWrapper : styles.otherWrapper]}
               >
                 <View style={[styles.identityRow, isMe && styles.identityRowMe]}>
-                  {!isMe && (msg.senderAvatarUrl ? (
-                    <Image source={{ uri: msg.senderAvatarUrl }} style={styles.senderAvatar} />
+                  {!isMe && (identity.avatarUrl ? (
+                    <Image source={{ uri: identity.avatarUrl }} style={styles.senderAvatar} />
                   ) : (
                     <View style={[styles.senderAvatar, styles.senderAvatarFallback]}>
-                      <Text style={styles.senderAvatarInitial}>{String(msg.senderName || t.caregiver).trim().slice(0, 1) || "?"}</Text>
+                      <Text style={styles.senderAvatarInitial}>{identity.displayName.slice(0, 1) || "?"}</Text>
                     </View>
                   ))}
-                  <View style={styles.messageColumn}>
-                    <Text style={[styles.senderName, isMe && styles.senderNameMe]} numberOfLines={1}>
-                      {String(msg.senderName || t.caregiver).trim() || t.caregiver}{isMe ? ` · ${t.chatYouLabel}` : ""}
+                  <View style={[styles.messageColumn, { maxWidth: messageMaxWidth }]}>
+                    <Text style={[styles.senderName, isMe && styles.senderNameMe]}>
+                      {identity.displayName || t.caregiver}{isMe ? ` · ${t.chatYouLabel}` : ""}
                     </Text>
                     <View style={[styles.bubble, isMe ? styles.myBubble : styles.otherBubble]}>
                   {msg.imageUrl ? (
                     <Image source={{ uri: msg.imageUrl }} style={styles.sentImage} resizeMode="cover" />
-                  ) : showOriginal ? (
-                    <>
-                      <Text style={[styles.mainText, isMe && { color: "#FFF" }]}>{localizedText}</Text>
-                      <View style={styles.divider} />
-                      <Text style={[styles.subText, isMe && { color: "rgba(255,255,255,0.8)" }]}>{originalText}</Text>
-                    </>
                   ) : (
                     <Text style={[styles.mainText, isMe && { color: "#FFF" }]}>{localizedText || originalText}</Text>
                   )}
                     </View>
                     <Text style={[styles.timeText, { alignSelf: isMe ? "flex-end" : "flex-start" }]}>
                       {msg.createdAt
-                        ? new Date(msg.createdAt.toMillis()).toLocaleTimeString([], {
+                        ? new Date(msg.createdAt.toMillis()).toLocaleTimeString(chatLocales[language], {
                             hour: "2-digit",
                             minute: "2-digit",
                           })
                         : ""}
                     </Text>
                   </View>
-                  {isMe && (msg.senderAvatarUrl ? (
-                    <Image source={{ uri: msg.senderAvatarUrl }} style={styles.senderAvatar} />
+                  {isMe && (identity.avatarUrl ? (
+                    <Image source={{ uri: identity.avatarUrl }} style={styles.senderAvatar} />
                   ) : (
                     <View style={[styles.senderAvatar, styles.senderAvatarFallback]}>
-                      <Text style={styles.senderAvatarInitial}>{String(msg.senderName || t.caregiver).trim().slice(0, 1) || "?"}</Text>
+                      <Text style={styles.senderAvatarInitial}>{identity.displayName.slice(0, 1) || "?"}</Text>
                     </View>
                   ))}
                 </View>
@@ -361,6 +321,7 @@ export default function CaregiverChatRoomScreen() {
         </ScrollView>
       )}
 
+      <ChatTranslationStatus language={language} {...translated} />
       <View style={styles.inputArea}>
         <Pressable accessibilityRole="button" accessibilityLabel={copy.photo} onPress={pickImageAndSend} style={styles.photoBtn} disabled={uploading}>
           <View
@@ -402,19 +363,20 @@ export default function CaregiverChatRoomScreen() {
           </View>
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   mainContainer: { flex: 1, backgroundColor: "#FFF" },
-  header: { backgroundColor: "#9999E5", paddingTop: 12, paddingBottom: 15, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.05)", minHeight: 56 },
+  header: { flexShrink: 0, backgroundColor: "#9999E5", paddingTop: 12, paddingBottom: 15, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.05)", minHeight: 56 },
   headerLeft: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 },
   backBtn: { padding: 5, marginRight: 5 },
   backIcon: { fontSize: 24, color: "#000", fontWeight: "600" },
   headerTitle: { fontSize: 20, fontWeight: "700", color: "#000", marginLeft: 5, flexShrink: 1 },
 
-  chatContainer: { padding: 15, paddingBottom: 30 },
+  chatContainer: { padding: 16, paddingBottom: 24, flexGrow: 1 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { marginTop: 10, color: "#666" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", padding: 40 },
@@ -422,15 +384,15 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 20, fontWeight: "700", color: "#333" },
   emptySubText: { fontSize: 16, color: "#999", textAlign: "center", marginTop: 10 },
 
-  bubbleWrapper: { marginBottom: 15, maxWidth: "92%" },
+  bubbleWrapper: { marginBottom: 20, width: "100%", flexShrink: 0 },
   myWrapper: { alignSelf: "flex-end" },
   otherWrapper: { alignSelf: "flex-start" },
   identityRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
   identityRowMe: { justifyContent: "flex-end" },
-  messageColumn: { maxWidth: "82%", minWidth: 60 },
-  senderName: { fontSize: 12, fontWeight: "700", color: "#6B7280", marginBottom: 4, marginLeft: 4 },
+  messageColumn: { flexShrink: 1, minWidth: 60 },
+  senderName: { flexShrink: 0, fontSize: 13, lineHeight: 18, fontWeight: "700", color: "#6B7280", marginBottom: 6, marginLeft: 4 },
   senderNameMe: { textAlign: "right", marginLeft: 0, marginRight: 4 },
-  senderAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#EDE9FE" },
+  senderAvatar: { flexShrink: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: "#EDE9FE" },
   senderAvatarFallback: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#D8D3F2" },
   senderAvatarInitial: { fontSize: 13, fontWeight: "800", color: "#7164C6" },
   bubble: {
@@ -456,13 +418,14 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
   },
-  mainText: { fontSize: 17, fontWeight: "600" },
+  mainText: { fontSize: 17, lineHeight: 25, fontWeight: "600" },
   subText: { fontSize: 14, color: "#666" },
   sentImage: { width: 200, height: 150, borderRadius: 8, maxWidth: "100%" },
   divider: { height: 1, backgroundColor: "rgba(0,0,0,0.1)", marginVertical: 6 },
-  timeText: { fontSize: 10, color: "#999", marginTop: 4 },
+  timeText: { flexShrink: 0, fontSize: 12, lineHeight: 18, color: "#737373", marginTop: 6 },
 
   inputArea: {
+    flexShrink: 0,
     flexDirection: "row",
     paddingHorizontal: 15,
     paddingTop: 10,
@@ -474,6 +437,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: "#F2F2F7",
     borderRadius: 20,
     paddingHorizontal: 15,

@@ -67,96 +67,95 @@ function getPrescriptionAnalyzeUrl() {
   return `${getPrescriptionApiBaseUrl()}/analyze/url`;
 }
 
-function getPrescriptionTranslateUrl() {
-  return `${getPrescriptionApiBaseUrl()}/translate`;
+function serviceFailure(service: string, reason: string) {
+  // Never surface server HTML, response bodies or internal URLs to the user.
+  return Object.assign(new Error("服務暫時無法完成處理，請稍後再試。"), { code: `${service}/${reason}` });
+}
+
+// The deadline covers both connection and body download, even if a transport
+// does not settle after abort. Always detach listeners and clear the timer.
+export async function requestServiceJson<T>(
+  url: string, body: unknown, service: "ocr" | "translation",
+  timeoutMs: number, signal?: AbortSignal,
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel = () => {};
+  const interrupted = new Promise<never>((_, reject) => {
+    cancel = () => {
+      reject(serviceFailure(service, "cancelled"));
+      controller.abort();
+    };
+    timer = setTimeout(() => {
+      reject(serviceFailure(service, "timeout"));
+      controller.abort();
+    }, timeoutMs);
+    signal?.addEventListener("abort", cancel, { once: true });
+    if (signal?.aborted) cancel();
+  });
+  const request = async () => {
+    if (controller.signal.aborted) throw serviceFailure(service, "cancelled");
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body), signal: controller.signal,
+      });
+    } catch { throw serviceFailure(service, "network"); }
+    if (!response.ok) {
+      throw serviceFailure(service, response.status === 429 ? "busy" : response.status >= 500 ? "unavailable" : "recognition");
+    }
+    let text: string;
+    try { text = await response.text(); } catch { throw serviceFailure(service, "network"); }
+    try { return JSON.parse(text) as T; } catch { throw serviceFailure(service, "recognition"); }
+  };
+  try {
+    return await Promise.race([interrupted, request()]);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", cancel);
+  }
 }
 
 export async function analyzePrescriptionByUrl(imageUrl: string): Promise<AnalyzeResult> {
-  const failure = (code: string) => Object.assign(new Error("Prescription analysis failed"), { code });
   let url: string;
-  try { url = getPrescriptionAnalyzeUrl(); } catch { throw failure("ocr/unavailable"); }
-  let response: Response;
-
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_url: imageUrl }),
-    });
-  } catch {
-    throw failure("ocr/network");
-  }
-  if (!response.ok) {
-    throw failure(response.status === 429 ? "ocr/busy" : response.status >= 500 ? "ocr/unavailable" : "ocr/recognition");
-  }
-  let text: string;
-  try { text = await response.text(); } catch { throw failure("ocr/network"); }
-  try {
-    return JSON.parse(text) as AnalyzeResult;
-  } catch {
-    throw failure("ocr/recognition");
-  }
+  try { url = getPrescriptionAnalyzeUrl(); } catch { throw serviceFailure("ocr", "unavailable"); }
+  const result = await requestServiceJson<AnalyzeResult>(url, { image_url: imageUrl }, "ocr", 45000);
+  if (!result || !Array.isArray(result.medicines)) throw serviceFailure("ocr", "recognition");
+  return result;
 }
 
 export async function translateText(
   textToTranslate: string,
   targetLanguage = "English"
 ): Promise<TranslationResult> {
-  let response: Response;
-
-  try {
-    response = await fetch(getPrescriptionTranslateUrl(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: textToTranslate,
-        target_language: targetLanguage,
-      }),
-    });
-  } catch (err: any) {
-    throw new Error(`Network request failed: ${String(err?.message ?? err)}`);
+  let url: string;
+  try { url = `${getPrescriptionApiBaseUrl()}/translate`; } catch { throw serviceFailure("translation", "unavailable"); }
+  const result = await requestServiceJson<TranslationResult>(url, {
+    text: textToTranslate, target_language: targetLanguage,
+  }, "translation", 30000);
+  if (!result || typeof result.translated_text !== "string" || !result.translated_text.trim()) {
+    throw serviceFailure("translation", "recognition");
   }
-
-  const text = await response.text();
-
-  if (!response.ok) {
-    throw new Error(`AI translate failed (${response.status}): ${text}`);
-  }
-
-  try {
-    return JSON.parse(text) as TranslationResult;
-  } catch {
-    throw new Error(`AI translate returned non-JSON: ${text}`);
-  }
+  return result;
 }
 
 export async function translateTexts(
   items: BatchTranslationItem[],
-  targetLanguage: string
+  targetLanguage: string,
+  signal?: AbortSignal
 ): Promise<BatchTranslationResult> {
   if (items.length === 0) {
     return { target_language: targetLanguage, translations: [] };
   }
 
-  let response: Response;
-  try {
-    response = await fetch(`${getPrescriptionApiBaseUrl()}/translate/batch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items, target_language: targetLanguage }),
-    });
-  } catch (err: any) {
-    throw new Error(`Network request failed: ${String(err?.message ?? err)}`);
-  }
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`AI batch translate failed (${response.status}): ${text}`);
-  }
-
-  try {
-    return JSON.parse(text) as BatchTranslationResult;
-  } catch {
-    throw new Error(`AI batch translate returned non-JSON: ${text}`);
-  }
+  let url: string;
+  try { url = `${getPrescriptionApiBaseUrl()}/translate/batch`; } catch { throw serviceFailure("translation", "unavailable"); }
+  const result = await requestServiceJson<BatchTranslationResult>(url, {
+    items, target_language: targetLanguage,
+  }, "translation", 30000, signal);
+  if (!result || !Array.isArray(result.translations) || items.some(item => !result.translations.some(
+    row => row && row.key === item.key && typeof row.translated_text === "string" && row.translated_text.trim(),
+  ))) throw serviceFailure("translation", "recognition");
+  return result;
 }

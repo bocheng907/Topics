@@ -64,7 +64,7 @@ export function userErrorMessage(error: unknown, context: "login" | "ocr" | "rep
     if (code === "auth/user-disabled") return t.disabled;
   }
   if (context === "ocr") {
-    if (code === "ocr/unavailable") return t.ocrUnavailable;
+    if (code === "ocr/unavailable" || code === "ocr/timeout") return t.ocrUnavailable;
     if (code === "storage/unauthorized" || code === "storage/unauthenticated") return t.permission;
   }
   if (context === "report") {

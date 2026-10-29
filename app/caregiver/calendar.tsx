@@ -40,6 +40,7 @@ import {
 import { translations, type Language } from "@/src/i18n/translations";
 import { userErrorCopy } from "@/src/ui/userErrorMessages";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { eventCopy } from "@/src/ui/calendarEventCopy";
 
 type CalendarEventRecord = {
   id: string;
@@ -1024,13 +1025,22 @@ export default function CaregiverCalendarScreen() {
     resetForm();
   };
 
-  const handleDeleteEvent = async (eventId: string) => {
-    try {
-      await deleteDoc(doc(db, CALENDAR_EVENTS_COLLECTION, eventId));
-    } catch (error) {
-      console.log("delete calendar event failed:", error);
-      Alert.alert("刪除失敗", "行程未能刪除，請稍後再試。");
-    }
+  const handleDeleteEvent = (eventId: string) => {
+    const copy = eventCopy[language];
+    let submitted = false;
+    Alert.alert(copy.title, copy.confirm, [
+      { text: copy.cancel, style: "cancel" },
+      { text: copy.remove, style: "destructive", onPress: async () => {
+        if (submitted) return;
+        submitted = true;
+        try {
+          await deleteDoc(doc(db, CALENDAR_EVENTS_COLLECTION, eventId));
+        } catch (error) {
+          console.log("delete calendar event failed:", error);
+          Alert.alert(copy.failed, copy.retry);
+        }
+      } },
+    ]);
   };
 
   const handleToggleEventCompleted = async (event: CalendarEventViewModel) => {

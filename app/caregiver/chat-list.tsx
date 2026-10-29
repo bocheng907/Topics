@@ -7,20 +7,28 @@ import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { useAuth } from "@/src/auth/useAuth";
+import { useChatTranslation } from "@/src/chat/useChatTranslation";
+import { ChatTranslationStatus, chatTranslationCopy } from "@/src/chat/ChatTranslationStatus";
+import { chatLocales } from "@/src/chat/chatTranslation";
 
 export default function CaregiverChatListScreen() {
   const { activePatientId, activePatient } = useActiveCareTarget();
   const { language } = useLanguage();
+  const { user } = useAuth();
   const t = translations[language];
   const [lastMessage, setLastMessage] = useState<any>(null);
-  const [previousPatient, setPreviousPatient] = useState(activePatientId);
-  if (previousPatient !== activePatientId) { setPreviousPatient(activePatientId); setLastMessage(null); }
+  const scope = `${user?.uid}/${activePatientId}/messages`;
+  const [previousPatient, setPreviousPatient] = useState(scope);
+  if (previousPatient !== scope) { setPreviousPatient(scope); setLastMessage(null); }
+  const translated = useChatTranslation(lastMessage ? [lastMessage] : [], language, scope);
 
   useEffect(() => {
-    if (!activePatientId) {
+    if (!activePatientId || !user?.uid) {
       return;
     }
 
+    let active = true;
     const q = query(
       collection(db, "chats", activePatientId, "messages"),
       orderBy("createdAt", "desc"),
@@ -30,26 +38,28 @@ export default function CaregiverChatListScreen() {
     const unsub = onSnapshot(
       q,
       (snap) => {
+        if (!active) return;
         if (!snap.empty) {
-          setLastMessage(snap.docs[0].data());
+          setLastMessage({ ...snap.docs[0].data(), id: snap.docs[0].id });
         } else {
           setLastMessage(null);
         }
       },
       (error) => {
+        if (!active) return;
         console.log("caregiver chat-list snapshot failed:", error);
         setLastMessage(null);
       }
     );
 
-    return () => unsub();
-  }, [activePatientId]);
+    return () => { active = false; unsub(); };
+  }, [activePatientId, user?.uid]);
 
 
 
   return (
     <View style={styles.container}>
-      <ScreenHeader menuSpace style={styles.headerSpacer} />
+      <ScreenHeader menuSpace style={styles.headerSpacer}><Text style={styles.caregiverName}>{t.chatRoom}</Text></ScreenHeader>
 
       <ScrollView>
         <Pressable
@@ -83,23 +93,24 @@ export default function CaregiverChatListScreen() {
 
               <Text style={styles.timeText}>
                 {lastMessage?.createdAt?.toMillis
-                  ? new Date(lastMessage.createdAt.toMillis()).toLocaleTimeString([], {
+                  ? new Date(lastMessage.createdAt.toMillis()).toLocaleTimeString(chatLocales[language], {
                       hour: "2-digit",
                       minute: "2-digit",
                     })
-                  : "上午 8:00"}
+                  : ""}
               </Text>
             </View>
 
             <Text style={styles.lastMsgText} numberOfLines={1}>
               {lastMessage
                 ? lastMessage.imageUrl
-                  ? "[照片]"
-                  : lastMessage.text ?? ""
+                  ? chatTranslationCopy[language].photo
+                  : translated.text(lastMessage)
                 : t.noChatRecords}
             </Text>
           </View>
         </Pressable>
+        <ChatTranslationStatus language={language} {...translated} />
 
       </ScrollView>
     </View>
@@ -108,13 +119,14 @@ export default function CaregiverChatListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF" },
-  headerSpacer: { backgroundColor: "#9999E5", paddingTop: 12, paddingBottom: 16, width: "100%", borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.05)" },
+  headerSpacer: { flexShrink: 0, backgroundColor: "#9999E5", paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16, width: "100%", borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.05)" },
   chatItem: {
     flexDirection: "row",
     padding: 20,
     alignItems: "center",
   },
   avatar: {
+    flexShrink: 0,
     width: 60,
     height: 60,
     borderRadius: 30,
@@ -130,6 +142,7 @@ const styles = StyleSheet.create({
   },
   chatInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 5,
   },
   chatHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 },

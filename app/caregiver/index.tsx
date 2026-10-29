@@ -13,7 +13,7 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   useWindowDimensions,
   ActivityIndicator,
@@ -126,6 +126,7 @@ export default function CaregiverHomeScreen() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [todayLogs, setTodayLogs] = useState<MedicationLog[]>([]);
   const [doneLoading, setDoneLoading] = useState(false);
+  const doneSubmissionRef = useRef({ pending: false, completedId: "" });
   const [clock, setClock] = useState(() => ({
     dateKey: getTaipeiDateKey(),
     minutes: getTaipeiMinutes(),
@@ -303,6 +304,9 @@ export default function CaregiverHomeScreen() {
   }, [activeSlot, todayLogs]);
 
   async function handleDonePress() {
+    // React's disabled state updates after this event; block another tap immediately.
+    if (doneSubmissionRef.current.pending) return;
+
     if (!user) {
       Alert.alert(t.cameraNotLoggedInTitle, t.resultNotLoggedIn);
       return;
@@ -323,17 +327,21 @@ export default function CaregiverHomeScreen() {
       return;
     }
 
+    const logId = medicationLogId(
+      activePatientId,
+      activePatient?.patientsId,
+      todayKey,
+      activeSlot.scheduleTime
+    );
+    // Cover the gap between a successful write and the snapshot updating the button.
+    if (doneSubmissionRef.current.completedId === logId) return;
+    doneSubmissionRef.current.pending = true;
+
     try {
       setDoneLoading(true);
 
       const slotReminders = activeSlot.reminders;
       const primaryReminder = slotReminders[0];
-      const logId = medicationLogId(
-        activePatientId,
-        activePatient?.patientsId,
-        todayKey,
-        activeSlot.scheduleTime
-      );
       const logRef = doc(
         db,
         "medication_logs",
@@ -368,11 +376,13 @@ export default function CaregiverHomeScreen() {
         createdAt: serverTimestamp(),
       });
 
+      doneSubmissionRef.current.completedId = logId;
       Alert.alert(t.alreadyDone, t.doneRecorded);
     } catch (error) {
       console.log("done error:", error);
       Alert.alert(t.resultErrorTitle, t.recordFailed);
     } finally {
+      doneSubmissionRef.current.pending = false;
       setDoneLoading(false);
     }
   }

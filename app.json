@@ -61,7 +61,7 @@
     },
     "extra": {
       "router": {},
-      "prescriptionApiBaseUrl": "http://123.195.84.227:8000",
+      "prescriptionApiBaseUrl": "http://13.115.221.47:8080",
       "allowInsecurePrescriptionApi": true,
       "eas": {
         "projectId": "dee016b6-26d0-49fd-bb06-5cc9343b4575"

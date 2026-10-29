@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { router } from 'expo-router'; // 💡 新增：引入 router 來做返回功能
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppAlert as Alert } from '@/src/ui/AppAlert';
 
 // Firebase 相關
 import { db } from '@/firebase/firebaseConfig';
@@ -117,7 +118,7 @@ function CaregiverVoiceContent() {
   // 3. 播放邏輯
   // ==========================================
   const handleCardClick = async (task: any) => {
-    if (!task.hasRecording) {
+    if (!task.hasRecording || typeof task.audioUrl !== 'string' || !task.audioUrl.trim()) {
       Alert.alert(t.prompt, t.notRecorded);
       return;
     }

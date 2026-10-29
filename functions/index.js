@@ -18,6 +18,8 @@ setGlobalOptions({maxInstances: 10});
 
 initializeApp();
 const db = getFirestore();
+exports.getChatProfiles = onCall({region: "us-central1", maxInstances: 3},
+  require("./chatProfiles").createGetChatProfiles(db));
 exports.exportPersonalData = onCall({region: "us-central1",
   timeoutSeconds: 240, memory: "512MiB", maxInstances: 3},
 require("./personalDataExport").createPersonalDataExportService({db}));

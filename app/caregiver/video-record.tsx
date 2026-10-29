@@ -2,11 +2,12 @@ import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Feather, Ionicons } from '@expo/vector-icons';
 import VideoPlayerView from '@/src/media/VideoPlayerView';
+import { recordCopy } from '@/src/media/recordCopy';
 import * as ImagePicker from 'expo-image-picker';
 import { randomUUID } from 'expo-crypto';
 import { router, useNavigation } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 // Firebase 相關
 import { db, storage } from '@/firebase/firebaseConfig';
@@ -41,6 +42,7 @@ export default function AbnormalRecordScreen() {
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
+  const mediaCopy = recordCopy[language];
   
   const navigation = useNavigation();
   useEffect(() => {
@@ -289,12 +291,12 @@ export default function AbnormalRecordScreen() {
   // ==========================================
   const handleDeleteRecord = () => {
     setDropdownOpen(false);
-    Alert.alert(t.deleteConfirmTitle, t.deletePrescriptionMessage, [
+    Alert.alert(t.deleteConfirmTitle, selectedRecord.type === 'folder' ? mediaCopy.deleteFolder : mediaCopy.deleteRecord, [
       { text: t.cancel, style: 'cancel' },
       { text: t.delete, style: 'destructive', onPress: async () => {
           try {
             await deleteDoc(doc(db, 'abnormal_records', selectedRecord.id));
-            Alert.alert(t.success, t.deleteConfirm);
+            Alert.alert(t.success, mediaCopy.deleted);
             goToList();
           } catch {
             Alert.alert(t.resultErrorTitle, t.deleteFailedShort);
@@ -305,13 +307,13 @@ export default function AbnormalRecordScreen() {
 
   const handleDeleteFolderEntry = () => {
     setDropdownOpen(false);
-    Alert.alert(t.deleteConfirmTitle, t.deleteVoiceMessage, [
+    Alert.alert(t.deleteConfirmTitle, mediaCopy.deleteEntry, [
       { text: t.cancel, style: 'cancel' },
       { text: t.delete, style: 'destructive', onPress: async () => {
           try {
             const docRef = doc(db, 'abnormal_records', selectedRecord.id);
             await updateDoc(docRef, { entries: arrayRemove(selectedFolderEntry) });
-            Alert.alert(t.success, t.deleteConfirm);
+            Alert.alert(t.success, mediaCopy.deleted);
             goBackToFolder();
           } catch {
             Alert.alert(t.resultErrorTitle, t.deleteFailedShort);
@@ -440,15 +442,9 @@ export default function AbnormalRecordScreen() {
           <Text style={styles.detailTitle}>{isDoctorMode ? (pickAbnormalTitle(selectedRecord, language) || t.aiTranslating) : selectedRecord.titleOriginal}</Text>
           
           <View style={{ position: 'relative', zIndex: 50 }}>
-            <Pressable onPress={() => setDropdownOpen(!dropdownOpen)} style={{ paddingHorizontal: 8, paddingBottom: 8 }}>
+            <Pressable accessibilityRole="button" accessibilityLabel={mediaCopy.actions} onPress={() => setDropdownOpen(true)} style={styles.actionsTrigger}>
               <Text style={{ fontSize: 28, color: '#666', marginTop: -8 }}>⋯</Text>
             </Pressable>
-            {dropdownOpen && (
-              <View style={styles.dropdownMenu}>
-                <Pressable onPress={goToEditRecord} style={styles.dropdownItem}><Text style={styles.dropdownText}>{t.edit}</Text></Pressable>
-                <Pressable onPress={handleDeleteRecord} style={[styles.dropdownItem, { borderBottomWidth: 0 }]}><Text style={[styles.dropdownText, { color: 'red' }]}>{t.delete}</Text></Pressable>
-              </View>
-            )}
           </View>
         </View>
 
@@ -469,15 +465,9 @@ export default function AbnormalRecordScreen() {
         
         <View style={[styles.doctorModeRow, { justifyContent: 'space-between' }]}>
           <View style={{ position: 'relative', zIndex: 50 }}>
-            <Pressable onPress={() => setDropdownOpen(!dropdownOpen)} style={{ padding: 8, backgroundColor: '#EEE', borderRadius: 20 }}>
+            <Pressable accessibilityRole="button" accessibilityLabel={mediaCopy.actions} onPress={() => setDropdownOpen(true)} style={[styles.actionsTrigger, { backgroundColor: '#EEE', borderRadius: 20 }]}>
               <Text style={{ fontSize: 20, color: '#666', lineHeight: 20 }}>⋯</Text>
             </Pressable>
-            {dropdownOpen && (
-              <View style={[styles.dropdownMenu, { left: 0, right: 'auto' }]}>
-                <Pressable onPress={goToEditRecord} style={styles.dropdownItem}><Text style={styles.dropdownText}>{t.edit}</Text></Pressable>
-                <Pressable onPress={handleDeleteRecord} style={[styles.dropdownItem, { borderBottomWidth: 0 }]}><Text style={[styles.dropdownText, { color: 'red' }]}>{t.delete}</Text></Pressable>
-              </View>
-            )}
           </View>
 
           <Pressable onPress={() => setIsDoctorMode(!isDoctorMode)} style={[styles.doctorModeBtn, isDoctorMode ? styles.doctorModeBtnActive : styles.doctorModeBtnIdle]}>
@@ -562,15 +552,9 @@ export default function AbnormalRecordScreen() {
             <Text style={styles.detailTitle}>{t.recordTime}:</Text>
             
             <View style={{ position: 'relative', zIndex: 50 }}>
-              <Pressable onPress={() => setDropdownOpen(!dropdownOpen)} style={{ paddingHorizontal: 8, paddingBottom: 8 }}>
+              <Pressable accessibilityRole="button" accessibilityLabel={mediaCopy.actions} onPress={() => setDropdownOpen(true)} style={styles.actionsTrigger}>
                 <Text style={{ fontSize: 28, color: '#666', marginTop: -8 }}>⋯</Text>
               </Pressable>
-              {dropdownOpen && (
-                <View style={styles.dropdownMenu}>
-                  <Pressable onPress={goToEditFolderEntry} style={styles.dropdownItem}><Text style={styles.dropdownText}>{t.edit}</Text></Pressable>
-                  <Pressable onPress={handleDeleteFolderEntry} style={[styles.dropdownItem, { borderBottomWidth: 0 }]}><Text style={[styles.dropdownText, { color: 'red' }]}>{t.delete}</Text></Pressable>
-                </View>
-              )}
             </View>
           </View>
 
@@ -589,7 +573,7 @@ export default function AbnormalRecordScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.folderIntroBox}>
           <Ionicons name="pencil" size={24} color="#D37B2B" />
-          <Text style={styles.folderIntroText}>{t.editPrescriptionInfo}</Text>
+          <Text style={styles.folderIntroText}>{mediaCopy.edit}</Text>
         </View>
 
         {currentView === 'edit' && (
@@ -665,7 +649,7 @@ export default function AbnormalRecordScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.folderBadge}>
           <Ionicons name="folder" size={16} color="#E59752" style={{ marginRight: 6 }} />
-          <Text style={styles.folderBadgeText}>{t.addCareTarget}: {selectedRecord.titleOriginal}</Text>
+          <Text style={styles.folderBadgeText}>{mediaCopy.addEntry}: {selectedRecord.titleOriginal}</Text>
         </View>
 
         {/* 🌟 核心修改 A：媒體上傳與重新選擇按鈕分離 */}
@@ -700,7 +684,7 @@ export default function AbnormalRecordScreen() {
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => {
-              if (currentView === 'folderEntryDetail' || currentView === 'editFolderEntry') goBackToFolder();
+              if (currentView === 'folderEntryDetail' || currentView === 'editFolderEntry' || currentView === 'createFolderEntry') goBackToFolder();
               else if (currentView === 'edit') setCurrentView(selectedRecord.type === 'folder' ? 'folder' : 'detail');
               else if (currentView !== 'list') goToList();
               else router.back();
@@ -723,6 +707,24 @@ export default function AbnormalRecordScreen() {
         {currentView === 'createFolderEntry' && renderCreateFolderEntry()}
         {(currentView === 'edit' || currentView === 'editFolderEntry') && renderEdit()}
       </View>
+      {/* A native/web modal keeps actions above ScrollView, media and note layers. */}
+      <Modal visible={dropdownOpen} transparent animationType="fade" onRequestClose={() => setDropdownOpen(false)}>
+        <View style={styles.actionsOverlay}>
+          <Pressable accessibilityRole="button" accessibilityLabel={mediaCopy.close} style={StyleSheet.absoluteFill} onPress={() => setDropdownOpen(false)} />
+          <View style={styles.actionsSheet} accessibilityViewIsModal>
+            <Text style={styles.actionsTitle}>{mediaCopy.actions}</Text>
+            <Pressable accessibilityRole="button" onPress={currentView === 'folderEntryDetail' ? goToEditFolderEntry : goToEditRecord} style={styles.dropdownItem}>
+              <Text style={styles.dropdownText}>{t.edit}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={currentView === 'folderEntryDetail' ? handleDeleteFolderEntry : handleDeleteRecord} style={styles.dropdownItem}>
+              <Text style={[styles.dropdownText, { color: '#B42318' }]}>{t.delete}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => setDropdownOpen(false)} style={styles.dropdownItem}>
+              <Text style={styles.dropdownText}>{t.cancel}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -737,8 +739,11 @@ const styles = StyleSheet.create({
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
 
-  dropdownMenu: { position: 'absolute', top: 35, right: 0, backgroundColor: '#FFF', borderRadius: 12, paddingVertical: 4, width: 140, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 10, borderWidth: 1, borderColor: '#EEE' },
-  dropdownItem: { paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
+  actionsTrigger: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  actionsOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.35)' },
+  actionsSheet: { width: '100%', maxWidth: 360, backgroundColor: '#FFF', borderRadius: 16, padding: 12 },
+  actionsTitle: { fontSize: 18, fontWeight: '700', padding: 16 },
+  dropdownItem: { minHeight: 48, justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
   dropdownText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
 
   listHint: { color: '#666', fontSize: 14, fontWeight: '600', marginBottom: 16, marginLeft: 4 },

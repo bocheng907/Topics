@@ -10,37 +10,47 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { chatMessageCollection, FAMILY_GROUP_COLOR, type CareChatRoom } from "@/src/chat/rooms";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { useAuth } from "@/src/auth/useAuth";
+import { useChatTranslation } from "@/src/chat/useChatTranslation";
+import { ChatTranslationStatus, chatTranslationCopy } from "@/src/chat/ChatTranslationStatus";
+import { chatLocales } from "@/src/chat/chatTranslation";
+import type { Language } from "@/src/i18n/translations";
 
 function useLastMessage(patientId: string | null, room: CareChatRoom) {
+  const { user } = useAuth();
   const [message, setMessage] = useState<any>(null);
-  const scope = `${patientId}/${room}`;
+  const scope = `${user?.uid}/${patientId}/${room}`;
   const [previousScope, setPreviousScope] = useState(scope);
   if (previousScope !== scope) { setPreviousScope(scope); setMessage(null); }
   useEffect(() => {
-    if (!patientId) return;
+    if (!patientId || !user?.uid) return;
+    let active = true;
     const q = query(collection(db, "chats", patientId, chatMessageCollection(room)), orderBy("createdAt", "desc"), limit(1));
-    return onSnapshot(q, snap => setMessage(snap.empty ? null : snap.docs[0].data()), () => setMessage(null));
-  }, [patientId, room]);
+    const unsubscribe = onSnapshot(q, snap => {
+      if (active) setMessage(snap.empty ? null : { ...snap.docs[0].data(), id: snap.docs[0].id });
+    }, () => { if (active) setMessage(null); });
+    return () => { active = false; unsubscribe(); };
+  }, [patientId, room, user?.uid]);
   return message;
 }
 
-function preview(message: any, fallback: string) {
-  if (!message) return fallback;
-  return message.imageUrl ? "[照片]" : message.text || fallback;
-}
-
-function time(message: any) {
+function time(message: any, language: Language) {
   return message?.createdAt?.toMillis
-    ? new Date(message.createdAt.toMillis()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    ? new Date(message.createdAt.toMillis()).toLocaleTimeString(chatLocales[language], { hour: "2-digit", minute: "2-digit" })
     : "";
 }
 
 export default function FamilyChatListScreen() {
   const { activePatientId, activePatient } = useActiveCareTarget();
   const { language } = useLanguage();
+  const { user } = useAuth();
   const t = translations[language];
   const caregiverMessage = useLastMessage(activePatientId, "caregiver");
   const familyMessage = useLastMessage(activePatientId, "family");
+  const caregiverTranslation = useChatTranslation(caregiverMessage ? [caregiverMessage] : [], language, `${user?.uid}/${activePatientId}/messages`);
+  const familyTranslation = useChatTranslation(familyMessage ? [familyMessage] : [], language, `${user?.uid}/${activePatientId}/familyMessages`);
+  const preview = (message: any, translated: typeof caregiverTranslation, fallback: string) =>
+    !message ? fallback : message.imageUrl ? chatTranslationCopy[language].photo : translated.text(message) || fallback;
   const elderName = activePatient?.name || t.chatRoom;
 
   const open = (room: CareChatRoom) => router.push({
@@ -55,22 +65,24 @@ export default function FamilyChatListScreen() {
         <Pressable disabled={!activePatientId} onPress={() => open("caregiver")} style={({pressed}) => [styles.card, pressed && styles.pressed]}>
           <View style={styles.avatar}><Ionicons name="person" size={28} color="#666" /></View>
           <View style={styles.info}>
-            <View style={styles.row}><Text style={styles.title}>{t.caregiverChatTitle}</Text><Text style={styles.time}>{time(caregiverMessage)}</Text></View>
+            <View style={styles.row}><Text style={styles.title}>{t.caregiverChatTitle}</Text><Text style={styles.time}>{time(caregiverMessage, language)}</Text></View>
             <Text style={styles.elder}>{elderName}</Text>
-            <Text style={styles.preview} numberOfLines={1}>{preview(caregiverMessage, t.noChatRecords)}</Text>
+            <Text style={styles.preview} numberOfLines={1}>{preview(caregiverMessage, caregiverTranslation, t.noChatRecords)}</Text>
           </View>
           <Ionicons name="chevron-forward" size={22} color="#AAA" />
         </Pressable>
+        <ChatTranslationStatus language={language} {...caregiverTranslation} />
 
         <Pressable disabled={!activePatientId} onPress={() => open("family")} style={({pressed}) => [styles.card, styles.familyCard, pressed && styles.familyPressed]}>
           <View style={styles.familyAvatar}><Ionicons name="people" size={30} color="#FFF" /></View>
           <View style={styles.info}>
-            <View style={styles.row}><Text style={[styles.title, styles.familyTitle]}>{t.familyGroupTitle}</Text><Text style={styles.familyTime}>{time(familyMessage)}</Text></View>
+            <View style={styles.row}><Text style={[styles.title, styles.familyTitle]}>{t.familyGroupTitle}</Text><Text style={styles.familyTime}>{time(familyMessage, language)}</Text></View>
             <Text style={styles.familyElder}>{elderName}</Text>
-            <Text style={styles.familyPreview} numberOfLines={1}>{preview(familyMessage, t.familyGroupAutoJoinHint)}</Text>
+            <Text style={styles.familyPreview} numberOfLines={1}>{preview(familyMessage, familyTranslation, t.familyGroupAutoJoinHint)}</Text>
           </View>
           <Ionicons name="chevron-forward" size={22} color="#FFF" />
         </Pressable>
+        <ChatTranslationStatus language={language} {...familyTranslation} />
         <Text style={styles.hint}>{t.familyGroupFixedHint}</Text>
       </ScrollView>
     </View>

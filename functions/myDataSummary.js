@@ -93,7 +93,12 @@ function createMyDataSummaryService({db, clock = () => Date.now(),
       counts[name] = 0;
       for (const doc of snap.docs.slice(0, maximum)) {
         const data = doc.data();
-        const patientId = data.patientId || data.patientDocId;
+        // Care notes store a business/display ID in patientId, not the document
+        // ID. An explicit patientDocId is authoritative: never fall back to a
+        // different, linked patient when it points to an inaccessible document.
+        const patientId = name === "care_notes" ?
+          (data.patientDocId ?? data.patientId) :
+          (data.patientId || data.patientDocId);
         if (data[owner] !== uid || (!patients.has(patientId) &&
             !(name === "notifications" && !patientId))) continue;
         counts[name]++;
