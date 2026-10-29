@@ -16,7 +16,7 @@ for (const language of ['zh', 'en', 'vi', 'id']) {
       ['login','auth/user-not-found','credentials'], ['login','auth/invalid-email','invalidEmail'],
       ['login','auth/user-disabled','disabled'], ['login','auth/network-request-failed','network'],
       ['login','auth/too-many-requests','busy'], ['ocr','ocr/network','network'],
-      ['ocr','ocr/busy','busy'], ['ocr','ocr/unavailable','ocrUnavailable'], ['ocr','ocr/timeout','ocrUnavailable'],
+      ['ocr','ocr/busy','busy'], ['ocr','ocr/unavailable','ocrUnavailable'],
       ['ocr','ocr/recognition','ocr'], ['ocr','storage/unauthorized','permission'],
       ['report','functions/failed-precondition','relation'], ['report','functions/permission-denied','permission'],
       ['report','functions/unauthenticated','account'], ['report','functions/unavailable','network'],

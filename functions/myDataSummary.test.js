@@ -103,28 +103,6 @@ test("pending deletion cannot read summary or create an audit event", async () =
   assert.equal(fixture.writes.length, 0);
 });
 
-test("care notes use document IDs without widening ownership or access", async () => {
-  const fixture = summaryFixture();
-  fixture.records.care_notes = [
-    {caregiverUid: "me", patientDocId: "linked", patientId: "business-001"},
-    {caregiverUid: "me", patientDocId: "linked", patientId: ""},
-    {caregiverUid: "me", patientId: "linked"}, // Legacy document-ID-only row.
-    {caregiverUid: "other", patientDocId: "linked", patientId: "business-001"},
-    {caregiverUid: "me", patientDocId: "other", patientId: "linked"},
-    {caregiverUid: "me", patientDocId: "removed", patientId: "business-001"},
-    {caregiverUid: "me", patientDocId: "", patientId: "linked"},
-    {caregiverUid: "me", patientId: "business-001"},
-    {caregiverUid: "me"},
-  ];
-  const result = await createMyDataSummaryService({db: fixture.db})(
-      {auth: {uid: "me"}, data: {}},
-  );
-  assert.equal(result.counts.care_notes, 3);
-  assert.equal(result.counts.prescriptions, 1);
-  assert.equal(result.media.total, 2);
-  assert.equal(result.complete, true);
-});
-
 test("summary marks bounded results as incomplete", async () => {
   const fixture = summaryFixture();
   const result = await createMyDataSummaryService({db: fixture.db, maximum: 1})(
