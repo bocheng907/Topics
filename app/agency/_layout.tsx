@@ -1,102 +1,76 @@
 // app/agency/_layout.tsx
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { auth } from "@/firebase/firebaseConfig";
-import { Ionicons } from "@expo/vector-icons";
-import { Redirect, Stack, router, useSegments } from "expo-router";
+import { Redirect, Stack, router } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import { useAuth } from "@/src/auth/useAuth";
+import { exportCopy } from "@/src/export/exportCopy";
+import { translations } from "@/src/i18n/translations";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
+import { myDataCopy } from "@/src/profile/myDataCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
 import AuditMenuLink from "@/src/audit/AuditMenuLink";
-import React, { useEffect, useState } from "react";
-import {
-  Animated,
-  ScrollView,
-  useWindowDimensions,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-
+import React from "react";
+import { Platform, StyleSheet, View } from "react-native";
+import { DrawerProvider, useDrawer } from "@/src/ui/DrawerContext";
+import { SideDrawer, SideDrawerProfile, type SideDrawerSection } from "@/src/ui/components";
+import { colors } from "@/src/ui/theme";
 
 export default function AgencyLayout() {
-  const {width} = useWindowDimensions();
-  const DRAWER_WIDTH = Math.min(width - 24, Math.max(280, width * 0.82));
-  const {ready, user} = useAuth();
-  const segments = useSegments() as string[];
-  const currentPage = segments[segments.length - 1];
-  const insets = useSafeAreaInsets();
+  return (
+    <DrawerProvider>
+      <AgencyShell />
+    </DrawerProvider>
+  );
+}
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [slideAnim] = useState(() => new Animated.Value(0));
-
-  // 只有仲介首頁顯示右上角漢堡
-  const isAgencyHome = currentPage === "agency";
-
-  useEffect(() => {
-    Animated.timing(slideAnim, {
-      toValue: isSidebarOpen ? 1 : 0,
-      duration: 300,
-      useNativeDriver: Platform.OS !== "web",
-    }).start();
-  }, [isSidebarOpen, slideAnim]);
-
-  const translateX = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [DRAWER_WIDTH, 0],
-  });
-
-  const overlayOpacity = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
+function AgencyShell() {
+  const { ready, user } = useAuth();
+  const { language } = useLanguage();
+  const t = translations[language];
+  const drawer = useDrawer();
 
   const goTo = (path: string) => {
-    setIsSidebarOpen(false);
+    drawer.close();
     router.push(path as any);
   };
 
   const handleLogout = async () => {
-     // Web 測試
+    // Web 測試
     if (Platform.OS === "web") {
-      const confirmed = window.confirm(
-        "確定要登出目前帳號嗎？"
-      );
+      const confirmed = window.confirm(t.logoutMessage);
 
       if (!confirmed) return;
 
       try {
         await signOut(auth);
-        setIsSidebarOpen(false);
+        drawer.close();
         router.replace("/");
       } catch (error) {
         console.log("登出失敗:", error);
-        window.alert("登出失敗，請稍後再試");
+        window.alert(t.logoutFailed);
       }
 
       return;
     }
 
     //手機版
-    Alert.alert("登出", "確定要登出嗎？", [
+    Alert.alert(t.logout, t.logoutMessage, [
       {
-        text: "取消",
+        text: t.cancel,
         style: "cancel",
       },
       {
-        text: "登出",
+        text: t.logoutConfirm,
         style: "destructive",
         onPress: async () => {
           try {
             await signOut(auth);
-            setIsSidebarOpen(false);
+            drawer.close();
             router.replace("/");
           } catch (error) {
             console.log("agency logout failed:", error);
-            Alert.alert("錯誤", "登出失敗，請稍後再試");
+            Alert.alert(t.resultErrorTitle, t.logoutFailed);
           }
         },
       },
@@ -105,6 +79,37 @@ export default function AgencyLayout() {
 
   if (!ready) return null;
   if (!user || user.role !== "agency") return <Redirect href="/" />;
+
+  const sections: SideDrawerSection[] = [
+    {
+      key: "community",
+      title: t.drawerSectionCommunity,
+      items: [{ key: "community", icon: "people-outline", label: t.navCommunity, onPress: () => goTo("/agency/community") }],
+    },
+    {
+      key: "account",
+      title: t.drawerSectionAccount,
+      items: [
+        { key: "account-settings", icon: "settings-outline", label: t.navAccountSettings, onPress: () => goTo("/account-settings") },
+        { key: "my-data", icon: "person-circle-outline", label: myDataCopy[language].title, onPress: () => goTo("/my-data") },
+        { key: "personal-data-export", icon: "download-outline", label: exportCopy[language].title, onPress: () => goTo("/personal-data-export") },
+      ],
+      content: (
+        <>
+          <AuditMenuLink variant="drawer" onNavigate={drawer.close} />
+          <PrivacyPolicyLink variant="drawer" />
+        </>
+      ),
+    },
+    {
+      key: "danger",
+      title: t.drawerSectionDanger,
+      items: [
+        { key: "logout", icon: "log-out-outline", label: t.logout, tone: "danger", onPress: handleLogout },
+        { key: "account-deletion", icon: "trash-outline", label: t.navDeleteAccount, tone: "danger", onPress: () => goTo("/account-deletion") },
+      ],
+    },
+  ];
 
   return (
     <View style={styles.container}>
@@ -117,85 +122,12 @@ export default function AgencyLayout() {
         />
       </View>
 
-      {/* 仲介首頁右上角漢堡 */}
-      {isAgencyHome && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="開啟選單"
-          accessibilityState={{ expanded: isSidebarOpen }}
-          style={[styles.hamburgerBtn, { top: insets.top + 10 }]}
-          onPress={() => setIsSidebarOpen(true)}
-        >
-          <Ionicons name="menu" size={40} color="#111827" />
-        </Pressable>
-      )}
-
-      {/* 背景遮罩 */}
-      <Animated.View
-        pointerEvents={isSidebarOpen ? "auto" : "none"}
-        style={[
-          StyleSheet.absoluteFill,
-          styles.overlay,
-          { opacity: overlayOpacity },
-        ]}
-      >
-        <Pressable
-          style={{ flex: 1 }}
-          onPress={() => setIsSidebarOpen(false)}
-        />
-      </Animated.View>
-
-      {/* 右側選單 */}
-      <Animated.View
-        style={[
-          styles.drawer,
-          {
-            display: isSidebarOpen ? "flex" : "none",
-            width: DRAWER_WIDTH,
-            transform: [{ translateX }],
-            paddingTop: insets.top + 40,
-          },
-        ]}
-      >
-        <ScrollView contentContainerStyle={{paddingBottom: insets.bottom + 24}} keyboardShouldPersistTaps="handled">
-        <View style={styles.badgeContainer}>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>仲介模式</Text>
-          </View>
-        </View>
-
-        <View style={styles.menuContainer}>
-            <Pressable style={styles.menuItem} onPress={() => goTo("/agency/community")}>
-              <Text style={styles.menuItemText}>照顧者交流</Text>
-            </Pressable>
-          <Pressable style={styles.menuItem} onPress={() => goTo("/my-data")}>
-            <Text style={styles.menuItemText}>我的資料</Text>
-          </Pressable>
-          <Pressable style={styles.menuItem} onPress={() => goTo("/personal-data-export")}>
-            <Text style={styles.menuItemText}>匯出個人資料</Text>
-          </Pressable>
-          <Pressable style={styles.menuItem} onPress={() => goTo("/account-deletion")}>
-            <Text style={styles.menuItemText}>帳號刪除</Text>
-          </Pressable>
-          <PrivacyPolicyLink variant="menu" />
-          <AuditMenuLink onNavigate={() => setIsSidebarOpen(false)} />
-
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => goTo("/account-settings")}
-          >
-            <Text style={styles.menuItemText}>帳號設定</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.menuItem}
-            onPress={handleLogout}
-          >
-            <Text style={styles.menuItemTextDanger}>登出</Text>
-          </Pressable>
-        </View>
-        </ScrollView>
-      </Animated.View>
+      <SideDrawer
+        open={drawer.isOpen}
+        onClose={drawer.close}
+        header={<SideDrawerProfile roleLabel={t.agencyMode} icon="business" name={user.email || undefined} />}
+        sections={sections}
+      />
     </View>
   );
 }
@@ -204,85 +136,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     overflow: "hidden",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.surface,
   },
 
   content: {
     flex: 1,
-  },
-
-  hamburgerBtn: {
-    position: "absolute",
-    right: 20,
-    zIndex: 40,
-    padding: 8,
-  },
-
-  overlay: {
-    backgroundColor: "rgba(0,0,0,0.4)",
-    zIndex: 100,
-  },
-
-  drawer: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: "82%",
-    backgroundColor: "#FFFFFF",
-    zIndex: 101,
-    borderLeftWidth: 2,
-    borderLeftColor: "#000",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: -5,
-      height: 0,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 20,
-  },
-
-  badgeContainer: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
-
-  badge: {
-    backgroundColor: "#4F59D5",
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-
-  badgeText: {
-    color: "#FFFFFF",
-    fontWeight: "bold",
-    fontSize: 17,
-    letterSpacing: 2,
-  },
-
-  menuContainer: {
-    borderTopWidth: 2,
-    borderTopColor: "#000",
-  },
-
-  menuItem: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 2,
-    borderBottomColor: "#000",
-  },
-
-  menuItemText: {
-    color: "#000",
-    fontSize: 19,
-    fontWeight: "bold",
-  },
-
-  menuItemTextDanger: {
-    color: "#E33B3B",
-    fontSize: 19,
-    fontWeight: "bold",
   },
 });

@@ -6,5 +6,6 @@ export { Card, Divider, ListRow, SectionHeader, type CardProps, type ListRowProp
 export { TextField, type TextFieldProps } from "./TextField";
 export { FormSheet, KeyboardAwareScroll, type FormSheetProps, type KeyboardAwareScrollProps } from "./FormSheet";
 export { Chip, EmptyState, StatusBadge, type StatusTone } from "./Feedback";
-export { SideDrawer, type SideDrawerItem, type SideDrawerProps, type SideDrawerSection } from "./SideDrawer";
+export { SideDrawer, SideDrawerRow, type SideDrawerItem, type SideDrawerProps, type SideDrawerSection } from "./SideDrawer";
+export { DrawerLanguageSwitcher, SideDrawerProfile } from "./DrawerParts";
 export { BottomNav, type BottomNavItem, type BottomNavProps } from "./BottomNav";

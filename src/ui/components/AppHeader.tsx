@@ -2,6 +2,7 @@ import { router, type Href } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useDrawer } from "../DrawerContext";
 import { colors, layout, spacing, typography } from "../theme";
 import { BackButton, MenuButton } from "./HeaderButtons";
 
@@ -13,6 +14,7 @@ export type AppHeaderProps = {
   /** Defaults to router.back(), or router.replace(fallbackHref) when there is no history. */
   onBack?: () => void;
   fallbackHref?: Href;
+  /** Defaults to opening the role drawer from DrawerContext (no-op outside a provider). */
   onMenu?: () => void;
   /** Right-side actions (e.g. IconButton / Button variant="ghost"). */
   right?: React.ReactNode;
@@ -36,6 +38,7 @@ export function AppHeader({
   style,
 }: AppHeaderProps) {
   const insets = useSafeAreaInsets();
+  const drawer = useDrawer();
   const isPrimary = variant === "primary";
   const fg = isPrimary ? colors.onPrimary : colors.text;
 
@@ -47,7 +50,7 @@ export function AppHeader({
 
   let leftNode: React.ReactNode = null;
   if (left === "back") leftNode = <BackButton onPress={handleBack} color={isPrimary ? colors.onPrimary : colors.primary} />;
-  else if (left === "menu") leftNode = <MenuButton onPress={onMenu} color={fg} />;
+  else if (left === "menu") leftNode = <MenuButton onPress={onMenu ?? drawer.open} color={fg} />;
   else if (left !== "none") leftNode = left;
 
   return (

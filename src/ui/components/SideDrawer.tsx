@@ -29,8 +29,12 @@ export type SideDrawerItem = {
 };
 
 export type SideDrawerSection = {
+  /** Stable key; falls back to title. */
+  key?: string;
   title?: string;
   items: SideDrawerItem[];
+  /** Extra nodes rendered after the items (e.g. SideDrawerRow-based links, language chips). */
+  content?: React.ReactNode;
 };
 
 export type SideDrawerProps = {
@@ -117,11 +121,12 @@ export function SideDrawer({ open, onClose, header, sections, footer, activeKey,
         {header ? <View style={styles.header}>{header}</View> : null}
         <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {sections.map((section, sectionIndex) => (
-            <View key={section.title ?? `section-${sectionIndex}`} style={sectionIndex > 0 && styles.sectionGap}>
+            <View key={section.key ?? section.title ?? `section-${sectionIndex}`} style={sectionIndex > 0 && styles.sectionGap}>
               {section.title ? <Text style={styles.sectionTitle}>{section.title}</Text> : null}
               {section.items.map((item) => (
-                <DrawerRow key={item.key} item={item} active={item.key === activeKey} />
+                <SideDrawerRow key={item.key} item={item} active={item.key === activeKey} />
               ))}
+              {section.content}
             </View>
           ))}
         </ScrollView>
@@ -131,7 +136,8 @@ export function SideDrawer({ open, onClose, header, sections, footer, activeKey,
   );
 }
 
-function DrawerRow({ item, active }: { item: SideDrawerItem; active: boolean }) {
+/** A single drawer row; exported so self-contained links (audit, privacy) can render the same row. */
+export function SideDrawerRow({ item, active = false }: { item: SideDrawerItem; active?: boolean }) {
   const danger = item.tone === "danger";
   const fg = danger ? colors.danger : active ? colors.primary : colors.text;
   return (
@@ -143,7 +149,7 @@ function DrawerRow({ item, active }: { item: SideDrawerItem; active: boolean }) 
       style={({ pressed }) => [styles.row, active && styles.rowActive, pressed && !active && styles.rowPressed]}
     >
       <Ionicons name={item.icon} size={22} color={danger ? colors.danger : active ? colors.primary : colors.textSecondary} />
-      <Text style={[styles.rowLabel, { color: fg }, active && styles.rowLabelActive]} numberOfLines={1}>
+      <Text style={[styles.rowLabel, { color: fg }, active && styles.rowLabelActive]} numberOfLines={2}>
         {item.label}
       </Text>
       {item.badge != null && item.badge !== 0 ? (

@@ -1,102 +1,106 @@
 import { auth, db } from "@/firebase/firebaseConfig";
 import { exportCopy } from "@/src/export/exportCopy";
 import AuditMenuLink from "@/src/audit/AuditMenuLink";
+import { useAuth } from "@/src/auth/useAuth";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useSyncCaregiverServices } from "@/src/agency/useSyncCaregiverServices";
-import { translations } from "@/src/i18n/translations";
+import { translations, type Language } from "@/src/i18n/translations";
 import { myDataCopy } from "@/src/profile/myDataCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router, useSegments } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import { doc, getDoc } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
-import { Alert, Animated, Platform, ScrollView, useWindowDimensions, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import React from "react";
+import { Alert, Platform, Linking, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { DrawerProvider, useDrawer } from "@/src/ui/DrawerContext";
+import {
+  BottomNav,
+  DrawerLanguageSwitcher,
+  SideDrawer,
+  SideDrawerProfile,
+  type BottomNavItem,
+  type SideDrawerSection,
+} from "@/src/ui/components";
+import { colors, shadows } from "@/src/ui/theme";
 
+const hideBottomNavRoutes = [
+  "chat-room",
+  "detail",
+  "edit",
+  "camera",
+  "list",
+  "medication-detail",
+  "video-record",
+  "health-report",
+  "communication-cards",
+  "notebook",
+  "handbook",
+  "notification-detail",
+  "account-settings",
+  "agency-binding",
+  "result",
+];
+
+/** Emergency button size and how far it rises above the bottom bar. */
+const FAB_SIZE = 68;
+const FAB_RISE = 22;
 
 export default function CaregiverLayout() {
-  const { width } = useWindowDimensions();
-  const drawerWidth = Math.min(width - 24, Math.max(280, width * 0.82));
+  return (
+    <DrawerProvider>
+      <CaregiverShell />
+    </DrawerProvider>
+  );
+}
+
+function CaregiverShell() {
   const segments = useSegments() as string[];
   const currentPage = segments[segments.length - 1];
   const insets = useSafeAreaInsets();
   const { language, setLanguage } = useLanguage();
+  const t = translations[language];
+  const drawer = useDrawer();
+  const { user } = useAuth();
 
   useSyncCaregiverServices();
 
-  const hideBottomNavRoutes = [
-    "chat-room",
-    "detail",
-    "edit",
-    "camera",
-    "list",
-    "medication-detail",
-    "video-record",
-    "health-report",
-    "communication-cards",
-    "notebook",
-    "handbook",
-    "notification-detail",
-    "account-settings",
-    "agency-binding",
-    "result",
-  ];
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
-
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [slideAnim] = useState(() => new Animated.Value(0));
-
-  useEffect(() => {
-    Animated.timing(slideAnim, {
-      toValue: isSidebarOpen ? 1 : 0,
-      duration: 300,
-      useNativeDriver: Platform.OS !== "web",
-    }).start();
-  }, [isSidebarOpen, slideAnim]);
-
-  const translateX = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [drawerWidth, 0],
-  });
-
-  const overlayOpacity = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
 
   const activeCareTarget = useActiveCareTarget();
   const activePatientId =
     (activeCareTarget as any)?.activePatientId ??
     (activeCareTarget as any)?.activeCareTargetId ??
     "";
+  const activePatientName: string | undefined = (activeCareTarget as any)?.activePatient?.name || undefined;
 
   async function makePhoneCall(phone: string) {
     try {
       const url = `tel:${phone}`;
       const supported = await Linking.canOpenURL(url);
       if (!supported) {
-        Alert.alert("撥號失敗", "此裝置目前無法開啟撥號功能");
+        Alert.alert(t.callFailedTitle, t.callUnsupportedMessage);
         return;
       }
       await Linking.openURL(url);
     } catch (e) {
       console.log("phone call failed:", e);
-      Alert.alert("撥號失敗", "目前無法撥打這支電話");
+      Alert.alert(t.callFailedTitle, t.callNumberFailedMessage);
     }
   }
 
   async function onEmergencyCall() {
     if (!activePatientId) {
-      Alert.alert("提醒", "目前沒有選擇照顧對象");
+      Alert.alert(t.emergencyNoTargetTitle, t.emergencyNoTargetMessage);
       return;
     }
 
     try {
       const patientSnap = await getDoc(doc(db, "patients", activePatientId));
       if (!patientSnap.exists()) {
-        Alert.alert("錯誤", "找不到照顧對象資料");
+        Alert.alert(t.resultErrorTitle, t.emergencyTargetNotFound);
         return;
       }
 
@@ -106,68 +110,128 @@ export default function CaregiverLayout() {
       const phones = [phone1, phone2].filter(Boolean);
 
       if (phones.length === 0) {
-        Alert.alert("尚未設定", "這位長輩尚未設定緊急聯絡電話");
+        Alert.alert(t.emergencyNotSetTitle, t.emergencyNotSetMessage);
         return;
       }
       if (phones.length === 1) {
         await makePhoneCall(phones[0]);
         return;
       }
-      Alert.alert("選擇要撥打的電話", "請選擇緊急聯絡人", [
-        { text: `聯絡電話 1：${phones[0]}`, onPress: () => void makePhoneCall(phones[0]) },
-        { text: `聯絡電話 2：${phones[1]}`, onPress: () => void makePhoneCall(phones[1]) },
-        { text: "取消", style: "cancel" },
+      Alert.alert(t.emergencyChooseTitle, t.emergencyChooseMessage, [
+        { text: `${t.emergencyPhone1Option}${phones[0]}`, onPress: () => void makePhoneCall(phones[0]) },
+        { text: `${t.emergencyPhone2Option}${phones[1]}`, onPress: () => void makePhoneCall(phones[1]) },
+        { text: t.cancel, style: "cancel" },
       ]);
     } catch (e) {
       console.log("emergency call failed:", e);
-      Alert.alert("撥號失敗", "目前無法撥打緊急聯絡電話");
+      Alert.alert(t.callFailedTitle, t.emergencyCallFailedMessage);
     }
   }
 
   const handleLogout = async () => {
     // Web 測試
     if (Platform.OS === "web") {
-      const confirmed = window.confirm(
-        "確定要登出目前帳號嗎？"
-      );
+      const confirmed = window.confirm(t.logoutMessage);
 
       if (!confirmed) return;
 
       try {
         await signOut(auth);
-        setIsSidebarOpen(false);
+        drawer.close();
         router.replace("/");
       } catch (error) {
         console.log("登出失敗:", error);
-        window.alert("登出失敗，請稍後再試");
+        window.alert(t.logoutFailed);
       }
 
       return;
     }
 
     //手機版
-    Alert.alert("登出系統", "確定要登出目前帳號嗎？", [
-      { text: "取消", style: "cancel" },
+    Alert.alert(t.logout, t.logoutMessage, [
+      { text: t.cancel, style: "cancel" },
       {
-        text: "確定登出",
+        text: t.logoutConfirm,
         style: "destructive",
         onPress: async () => {
           try {
             await signOut(auth);
-            setIsSidebarOpen(false);
+            drawer.close();
             router.replace("/");
           } catch (error) {
             console.log("登出失敗:", error);
-            Alert.alert("錯誤", "登出失敗，請稍後再試");
+            Alert.alert(t.resultErrorTitle, t.logoutFailed);
           }
         },
       },
     ]);
   };
 
-  const changeLanguage = (nextLanguage: "zh" | "en" | "vi" | "id") => {
+  const changeLanguage = (nextLanguage: Language) => {
     setLanguage(nextLanguage);
-    setIsSidebarOpen(false);
+    drawer.close();
+  };
+
+  const go = (path: string) => () => {
+    drawer.close();
+    router.push(path as any);
+  };
+
+  const sections: SideDrawerSection[] = [
+    {
+      key: "care",
+      title: t.drawerSectionCare,
+      items: [
+        { key: "notebook", icon: "create-outline", label: t.navNotebook, onPress: go("/caregiver/notebook") },
+        { key: "handbook", icon: "book-outline", label: t.handbook, onPress: go("/caregiver/handbook") },
+        { key: "select-care-target", icon: "swap-horizontal-outline", label: t.selectCareTarget, onPress: go("/care-target/select") },
+        { key: "agency-binding", icon: "business-outline", label: t.navAgencyBinding, onPress: go("/caregiver/agency-binding") },
+      ],
+    },
+    {
+      key: "account",
+      title: t.drawerSectionAccount,
+      items: [
+        { key: "account-settings", icon: "settings-outline", label: t.navAccountSettings, onPress: go("/account-settings") },
+        { key: "my-data", icon: "person-circle-outline", label: myDataCopy[language].title, onPress: go("/my-data") },
+        { key: "personal-data-export", icon: "download-outline", label: exportCopy[language].title, onPress: go("/personal-data-export") },
+      ],
+      content: (
+        <>
+          <AuditMenuLink variant="drawer" onNavigate={drawer.close} />
+          <PrivacyPolicyLink variant="drawer" />
+        </>
+      ),
+    },
+    {
+      key: "language",
+      title: t.language,
+      items: [],
+      content: <DrawerLanguageSwitcher value={language} onChange={changeLanguage} />,
+    },
+    {
+      key: "danger",
+      title: t.drawerSectionDanger,
+      items: [
+        { key: "leave", icon: "link-outline", label: t.unlink, tone: "danger", onPress: go("/care-target/leave") },
+        { key: "logout", icon: "log-out-outline", label: t.logout, tone: "danger", onPress: handleLogout },
+        { key: "account-deletion", icon: "trash-outline", label: t.navDeleteAccount, tone: "danger", onPress: go("/account-deletion") },
+      ],
+    },
+  ];
+
+  const navItems: BottomNavItem[] = [
+    { key: "caregiver", icon: "home-outline", activeIcon: "home", label: t.navHome },
+    { key: "calendar", icon: "calendar-outline", activeIcon: "calendar", label: t.navCalendar },
+    { key: "notifications", icon: "notifications-outline", activeIcon: "notifications", label: t.navNotifications },
+    { key: "chat-list", icon: "chatbubbles-outline", activeIcon: "chatbubbles", label: t.navChat },
+  ];
+
+  const onSelectNav = (key: string) => {
+    if (key === "caregiver") router.navigate("/caregiver" as any);
+    else if (key === "calendar") router.navigate("/caregiver/calendar" as any);
+    else if (key === "notifications") router.navigate("/caregiver/notifications" as any);
+    else if (key === "chat-list") router.navigate("/caregiver/chat-list" as any);
   };
 
   return (
@@ -182,301 +246,66 @@ export default function CaregiverLayout() {
         />
       </View>
 
-      {!hideBottomNav && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={{ zh: "開啟選單", en: "Open menu", vi: "Mở menu", id: "Buka menu" }[language]}
-          accessibilityState={{ expanded: isSidebarOpen }}
-          style={[styles.hamburgerBtn, { top: insets.top + 10 }]}
-          onPress={() => setIsSidebarOpen(true)}
-        >
-          <Ionicons name="menu" size={40} color="black" />
-        </Pressable>
-      )}
-
       {!hideBottomNav && !!activePatientId && (
         <View style={styles.footerWrapper} pointerEvents="box-none">
+          <BottomNav items={navItems} activeKey={currentPage} onSelect={onSelectNav} centerGap={FAB_SIZE + 20} />
           <View style={styles.fabContainer} pointerEvents="box-none">
-            <Pressable style={styles.fabButton} onPress={onEmergencyCall}>
-              <Ionicons name="call" size={36} color="#FFFFFF" style={styles.fabIcon} />
-            </Pressable>
-          </View>
-
-          <View style={[styles.bottomNav, { paddingBottom: Math.max(16, insets.bottom + 12) }]}>
-            <Pressable style={styles.navButton} hitSlop={8} onPress={() => router.navigate("/caregiver" as any)}>
-              <Ionicons name="home" size={32} color="#333" />
-            </Pressable>
-            <Pressable style={styles.navButton} hitSlop={8} onPress={() => router.navigate("/caregiver/calendar" as any)}>
-              <Ionicons name="calendar" size={32} color="#333" style={{ paddingRight: 48 }} />
-            </Pressable>
-            <Pressable style={styles.navButton} hitSlop={8} onPress={() => router.navigate("/caregiver/notifications" as any)}>
-              <Ionicons name="notifications" size={32} color="#333" style={{ paddingLeft: 48 }} />
-            </Pressable>
-            <Pressable style={styles.navButton} hitSlop={8} onPress={() => router.navigate("/caregiver/chat-list" as any)}>
-              <Ionicons name="chatbubbles" size={32} color="#333" />
+            <Pressable
+              style={({ pressed }) => [styles.fabButton, pressed && styles.fabPressed]}
+              onPress={onEmergencyCall}
+              accessibilityRole="button"
+              accessibilityLabel={t.emergencyCall}
+            >
+              <Ionicons name="call" size={30} color={colors.onAccent} />
             </Pressable>
           </View>
         </View>
       )}
 
-      <Animated.View
-        pointerEvents={isSidebarOpen ? "auto" : "none"}
-        style={[StyleSheet.absoluteFill, styles.overlay, { opacity: overlayOpacity }]}
-      >
-        <Pressable style={{ flex: 1 }} onPress={() => setIsSidebarOpen(false)} />
-      </Animated.View>
-
-      <Animated.View
-        style={[
-          styles.drawer,
-          {
-            display: isSidebarOpen ? "flex" : "none",
-            width: drawerWidth,
-            transform: [{ translateX }],
-            paddingTop: insets.top + 16,
-          },
-        ]}
-      >
-        <View style={styles.badgeContainer}>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>看護模式</Text>
-          </View>
-        </View>
-
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.menuContainer, { paddingBottom: insets.bottom + 24 }]}>
-          <AuditMenuLink onNavigate={() => setIsSidebarOpen(false)} />
-          <PrivacyPolicyLink variant="menu" />
-          <Pressable style={styles.menuItem} onPress={() => {
-            setIsSidebarOpen(false);
-            router.push("/my-data" as any);
-          }}>
-            <Text style={styles.menuItemText}>{myDataCopy[language].title}</Text>
-          </Pressable>
-          <View style={styles.menuItem}>
-            <Text style={styles.menuItemText}>語言</Text>
-            <View style={styles.languageOptions}>
-              <Pressable onPress={() => changeLanguage("zh")}>
-                <Text style={[styles.languageOption, language === "zh" && styles.languageOptionActive]}>
-                  中文
-                </Text>
-              </Pressable>
-              <Pressable onPress={() => changeLanguage("en")}>
-                <Text style={[styles.languageOption, language === "en" && styles.languageOptionActive]}>
-                  English
-                </Text>
-              </Pressable>
-              <Pressable onPress={() => changeLanguage("vi")}>
-                <Text style={[styles.languageOption, language === "vi" && styles.languageOptionActive]}>
-                  Tiếng Việt
-                </Text>
-              </Pressable>
-              <Pressable onPress={() => changeLanguage("id")}>
-                <Text style={[styles.languageOption, language === "id" && styles.languageOptionActive]}>
-                  Bahasa Indonesia
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => {
-              setIsSidebarOpen(false);
-              router.push("/caregiver/notebook" as any);
-            }}
-          >
-            <Text style={styles.menuItemText}>記事本</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => {
-              setIsSidebarOpen(false);
-              router.push("/caregiver/handbook" as any);
-            }}
-          >
-            <Text style={styles.menuItemText}>{translations[language].handbook}</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => {
-              setIsSidebarOpen(false);
-              router.push("/account-settings" as any);
-            }}
-          >
-            <Text style={styles.menuItemText}>帳號設定</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => {
-              setIsSidebarOpen(false);
-              router.push("/caregiver/agency-binding" as any);
-            }}
-          >
-            <Text style={styles.menuItemText}>綁定仲介</Text>
-          </Pressable>
-
-          <Pressable style={styles.menuItem} onPress={() => {
-            setIsSidebarOpen(false);
-            router.push("/care-target/select");
-          }}>
-            <Text style={styles.menuItemText}>{translations[language].selectCareTarget}</Text>
-          </Pressable>
-
-          <Pressable style={styles.menuItem} onPress={() => {
-            setIsSidebarOpen(false);
-            router.push("/care-target/leave");
-          }}>
-            <Text style={styles.menuItemTextDanger}>解除連結</Text>
-          </Pressable>
-
-          <Pressable style={styles.menuItem} onPress={() => {
-            setIsSidebarOpen(false);
-            router.push("/personal-data-export" as any);
-          }}>
-            <Text style={styles.menuItemText}>{exportCopy[language].title}</Text>
-          </Pressable>
-
-          <Pressable style={styles.menuItem} onPress={handleLogout}>
-            <Text style={styles.menuItemTextDanger}>登出系統</Text>
-          </Pressable>
-
-
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => {
-              setIsSidebarOpen(false);
-              router.push("/account-deletion" as any);
-            }}
-          >
-            <Text style={styles.menuItemTextDanger}>刪除帳號</Text>
-          </Pressable>
-        </ScrollView>
-      </Animated.View>
+      <SideDrawer
+        open={drawer.isOpen}
+        onClose={drawer.close}
+        header={
+          <SideDrawerProfile
+            roleLabel={t.caregiverMode}
+            name={user?.email || undefined}
+            detail={activePatientName ? `${t.drawerCareTarget}${language === "zh" ? "：" : ": "}${activePatientName}` : undefined}
+          />
+        }
+        sections={sections}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF", overflow: "hidden" },
+  container: { flex: 1, backgroundColor: colors.surface, overflow: "hidden" },
   content: { flex: 1 },
-  hamburgerBtn: {
-    position: "absolute",
-    right: 20,
-    zIndex: 40,
-    padding: 8,
-  },
+  // Transparent top padding keeps the raised button inside the wrapper's bounds (so it stays tappable on Android).
   footerWrapper: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
+    paddingTop: FAB_RISE,
   },
   fabContainer: {
     position: "absolute",
-    bottom: 45,
+    top: 0,
     left: 0,
     right: 0,
     alignItems: "center",
-    zIndex: 50,
   },
   fabButton: {
-    width: 80,
-    height: 80,
-    backgroundColor: "#EF3E3E",
-    borderRadius: 40,
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
+    backgroundColor: colors.accent,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#EF3E3E",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 15,
-    elevation: 8,
+    borderWidth: 4,
+    borderColor: colors.surface,
+    ...shadows.fab,
   },
-  fabIcon: {
-    fontSize: 40,
-    marginLeft: 4,
-    transform: [{ rotate: "-15deg" }],
-  },
-  bottomNav: {
-    backgroundColor: "#EAEAEA",
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderColor: "#E5E7EB",
-    zIndex: 10,
-  },
-  navButton: {
-    flex: 1,
-    minHeight: 64,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  overlay: {
-    backgroundColor: "rgba(0,0,0,0.4)",
-    zIndex: 100,
-  },
-  drawer: { position: "absolute", top: 0, right: 0, bottom: 0, backgroundColor: "#FFF", zIndex: 101, borderLeftWidth: 2, borderLeftColor: "#000", shadowColor: "#000", shadowOffset: { width: -5, height: 0 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 20 },
-  badgeContainer: { alignItems: "center", marginBottom: 16 },
-  badge: {
-    backgroundColor: "#52D052",
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  badgeText: {
-    color: "white",
-    fontWeight: "bold",
-    fontSize: 17,
-    letterSpacing: 2,
-  },
-  menuContainer: {
-    borderTopWidth: 2,
-    borderTopColor: "#000",
-  },
-  menuItem: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 2,
-    borderBottomColor: "#000",
-  },
-  menuItemText: {
-    color: "#000",
-    fontSize: 18,
-    fontWeight: "bold",
-    flexShrink: 1,
-    flexWrap: "wrap",
-    lineHeight: 25,
-  },
-  languageOptions: {
-    marginTop: 10,
-    gap: 8,
-  },
-  languageOption: {
-    color: "#555",
-    fontSize: 16,
-    fontWeight: "700",
-    flexShrink: 1,
-    flexWrap: "wrap",
-    lineHeight: 22,
-  },
-  languageOptionActive: {
-    color: "#007AFF",
-  },
-  menuItemTextDanger: {
-    color: "#E33B3B",
-    fontSize: 18,
-    fontWeight: "bold",
-    flexShrink: 1,
-    flexWrap: "wrap",
-    lineHeight: 25,
-  },
+  fabPressed: { backgroundColor: colors.accentPressed },
 });

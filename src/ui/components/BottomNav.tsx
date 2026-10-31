@@ -20,22 +20,26 @@ export type BottomNavProps = {
   onSelect: (key: string) => void;
   /** Set false when rendered inside a container that already pads the bottom inset. */
   safeAreaBottom?: boolean;
+  /** Reserves an empty slot of this width in the middle (e.g. for a floating emergency button). */
+  centerGap?: number;
   style?: StyleProp<ViewStyle>;
 };
 
-export function BottomNav({ items, activeKey, onSelect, safeAreaBottom = true, style }: BottomNavProps) {
+export function BottomNav({ items, activeKey, onSelect, safeAreaBottom = true, centerGap, style }: BottomNavProps) {
+  const gapIndex = centerGap ? Math.ceil(items.length / 2) : -1;
   const insets = useSafeAreaInsets();
   return (
     <View
       accessibilityRole="tablist"
       style={[styles.bar, { paddingBottom: safeAreaBottom ? insets.bottom : 0 }, style]}
     >
-      {items.map((item) => {
+      {items.map((item, index) => {
         const active = item.key === activeKey;
         const color = active ? colors.primary : colors.textMuted;
         return (
+          <React.Fragment key={item.key}>
+          {index === gapIndex ? <View style={{ width: centerGap }} /> : null}
           <Pressable
-            key={item.key}
             onPress={() => onSelect(item.key)}
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
@@ -55,6 +59,7 @@ export function BottomNav({ items, activeKey, onSelect, safeAreaBottom = true, s
               {item.label}
             </Text>
           </Pressable>
+          </React.Fragment>
         );
       })}
     </View>
