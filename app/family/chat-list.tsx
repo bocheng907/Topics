@@ -1,4 +1,4 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader } from "@/src/ui/components";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
@@ -60,7 +60,7 @@ export default function FamilyChatListScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader menuSpace style={styles.header}><Text style={styles.headerTitle}>{t.chatRoom}</Text></ScreenHeader>
+      <AppHeader title={t.chatRoom} left="menu" />
       <ScrollView contentContainerStyle={styles.list}>
         <Pressable disabled={!activePatientId} onPress={() => open("caregiver")} style={({pressed}) => [styles.card, pressed && styles.pressed]}>
           <View style={styles.avatar}><Ionicons name="person" size={28} color="#666" /></View>
@@ -91,8 +91,6 @@ export default function FamilyChatListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F7FC" },
-  header: { backgroundColor: FAMILY_GROUP_COLOR, paddingTop: 12, paddingBottom: 18, paddingHorizontal: 22 },
-  headerTitle: { color: "#FFF", fontSize: 24, fontWeight: "900" },
   list: { padding: 18, gap: 14 },
   card: { minHeight: 106, flexDirection: "row", alignItems: "center", padding: 16, borderRadius: 20, backgroundColor: "#FFF", shadowColor: "#000", shadowOpacity: .08, shadowRadius: 10, elevation: 3 },
   pressed: { backgroundColor: "#F1F1F1" }, familyCard: { backgroundColor: FAMILY_GROUP_COLOR }, familyPressed: { opacity: .88 },

@@ -5,6 +5,9 @@ import { useAgencyInvite } from "@/src/agency/useAgencyInvite";
 import { useAgencyReports } from "@/src/agency/useAgencyReports";
 import type { AgencyReport } from "@/src/agency/agencyReportTypes";
 import { useAuth } from "@/src/auth/useAuth";
+import { translations } from "@/src/i18n/translations";
+import { useLanguage } from "@/src/store/LanguageContext";
+import { AppHeader } from "@/src/ui/components";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -68,6 +71,8 @@ function formatBadgeCount(count: number) {
 export default function AgencyHomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { language } = useLanguage();
+  const t = translations[language];
 
   const {
     inviteCode,
@@ -100,9 +105,10 @@ export default function AgencyHomeScreen() {
 
   return (
     <View style={styles.container}>
+      <AppHeader title={t.agencyHomeTitle} left="menu" />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, {paddingTop: insets.top + 72, paddingBottom: insets.bottom + 40}]}
+        contentContainerStyle={[styles.scrollContent, {paddingTop: 24, paddingBottom: insets.bottom + 40}]}
       >
         {/* 仲介基本資訊 */}
         <View style={styles.userInfo}>

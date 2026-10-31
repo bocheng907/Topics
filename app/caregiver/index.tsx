@@ -2,6 +2,7 @@
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { getHomeLayout } from "@/src/ui/homeLayout";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AppHeader } from "@/src/ui/components";
 import { db } from "@/firebase/firebaseConfig";
 import { router } from "expo-router";
 import {
@@ -393,11 +394,18 @@ export default function CaregiverHomeScreen() {
   }
 
   if (!hasLoadedOnce && !isFullyLoaded) {
-    return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
+    return (
+      <View style={styles.container}>
+        <AppHeader title={t.navHome} left="menu" />
+        <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />
+      </View>
+    );
   }
 
   if (!activePatientId || !activePatient) {
     return (
+      <View style={styles.container}>
+      <AppHeader title={t.navHome} left="menu" />
       <View style={styles.noTargetContainer}>
         <View style={styles.noTargetCard}>
           <Ionicons
@@ -449,11 +457,14 @@ export default function CaregiverHomeScreen() {
           </Pressable>
         </View>
       </View>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+    <View style={styles.container}>
+      <AppHeader title={t.navHome} left="menu" />
+      <SafeAreaView style={styles.body} edges={["left", "right"]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -583,7 +594,8 @@ export default function CaregiverHomeScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -591,7 +603,8 @@ export default function CaregiverHomeScreen() {
 // 樣式表
 // ==========================================
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF", paddingTop: 70 },
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  body: { flex: 1 },
   scrollContent: { paddingBottom: 190, paddingTop: 8 },
   noTargetContainer: {
     flex: 1,

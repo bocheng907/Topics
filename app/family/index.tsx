@@ -8,6 +8,7 @@ import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { getHomeLayout } from "@/src/ui/homeLayout";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AppHeader } from "@/src/ui/components";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
@@ -105,8 +106,10 @@ export default function FamilyHomeScreen() {
   if (ready && linkedCareTargets.length === 0) {
     const copy = joinNavigationCopy[language];
     return (
-      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 80, gap: 20 }}>
+      <View style={styles.container}>
+        <AppHeader title={t.navHome} left="menu" />
+        <SafeAreaView style={styles.body} edges={["left", "right"]}>
+        <ScrollView contentContainerStyle={{ padding: 24, gap: 20 }}>
           <Text style={{ fontSize: 26, fontWeight: "700" }}>{copy.empty}</Text>
           <Text style={{ fontSize: 18, lineHeight: 28 }}>{copy.hint}</Text>
           <Pressable accessibilityRole="button" onPress={() => router.push("/care-target/create")}
@@ -118,12 +121,18 @@ export default function FamilyHomeScreen() {
             <Text style={{ color: "#007AFF", fontSize: 18, textAlign: "center" }}>{t.joinCareTarget}</Text>
           </Pressable>
         </ScrollView>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     );
   }
 
   if (!ready || (!hasLoadedOnce && !isFullyLoaded)) {
-    return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
+    return (
+      <View style={styles.container}>
+        <AppHeader title={t.navHome} left="menu" />
+        <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />
+      </View>
+    );
   }
 
 
@@ -237,7 +246,9 @@ export default function FamilyHomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+    <View style={styles.container}>
+      <AppHeader title={t.navHome} left="menu" />
+      <SafeAreaView style={styles.body} edges={["left", "right"]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
         <View style={styles.header}>
@@ -338,13 +349,14 @@ export default function FamilyHomeScreen() {
           </Pressable>
         </View>
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // Keep the fixed menu above the scroll viewport, including while scrolling.
-  container: { flex: 1, backgroundColor: "#FFFFFF", paddingTop: 70 },
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  body: { flex: 1 },
   scrollContent: { paddingBottom: 24, paddingTop: 8 },
   header: { flexDirection: "row", justifyContent: "flex-start", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8 },
   avatarList: { flexDirection: "row", alignItems: "center", gap: 8 },

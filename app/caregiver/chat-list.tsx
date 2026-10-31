@@ -1,4 +1,4 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader } from "@/src/ui/components";
 import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
@@ -59,7 +59,7 @@ export default function CaregiverChatListScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader menuSpace style={styles.headerSpacer}><Text style={styles.caregiverName}>{t.chatRoom}</Text></ScreenHeader>
+      <AppHeader title={t.chatRoom} left="menu" />
 
       <ScrollView>
         <Pressable
@@ -119,7 +119,6 @@ export default function CaregiverChatListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF" },
-  headerSpacer: { flexShrink: 0, backgroundColor: "#9999E5", paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16, width: "100%", borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.05)" },
   chatItem: {
     flexDirection: "row",
     padding: 20,

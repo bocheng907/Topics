@@ -1,4 +1,5 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader } from "@/src/ui/components";
+import { colors } from "@/src/ui/theme";
 import { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
@@ -148,14 +149,17 @@ export function NotificationListView({ detailRoute }: Props) {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader menuSpace style={styles.header}>
-        <Text style={styles.headerTitle}>{t.notification}</Text>
-        {unreadCount > 0 ? (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
-          </View>
-        ) : null}
-      </ScreenHeader>
+      <AppHeader
+        title={t.notification}
+        left="menu"
+        right={
+          unreadCount > 0 ? (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
+            </View>
+          ) : undefined
+        }
+      />
 
       <ScrollView
         horizontal
@@ -301,9 +305,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FAFAFA",
   },
-  header: { minHeight: 112, flexShrink: 0, flexGrow: 0, backgroundColor: "#D9D4F3", paddingTop: 12, paddingHorizontal: 20, paddingBottom: 16, flexDirection: "row", alignItems: "center", gap: 10 },
-  headerTitle: { fontSize: 22, fontWeight: "800", color: "#111827", flexShrink: 1 },
-  unreadBadge: { minWidth: 24, paddingHorizontal: 7, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", minHeight: 24 },
+  unreadBadge: { minWidth: 24, paddingHorizontal: 7, borderRadius: 12, backgroundColor: colors.danger, alignItems: "center", justifyContent: "center", minHeight: 24, marginRight: 12 },
   unreadBadgeText: {
     fontSize: 12,
     fontWeight: "700",

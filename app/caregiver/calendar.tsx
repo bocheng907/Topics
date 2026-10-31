@@ -1,4 +1,4 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader } from "@/src/ui/components";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -1253,12 +1253,7 @@ export default function CaregiverCalendarScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader menuSpace style={styles.header}>
-        <View style={styles.topBar}>
-          <View style={styles.topBarSpacer} />
-          <View style={styles.topBarSpacer} />
-        </View>
-      </ScreenHeader>
+      <AppHeader title={t.navCalendar} left="menu" />
 
       <View style={styles.contentCard}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -1677,16 +1672,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#F4F2F0",
-  },
-  header: { backgroundColor: "#F67578", paddingTop: 12, paddingHorizontal: 22, paddingBottom: 16 },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  topBarSpacer: {
-    width: 34,
-    height: 34,
   },
   contentCard: {
     flex: 1,
