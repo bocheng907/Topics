@@ -209,7 +209,6 @@ export default function RegisterScreen() {
             {t.displayName}
           </Text>
           <TextInput
-            placeholder={t.displayNamePlaceholder}
             autoCapitalize="words"
             value={displayName}
             onChangeText={setDisplayName}
