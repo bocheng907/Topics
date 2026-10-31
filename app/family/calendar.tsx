@@ -1,6 +1,4 @@
-import { AppHeader } from "@/src/ui/components";
-import { Feather, Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   addDoc,
   collection,
@@ -13,27 +11,24 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import {
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-  Pressable,
-  ScrollView,
-  type ScrollViewInstance,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
+import { AgendaEventCard, DayAgenda, EventFormSheet, MonthCalendar } from "@/src/calendar/components";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
+import { calendarCopy } from "@/src/i18n/copy/calendarCopy";
 import {
   ensureFirestoreTranslations,
   pickDynamicLocalizedString,
 } from "@/src/i18n/dynamicTranslation";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { eventCopy } from "@/src/ui/calendarEventCopy";
+import { AppHeader } from "@/src/ui/components";
+import { colors, eventColors, layout, radii, shadows, spacing, typography } from "@/src/ui/theme";
 
 type CalendarEventRecord = {
   id: string;
@@ -88,28 +83,8 @@ type CalendarEventViewModel = CalendarEventRecord & {
 };
 
 const CALENDAR_EVENTS_COLLECTION = "calendar_events";
-const MONTH_LABELS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-const WEEK_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const EVENT_COLORS = ["#F4A261", "#B9A0F3", "#73B8F2", "#F6BDC2", "#7EDB68"];
-const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
-const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
-const PERIODS: TimePeriod[] = ["am", "pm"];
-const WHEEL_ROW_HEIGHT = 24;
-const WHEEL_HEIGHT = 170;
-const MAX_DAY_MARKERS = 4;
+// Persisted in Firestore as `event.color`; same hex values as theme.eventColors.
+const EVENT_COLORS: string[] = [...eventColors];
 
 function pad2(value: number | string) {
   return String(value).padStart(2, "0");
@@ -237,37 +212,6 @@ function resolveIsCompleted(event: CalendarEventRecord) {
   return event.isCompleted === true;
 }
 
-function getHexRgb(hex: string) {
-  const normalized = hex.replace("#", "").trim();
-  const expanded =
-    normalized.length === 3
-      ? normalized
-          .split("")
-          .map((value) => value + value)
-          .join("")
-      : normalized;
-
-  if (!/^[0-9a-fA-F]{6}$/.test(expanded)) {
-    return null;
-  }
-
-  return {
-    r: parseInt(expanded.slice(0, 2), 16),
-    g: parseInt(expanded.slice(2, 4), 16),
-    b: parseInt(expanded.slice(4, 6), 16),
-  };
-}
-
-function isDarkColor(hex: string) {
-  const rgb = getHexRgb(hex);
-
-  if (!rgb) {
-    return false;
-  }
-
-  return (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000 < 150;
-}
-
 function getEventDateObject(event: CalendarEventRecord) {
   if (event.startAt instanceof Timestamp) {
     return event.startAt.toDate();
@@ -309,86 +253,12 @@ function getEventTimeParts(event: CalendarEventViewModel) {
   };
 }
 
-function WheelColumn<T extends string | number>({
-  values,
-  value,
-  onChange,
-  renderValue,
-}: {
-  values: T[];
-  value: T;
-  onChange: (value: T) => void;
-  renderValue: (value: T) => string;
-}) {
-  const scrollRef = useRef<ScrollViewInstance>(null);
-  const selectedIndex = Math.max(values.findIndex((item) => item === value), 0);
-  const verticalPadding = (WHEEL_HEIGHT - WHEEL_ROW_HEIGHT) / 2;
-
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        y: selectedIndex * WHEEL_ROW_HEIGHT,
-        animated: false,
-      });
-    });
-  }, [selectedIndex]);
-
-  const updateValueFromOffset = (offsetY: number) => {
-    const nextIndex = Math.max(0, Math.min(values.length - 1, Math.round(offsetY / WHEEL_ROW_HEIGHT)));
-    const nextValue = values[nextIndex];
-
-    if (nextValue !== undefined && nextValue !== value) {
-      onChange(nextValue);
-    }
-  };
-
-  const handleScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    updateValueFromOffset(event.nativeEvent.contentOffset.y);
-  };
-
-  return (
-    <View style={styles.wheelColumn}>
-      <View style={styles.wheelFrame}>
-        <View style={styles.wheelSelectedBand} />
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={{ paddingVertical: verticalPadding }}
-          decelerationRate="fast"
-          nestedScrollEnabled
-          onMomentumScrollEnd={handleScrollEnd}
-          onScrollEndDrag={handleScrollEnd}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={false}
-          snapToAlignment="start"
-          snapToInterval={WHEEL_ROW_HEIGHT}
-          style={styles.wheelList}
-        >
-          {values.map((item) => {
-            const isSelected = item === value;
-
-            return (
-              <Pressable key={renderValue(item)} onPress={() => onChange(item)} style={styles.wheelRow}>
-                <Text style={[styles.wheelRowText, isSelected && styles.wheelRowTextSelected]}>
-                  {renderValue(item)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-    </View>
-  );
-}
-
 export default function FamilyCalendarScreen() {
   const { user } = useAuth();
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
-  const weekLabels =
-    language === "zh"
-      ? ["一", "二", "三", "四", "五", "六", "日"]
-      : WEEK_LABELS;
+  const copy = calendarCopy[language];
 
   const [currentMonth, setCurrentMonth] = useState(getCurrentMonthStart);
   const [selectedDate, setSelectedDate] = useState(getTodayDate);
@@ -405,6 +275,8 @@ export default function FamilyCalendarScreen() {
   const [formHour, setFormHour] = useState(7);
   const [formMinute, setFormMinute] = useState(0);
   const [formPeriod, setFormPeriod] = useState<TimePeriod>("pm");
+  const [savingEvent, setSavingEvent] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const calendarCells = useMemo(() => getMonthMeta(currentMonth), [currentMonth]);
 
@@ -497,6 +369,23 @@ export default function FamilyCalendarScreen() {
 
   const openCreateForm = () => {
     resetForm();
+    setFormError("");
+    // UI default only: next full hour when adding for today, otherwise 9:00 AM.
+    const now = new Date();
+    if (sameDate(selectedDate, now)) {
+      const nextHour = new Date(now);
+      nextHour.setHours(now.getHours() + 1, 0, 0, 0);
+      if (sameDate(nextHour, now)) {
+        const parts = extractTimeParts(nextHour);
+        setFormHour(parts.hour);
+        setFormMinute(parts.minute);
+        setFormPeriod(parts.period);
+      }
+    } else {
+      setFormHour(9);
+      setFormMinute(0);
+      setFormPeriod("am");
+    }
     setFormOpen(true);
   };
 
@@ -520,18 +409,8 @@ export default function FamilyCalendarScreen() {
     setFormMinute(timeParts.minute);
     setFormPeriod(timeParts.period);
     setEditingEventId(event.id);
+    setFormError("");
     setFormOpen(true);
-  };
-
-  const handleYearChange = (diff: number) => {
-    const nextMonth = new Date(currentMonth.getFullYear() + diff, currentMonth.getMonth(), 1);
-    const nextSelectedDate = new Date(
-      nextMonth.getFullYear(),
-      nextMonth.getMonth(),
-      Math.min(selectedDate.getDate(), getDaysInMonth(nextMonth.getFullYear(), nextMonth.getMonth()))
-    );
-    setCurrentMonth(nextMonth);
-    setSelectedDate(nextSelectedDate);
   };
 
   const handleMonthSelect = (nextMonthIndex: number) => {
@@ -585,6 +464,7 @@ export default function FamilyCalendarScreen() {
       resetForm();
     } catch (error) {
       console.log("save calendar event failed:", error);
+      setFormError(copy.saveFailed);
     }
   };
 
@@ -594,6 +474,14 @@ export default function FamilyCalendarScreen() {
     } catch (error) {
       console.log("delete calendar event failed:", error);
     }
+  };
+
+  const confirmDeleteEvent = (eventId: string) => {
+    const deleteCopy = eventCopy[language];
+    Alert.alert(deleteCopy.title, deleteCopy.confirm, [
+      { text: deleteCopy.cancel, style: "cancel" },
+      { text: deleteCopy.remove, style: "destructive", onPress: () => void handleDeleteEvent(eventId) },
+    ]);
   };
 
   const handleToggleEventCompleted = async (event: CalendarEventViewModel) => {
@@ -629,343 +517,160 @@ export default function FamilyCalendarScreen() {
     }
   };
 
-  const renderDayCell = (cell: CalendarCell, index: number) => {
-    const dayEvents = monthEvents.filter((event) => sameDate(event.resolvedDate, cell.date));
-    const visibleDayEvents = dayEvents.slice(0, MAX_DAY_MARKERS);
-    const hiddenEventCount = Math.max(dayEvents.length - MAX_DAY_MARKERS, 0);
-    const isSelected = sameDate(cell.date, selectedDate);
+  /* ---------------------------------------------------- UI-only helpers */
 
-    return (
-      <Pressable
-        key={`${cell.kind}-${cell.day}-${index}`}
-        onPress={() => {
-          setSelectedDate(new Date(cell.date.getFullYear(), cell.date.getMonth(), cell.date.getDate()));
-          setCurrentMonth(new Date(cell.date.getFullYear(), cell.date.getMonth(), 1));
-        }}
-        style={[
-          styles.dayCell,
-          cell.kind !== "current" && styles.dayCellMuted,
-          isSelected && styles.dayCellSelected,
-        ]}
-      >
-        <Text
-          style={[
-            styles.dayNumber,
-            cell.kind !== "current" && styles.dayNumberMuted,
-            isSelected && styles.dayNumberSelected,
-          ]}
-        >
-          {cell.day}
-        </Text>
+  const markersByDay = useMemo(() => {
+    const map = new Map<string, string[]>();
+    monthEvents.forEach((event) => {
+      const key = formatEventDateKey(event.resolvedDate);
+      const list = map.get(key);
+      if (list) list.push(event.resolvedColor);
+      else map.set(key, [event.resolvedColor]);
+    });
+    return map;
+  }, [monthEvents]);
 
-        <View style={styles.dayMarkers}>
-          {visibleDayEvents.map((event) => (
-            <View key={event.id} style={[styles.dayMarker, { backgroundColor: event.resolvedColor }]} />
-          ))}
-          {hiddenEventCount > 0 && (
-            <Text style={styles.dayMoreText} numberOfLines={1}>
-              +{hiddenEventCount}
-            </Text>
-          )}
-        </View>
-      </Pressable>
-    );
+  const markersFor = (date: Date) => markersByDay.get(formatEventDateKey(date)) ?? [];
+
+  const selectDay = (date: Date) => {
+    setSelectedDate(new Date(date.getFullYear(), date.getMonth(), date.getDate()));
+    setCurrentMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+  };
+
+  const shiftMonth = (diff: number) => handleMonthSelect(currentMonth.getMonth() + diff);
+
+  const pickMonth = (year: number, monthIndex: number) =>
+    handleMonthSelect((year - currentMonth.getFullYear()) * 12 + monthIndex);
+
+  const shiftFormDate = (diffDays: number) =>
+    selectDay(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() + diffDays));
+
+  const closeForm = () => {
+    setFormOpen(false);
+    resetForm();
+    setFormError("");
+  };
+
+  const handleSaveEvent = async () => {
+    if (savingEvent) return;
+    // Same preconditions confirmEvent() checks; surfaced inline instead of failing silently.
+    if (!user?.uid) {
+      setFormError(copy.needSignIn);
+      return;
+    }
+    if (!activePatientId) {
+      setFormError(copy.needCareTarget);
+      return;
+    }
+    setFormError("");
+    setSavingEvent(true);
+    try {
+      await confirmEvent();
+    } finally {
+      setSavingEvent(false);
+    }
   };
 
   return (
     <View style={styles.screen}>
       <AppHeader title={t.navCalendar} left="menu" />
 
-      <View style={styles.contentCard}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.controlsCard}>
-            <View style={styles.yearRow}>
-              <Pressable onPress={() => handleYearChange(-1)} hitSlop={10} style={styles.yearArrowButton}>
-                <Ionicons name="caret-back" size={16} color="#2B2B2B" />
-              </Pressable>
-              <Text style={styles.yearText}>{currentMonth.getFullYear()}</Text>
-              <Pressable onPress={() => handleYearChange(1)} hitSlop={10} style={styles.yearArrowButton}>
-                <Ionicons name="caret-forward" size={16} color="#2B2B2B" />
-              </Pressable>
-            </View>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.column}>
+          <MonthCalendar
+            month={currentMonth}
+            selectedDate={selectedDate}
+            cells={calendarCells}
+            markersFor={markersFor}
+            pickerOpen={monthMenuOpen}
+            onTogglePicker={() => setMonthMenuOpen((prev) => !prev)}
+            onSelectDate={selectDay}
+            onShiftMonth={shiftMonth}
+            onPickMonth={pickMonth}
+            onToday={() => selectDay(getTodayDate())}
+          />
 
-            <View style={styles.monthWrap}>
-              <Pressable onPress={() => setMonthMenuOpen((prev) => !prev)} style={styles.monthButton}>
-                <Text style={styles.monthButtonText}>{MONTH_LABELS[currentMonth.getMonth()]}</Text>
-                <Ionicons name="chevron-down" size={16} color="#4A4A4A" />
-              </Pressable>
+          <DayAgenda date={selectedDate} count={selectedDayEvents.length} onAdd={openCreateForm}>
+            {selectedDayEvents.map((event) => {
+              const eventTime = getEventTimeParts(event);
+              const eventPersonName = pickDynamicLocalizedString(
+                event,
+                "name",
+                language,
+                ["name", "personName", "patientName"],
+                event.resolvedPersonName
+              );
+              const eventTitle = pickDynamicLocalizedString(
+                event,
+                "title",
+                language,
+                ["title", "eventTitle", "event", "description"],
+                event.resolvedTitle
+              );
+              const eventLocation = pickDynamicLocalizedString(
+                event,
+                "location",
+                language,
+                ["location", "place"],
+                event.resolvedLocation
+              );
+              const eventDescription = pickDynamicLocalizedString(
+                event,
+                "description",
+                language,
+                ["description"],
+                event.resolvedDescription
+              );
 
-              {monthMenuOpen && (
-                <View style={styles.monthMenu}>
-                  {MONTH_LABELS.map((label, index) => (
-                    <Pressable
-                      key={label}
-                      onPress={() => handleMonthSelect(index)}
-                      style={[
-                        styles.monthMenuItem,
-                        index === currentMonth.getMonth() && styles.monthMenuItemActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.monthMenuText,
-                          index === currentMonth.getMonth() && styles.monthMenuTextActive,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-            </View>
-          </View>
+              return (
+                <AgendaEventCard
+                  key={event.id}
+                  time={eventTime.time}
+                  period={eventTime.period === "am" ? copy.am : copy.pm}
+                  color={event.resolvedColor}
+                  title={eventTitle || eventPersonName || t.unnamedRecord}
+                  person={eventTitle && eventPersonName !== eventTitle ? eventPersonName : ""}
+                  location={eventLocation}
+                  description={eventDescription}
+                  completed={event.resolvedIsCompleted}
+                  onToggleComplete={() => handleToggleEventCompleted(event)}
+                  onEdit={() => openEditForm(event)}
+                  onDelete={() => confirmDeleteEvent(event.id)}
+                />
+              );
+            })}
+          </DayAgenda>
+        </View>
+      </ScrollView>
 
-          <View style={styles.weekRow}>
-            {weekLabels.map((day) => (
-              <Text key={day} style={styles.weekText}>
-                {day}
-              </Text>
-            ))}
-          </View>
-
-          <View style={styles.grid}>{calendarCells.map((cell, index) => renderDayCell(cell, index))}</View>
-
-          {selectedDayEvents.length > 0 && (
-            <View style={styles.eventList}>
-              {selectedDayEvents.map((event) => {
-                const eventTime = getEventTimeParts(event);
-                const useLightText = isDarkColor(event.resolvedColor);
-                const primaryTextStyle = useLightText ? styles.eventTextLight : styles.eventTextDark;
-                const secondaryTextStyle = useLightText ? styles.eventSecondaryTextLight : styles.eventSecondaryTextDark;
-                const completedTextStyle = event.resolvedIsCompleted && styles.eventCompletedText;
-                const actionIconColor = useLightText ? "#FFFFFF" : "#1F2430";
-                const eventPersonName = pickDynamicLocalizedString(
-                  event,
-                  "name",
-                  language,
-                  ["name", "personName", "patientName"],
-                  event.resolvedPersonName
-                );
-                const eventTitle = pickDynamicLocalizedString(
-                  event,
-                  "title",
-                  language,
-                  ["title", "eventTitle", "event", "description"],
-                  event.resolvedTitle
-                );
-                const eventLocation = pickDynamicLocalizedString(
-                  event,
-                  "location",
-                  language,
-                  ["location", "place"],
-                  event.resolvedLocation
-                );
-                const eventDescription = pickDynamicLocalizedString(
-                  event,
-                  "description",
-                  language,
-                  ["description"],
-                  event.resolvedDescription
-                );
-
-                return (
-                  <View key={event.id} style={[styles.eventCard, { backgroundColor: event.resolvedColor }]}>
-                    <View style={styles.eventCardBody}>
-                      <View style={styles.eventTimeBlock}>
-                        <Text style={[styles.eventTimeText, primaryTextStyle, completedTextStyle]}>
-                          {eventTime.time}
-                        </Text>
-                        <Text style={[styles.eventPeriodText, secondaryTextStyle, completedTextStyle]}>
-                          {eventTime.period}
-                        </Text>
-                      </View>
-
-                      <View style={styles.eventInfo}>
-                        <Text style={[styles.eventPersonText, primaryTextStyle, completedTextStyle]} numberOfLines={2}>
-                          {eventPersonName || eventTitle || t.unnamedRecord}
-                        </Text>
-
-                        {eventTitle && eventTitle !== eventPersonName && (
-                          <Text style={[styles.eventTitleText, primaryTextStyle, completedTextStyle]} numberOfLines={2}>
-                            {eventTitle}
-                          </Text>
-                        )}
-
-                        <View style={styles.eventMetaWrap}>
-                          {eventTitle && (
-                            <View style={styles.eventMetaPill}>
-                              <Text style={[styles.eventMetaText, secondaryTextStyle, completedTextStyle]} numberOfLines={1}>
-                                {t.calendarType}: {eventTitle}
-                              </Text>
-                            </View>
-                          )}
-
-                          {eventLocation && (
-                            <View style={styles.eventMetaPill}>
-                              <Text style={[styles.eventMetaText, secondaryTextStyle, completedTextStyle]} numberOfLines={1}>
-                                {t.calendarLocation}: {eventLocation}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-
-                        {eventDescription && (
-                          <Text style={[styles.eventDescriptionText, secondaryTextStyle, completedTextStyle]}>
-                            {eventDescription}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-
-                    <View style={styles.eventActions}>
-                      <Pressable
-                        onPress={() => handleToggleEventCompleted(event)}
-                        style={[
-                          styles.eventStatusButton,
-                          event.resolvedIsCompleted ? styles.eventStatusButtonCompleted : styles.eventStatusButtonPending,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.eventStatusText,
-                            event.resolvedIsCompleted ? styles.eventStatusTextCompleted : styles.eventStatusTextPending,
-                          ]}
-                        >
-                          {event.resolvedIsCompleted ? t.completed : t.pending}
-                        </Text>
-                      </Pressable>
-                      <Pressable hitSlop={8} style={styles.eventActionButton} onPress={() => openEditForm(event)}>
-                        <Feather name="edit-2" size={22} color={actionIconColor} />
-                      </Pressable>
-                      <Pressable
-                        hitSlop={8}
-                        style={styles.eventActionButton}
-                        onPress={() => handleDeleteEvent(event.id)}
-                      >
-                        <Ionicons name="trash-outline" size={24} color={actionIconColor} />
-                      </Pressable>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </ScrollView>
-      </View>
-
-      <Pressable style={styles.plusButton} onPress={openCreateForm}>
-        <Ionicons name="add" size={38} color="#FFF" />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={copy.addEvent}
+        onPress={openCreateForm}
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+      >
+        <Ionicons name="add" size={26} color={colors.onPrimary} />
+        <Text style={styles.fabText}>{copy.addEvent}</Text>
       </Pressable>
 
-      {formOpen && (
-        <View style={styles.formOverlay}>
-          <View style={styles.formPeekCalendar}>
-            <View style={styles.formPeekGridRow}>
-              <View style={[styles.formPeekCell, styles.formPeekCellMuted]} />
-              <View style={styles.formPeekCell} />
-              <View style={styles.formPeekCell} />
-              <View style={styles.formPeekCell} />
-              <View style={[styles.formPeekCell, styles.formPeekCellSelected]} />
-              <View style={styles.formPeekCell} />
-            </View>
-          </View>
-
-          <View style={styles.formSheet}>
-            <View style={styles.formHeader}>
-              <Pressable
-                onPress={() => {
-                  setFormOpen(false);
-                  resetForm();
-                }}
-                hitSlop={12}
-                style={styles.formIconButton}
-              >
-                <Text style={styles.formHeaderIcon}>X</Text>
-              </Pressable>
-              <Pressable onPress={confirmEvent} hitSlop={12} style={styles.formConfirmButton}>
-                <Ionicons name="checkmark" size={34} color="#111" />
-              </Pressable>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.formContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.colorRow}>
-                {EVENT_COLORS.map((color) => {
-                  const selected = form.color === color;
-                  return (
-                    <Pressable
-                      key={color}
-                      onPress={() => setForm((prev) => ({ ...prev, color }))}
-                      style={[
-                        styles.colorSwatch,
-                        { backgroundColor: color },
-                        selected && styles.colorSwatchSelected,
-                      ]}
-                    />
-                  );
-                })}
-              </View>
-
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>{t.name}:</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={form.personName}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, personName: text }))}
-                  placeholder=""
-                  placeholderTextColor="#B7B7B7"
-                />
-              </View>
-
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>{t.time}:</Text>
-                <View style={styles.timeField}>
-                  <WheelColumn
-                    values={HOURS}
-                    value={formHour}
-                    onChange={setFormHour}
-                    renderValue={(hour) => String(hour)}
-                  />
-                  <WheelColumn
-                    values={MINUTES}
-                    value={formMinute}
-                    onChange={setFormMinute}
-                    renderValue={(minute) => pad2(minute)}
-                  />
-                  <WheelColumn
-                    values={PERIODS}
-                    value={formPeriod}
-                    onChange={setFormPeriod}
-                    renderValue={(period) => period}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>{t.event}:</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={form.title}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, title: text }))}
-                  placeholder=""
-                  placeholderTextColor="#B7B7B7"
-                />
-              </View>
-
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>{t.calendarLocation}:</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={form.location}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, location: text }))}
-                  placeholder=""
-                  placeholderTextColor="#B7B7B7"
-                />
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      )}
+      <EventFormSheet
+        visible={formOpen}
+        editing={editingEventId !== null}
+        values={form}
+        onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+        date={selectedDate}
+        onShiftDate={shiftFormDate}
+        hour={formHour}
+        minute={formMinute}
+        period={formPeriod}
+        onChangeHour={setFormHour}
+        onChangeMinute={setFormMinute}
+        onChangePeriod={setFormPeriod}
+        error={formError}
+        saving={savingEvent}
+        onCancel={closeForm}
+        onSave={() => void handleSaveEvent()}
+      />
     </View>
   );
 }
@@ -973,370 +678,33 @@ export default function FamilyCalendarScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#F4F2F0",
-  },
-  contentCard: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.canvas,
   },
   content: {
-    paddingBottom: 168,
-  },
-  controlsCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingHorizontal: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderColor: "#D8D8D8", backgroundColor: "#FFF", flexWrap: "wrap" },
-  yearRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  yearArrowButton: {
-    width: 18,
-    height: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  yearText: {
-    fontSize: 19,
-    lineHeight: 24,
-    fontWeight: "500",
-    color: "#111",
-  },
-  monthWrap: {
-    position: "relative",
-  },
-  monthButton: { minWidth: 180, borderWidth: 0.8, borderColor: "#D4D4D4", borderRadius: 8, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#FAFAFA", minHeight: 32, maxWidth: "100%", paddingVertical: 4, gap: 8 },
-  monthButtonText: { fontSize: 12, color: "#4A4A4A", flexShrink: 1 },
-  monthMenu: { position: "absolute", top: "100%", right: 0, width: 180, backgroundColor: "#FFF", borderRadius: 10, borderWidth: 0.8, borderColor: "#E4E4E4", zIndex: 20, shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 6, elevation: 5, maxWidth: "100%" },
-  monthMenuItem: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  monthMenuItemActive: {
-    backgroundColor: "#FFF0F0",
-  },
-  monthMenuText: {
-    fontSize: 13,
-    color: "#444",
-  },
-  monthMenuTextActive: {
-    color: "#F67578",
-    fontWeight: "700",
-  },
-  weekRow: {
-    flexDirection: "row",
-    borderBottomWidth: 0.5,
-    borderColor: "#E5E5E5",
-    backgroundColor: "#FFF",
-  },
-  weekText: {
-    width: `${100 / 7}%`,
-    paddingVertical: 3,
-    textAlign: "left",
-    paddingLeft: 4,
-    fontSize: 6,
-    color: "#8E95A3",
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    borderLeftWidth: 0.5,
-    borderTopWidth: 0.5,
-    borderColor: "#E5E5E5",
-    backgroundColor: "#FFF",
-  },
-  dayCell: {
-    width: `${100 / 7}%`,
-    height: 88,
-    borderRightWidth: 0.5,
-    borderBottomWidth: 0.5,
-    borderColor: "#E5E5E5",
-    paddingTop: 4,
-    paddingHorizontal: 4,
-    backgroundColor: "#FFF",
-  },
-  dayCellMuted: {
-    backgroundColor: "#E7E7E7",
-  },
-  dayCellSelected: {
-    backgroundColor: "#F7C7CB",
-  },
-  dayNumber: {
-    fontSize: 10,
-    color: "#202020",
-  },
-  dayNumberMuted: {
-    color: "#A8A8A8",
-  },
-  dayNumberSelected: {
-    color: "#111",
-  },
-  dayMarkers: {
-    marginTop: 18,
-    gap: 2,
-  },
-  dayMarker: {
-    height: 6,
-    borderRadius: 2,
-    width: "86%",
-  },
-  dayMoreText: {
-    width: "86%",
-    fontSize: 8,
-    lineHeight: 10,
-    color: "#4B5563",
-    fontWeight: "700",
-    textAlign: "right",
-  },
-  eventList: {
-    paddingHorizontal: 26,
-    paddingTop: 32,
-    gap: 14,
-  },
-  eventCard: {
-    borderRadius: 12,
-    padding: 14,
-    maxWidth: "100%",
-  },
-  eventCardBody: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  eventTimeBlock: {
-    width: 58,
-    flexShrink: 0,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.38)",
-    paddingVertical: 8,
-    alignItems: "center",
-  },
-  eventTimeText: {
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "700",
-  },
-  eventPeriodText: {
-    marginTop: 1,
-    fontSize: 12,
-    lineHeight: 14,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  eventInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  eventPersonText: {
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "700",
-    flexShrink: 1,
-  },
-  eventTitleText: {
-    marginTop: 2,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "600",
-    flexShrink: 1,
-  },
-  eventMetaWrap: {
-    marginTop: 8,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  eventMetaPill: { maxWidth: "100%", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.42)", paddingHorizontal: 9, paddingVertical: 4 },
-  eventMetaText: {
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: "600",
-  },
-  eventDescriptionText: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "500",
-  },
-  eventTextDark: {
-    color: "#111",
-  },
-  eventTextLight: {
-    color: "#FFF",
-  },
-  eventSecondaryTextDark: {
-    color: "#2A2118",
-  },
-  eventSecondaryTextLight: {
-    color: "#F8F8F8",
-  },
-  eventCompletedText: {
-    opacity: 0.68,
-  },
-  eventActions: {
-    marginTop: 10,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    gap: 2,
-  },
-  eventStatusButton: { minWidth: 70, borderRadius: 15, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", marginRight: 6, minHeight: 30, paddingVertical: 5 },
-  eventStatusButtonPending: {
-    backgroundColor: "rgba(255,255,255,0.66)",
-  },
-  eventStatusButtonCompleted: {
-    backgroundColor: "#2E7D32",
-  },
-  eventStatusText: {
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: "800",
-  },
-  eventStatusTextPending: {
-    color: "#5F4B32",
-  },
-  eventStatusTextCompleted: {
-    color: "#FFF",
-  },
-  eventActionButton: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  plusButton: {
-    position: "absolute",
-    right: 26,
-    bottom: 98,
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "#F8C5C7",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  formOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0,0,0,0.08)",
-    justifyContent: "flex-start",
-  },
-  formPeekCalendar: {
-    marginTop: 112,
-    height: 84,
-    backgroundColor: "#FFF",
-  },
-  formPeekGridRow: {
-    flexDirection: "row",
-    height: "100%",
-  },
-  formPeekCell: {
-    flex: 1,
-    borderRightWidth: 0.5,
-    borderTopWidth: 0.5,
-    borderColor: "#E5E5E5",
-    backgroundColor: "#FFF",
-  },
-  formPeekCellMuted: {
-    backgroundColor: "#E7E7E7",
-  },
-  formPeekCellSelected: {
-    backgroundColor: "#F7C7CB",
-  },
-  formSheet: {
-    flex: 1,
-    backgroundColor: "#FFF",
-    paddingTop: 8,
-    paddingHorizontal: 20,
-  },
-  formHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  formIconButton: {
-    width: 44,
-    height: 44,
-    justifyContent: "center",
-  },
-  formConfirmButton: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  formHeaderIcon: {
-    fontSize: 28,
-    color: "#111",
-    fontWeight: "400",
-  },
-  formContent: {
-    paddingBottom: 40,
-    gap: 16,
-  },
-  colorRow: { flexDirection: "row", alignItems: "center", gap: 18, marginBottom: 4, paddingLeft: 2, flexWrap: "wrap" },
-  colorSwatch: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2.5,
-    borderColor: "transparent",
-  },
-  colorSwatchSelected: {
-    borderColor: "#7A7A7A",
-  },
-  fieldRow: {
-    gap: 8,
-  },
-  fieldLabel: {
-    fontSize: 22,
-    color: "#111",
-    fontWeight: "700",
-  },
-  fieldInput: { borderRadius: 12, backgroundColor: "#DCDDDF", paddingHorizontal: 14, fontSize: 18, color: "#111", marginLeft: 74, marginTop: -34, minHeight: 44, paddingVertical: 8 },
-  timeField: {
-    minHeight: 170,
-    borderRadius: 12,
-    backgroundColor: "#FFF",
-    marginLeft: 74,
-    marginTop: -34,
-    flexDirection: "row",
-    paddingHorizontal: 6,
-  },
-  wheelColumn: {
-    flex: 1,
-    alignItems: "center",
-  },
-  wheelFrame: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.lg,
+    paddingBottom: 112,
+  },
+  column: {
     width: "100%",
-    height: WHEEL_HEIGHT,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+    gap: spacing.xl,
   },
-  wheelList: {
-    width: "100%",
-    height: WHEEL_HEIGHT,
-  },
-  wheelSelectedBand: {
+  fab: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    top: 68,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: "#F2F2F2",
-  },
-  wheelRow: {
-    height: WHEEL_ROW_HEIGHT,
-    justifyContent: "center",
+    right: spacing.lg,
+    bottom: spacing.lg,
+    minHeight: 56,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.xl,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
     alignItems: "center",
+    gap: spacing.sm,
+    ...shadows.fab,
   },
-  wheelRowText: {
-    fontSize: 13,
-    color: "#B9B9B9",
-  },
-  wheelRowTextSelected: {
-    fontSize: 17,
-    color: "#111",
-    fontWeight: "500",
-  },
+  fabPressed: { backgroundColor: colors.primaryPressed },
+  fabText: { ...typography.bodyStrong, color: colors.onPrimary },
 });
