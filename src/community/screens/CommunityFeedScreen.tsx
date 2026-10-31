@@ -240,8 +240,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.control,
     backgroundColor: colors.surfaceSunken,
   },
+  // Single-line: no lineHeight (iOS would push the placeholder below centre).
   searchInput: {
-    ...typography.body,
+    fontSize: typography.body.fontSize,
+    color: typography.body.color,
     flex: 1,
     minHeight: 48,
     paddingVertical: 0,

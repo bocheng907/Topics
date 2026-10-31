@@ -1,5 +1,5 @@
 import React, { forwardRef, useState } from "react";
-import { Platform, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputInstance, type TextInputProps, type ViewStyle } from "react-native";
+import { Platform, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputInstance, type TextInputProps, type TextStyle, type ViewStyle } from "react-native";
 import { colors, radii, spacing, typography } from "../theme";
 
 export type TextFieldProps = Omit<TextInputProps, "style"> & {
@@ -21,6 +21,18 @@ export const TextField = forwardRef<TextInputInstance, TextFieldProps>(function 
 ) {
   const [focused, setFocused] = useState(false);
   const borderColor = error ? colors.danger : focused ? colors.primary : colors.border;
+
+  // iOS: a lineHeight on a single-line TextInput pushes the text and placeholder
+  // below the vertical centre, and letterSpacing is also applied to the
+  // placeholder. Strip lineHeight from single-line inputs, and only apply a
+  // caller's letterSpacing (e.g. code inputs) once there is typed text.
+  const { lineHeight, letterSpacing, ...flatInputStyle } = (StyleSheet.flatten(inputStyle) ?? {}) as TextStyle;
+  const hasText = typeof rest.value === "string" ? rest.value.length > 0 : Boolean(rest.defaultValue);
+  const callerStyle: TextStyle = {
+    ...flatInputStyle,
+    ...(multiline && lineHeight != null ? { lineHeight } : null),
+    ...(hasText && letterSpacing != null ? { letterSpacing } : null),
+  };
 
   return (
     <View style={[styles.container, containerStyle]}>
@@ -55,7 +67,7 @@ export const TextField = forwardRef<TextInputInstance, TextFieldProps>(function 
             setFocused(false);
             onBlur?.(e);
           }}
-          style={[styles.input, multiline && styles.inputMultiline, webNoOutline, inputStyle]}
+          style={[styles.input, multiline && styles.inputMultiline, webNoOutline, callerStyle]}
         />
       </View>
       {error ? (
@@ -89,13 +101,18 @@ const styles = StyleSheet.create({
     default: { borderWidth: 2, margin: -1 },
   }) as ViewStyle,
   fieldDisabled: { backgroundColor: colors.surfaceSunken },
+  // Single-line: no lineHeight (iOS offsets the placeholder downward with it).
   input: {
-    ...typography.body,
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
+    color: typography.body.color,
+    letterSpacing: 0,
     minHeight: 50,
     paddingHorizontal: spacing.md + 2,
     paddingVertical: spacing.md,
+    textAlignVertical: "center",
   },
-  inputMultiline: { minHeight: 112, paddingTop: spacing.md },
+  inputMultiline: { lineHeight: typography.body.lineHeight, minHeight: 112, paddingTop: spacing.md, textAlignVertical: "top" },
   helper: { ...typography.caption, marginTop: 6 },
   error: { ...typography.caption, color: colors.danger, fontWeight: "600", marginTop: 6 },
 });

@@ -1,22 +1,27 @@
-import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 import type { Role } from "@/src/auth/AuthProvider";
 import { translations } from "@/src/i18n/translations";
+import { authCopy } from "@/src/i18n/copy/authCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { isValidRegistrationPassword } from "@/src/auth/passwordPolicy";
 import { PRIVACY_POLICY_VERSION, privacyCopy } from "@/src/privacy/consent";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { registrationErrorMessage } from "@/src/auth/registrationError";
 import { normalizeRegistrationEmail } from "@/src/auth/registrationAccount";
+import { Button, KeyboardAwareScroll, TextField, type IconName } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 
 export default function RegisterScreen() {
   const { register } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
   const privacy = privacyCopy[language];
+  const c = authCopy[language];
 
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -78,323 +83,233 @@ export default function RegisterScreen() {
     }
   }
 
+  const roleOptions: { value: Role; label: string; description: string; icon: IconName }[] = [
+    { value: "caregiver", label: t.caregiver, description: c.caregiverDesc, icon: "medkit-outline" },
+    { value: "family", label: t.family, description: c.familyDesc, icon: "people-outline" },
+    { value: "agency", label: t.agency, description: c.agencyDesc, icon: "business-outline" },
+  ];
+
+  // Presentation only: show the single validation message next to the field it is about.
+  const nameError = registrationError === t.displayNameValidation ? registrationError : undefined;
+  const phoneError = registrationError === t.familyPhoneValidation ? registrationError : undefined;
+  const generalError = registrationError && !nameError && !phoneError ? registrationError : "";
+
   return (
-    <ScreenScrollView
-      contentContainerStyle={{
-        flexGrow: 1,
-        padding: 32,
-        backgroundColor: "#FFF",
-        justifyContent: "center",
-      }}
-    >
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       <Stack.Screen options={{ headerShown: false }} />
-
-      <View style={{ marginBottom: 32 }}>
-        <Text style={{ fontSize: 36, fontWeight: "900", color: "#333" }}>
-          {t.createAccount}
-        </Text>
-        <Text style={{ fontSize: 16, color: "#666", marginTop: 8 }}>
-          {t.registerSubtitle}
-        </Text>
-      </View>
-
-      <View style={{ gap: 20 }}>
-        <View style={{ gap: 8 }}>
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "800",
-              color: "#666",
-              marginLeft: 4,
-            }}
-          >
-            {t.role}
-          </Text>
-
-          <View
-            style={{
-              flexDirection: "row",
-              gap: 10,
-            }}
-          >
-            {/* 看護 */}
-            <Pressable
-              onPress={() => setRole("caregiver")}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 12,
-                borderWidth: 2,
-                borderColor:
-                  role === "caregiver" ? "#007AFF" : "#EEE",
-                backgroundColor:
-                  role === "caregiver" ? "#E1E9FF" : "#FFF",
-                alignItems: "center",
-              }}
-            >
-              <Text
-                style={{
-                  fontWeight: "900",
-                  color:
-                    role === "caregiver" ? "#007AFF" : "#999",
-                }}
-              >
-                {t.caregiver}
-              </Text>
-            </Pressable>
-
-            {/* 家屬 */}
-            <Pressable
-              onPress={() => setRole("family")}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 12,
-                borderWidth: 2,
-                borderColor:
-                  role === "family" ? "#007AFF" : "#EEE",
-                backgroundColor:
-                  role === "family" ? "#E1E9FF" : "#FFF",
-                alignItems: "center",
-              }}
-            >
-              <Text
-                style={{
-                  fontWeight: "900",
-                  color:
-                    role === "family" ? "#007AFF" : "#999",
-                }}
-              >
-                {t.family}
-              </Text>
-            </Pressable>
-
-            {/* 仲介 */}
-            <Pressable
-              onPress={() => setRole("agency")}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 12,
-                borderWidth: 2,
-                borderColor:
-                  role === "agency" ? "#007AFF" : "#EEE",
-                backgroundColor:
-                  role === "agency" ? "#E1E9FF" : "#FFF",
-                alignItems: "center",
-              }}
-            >
-              <Text
-                style={{
-                  fontWeight: "900",
-                  color:
-                    role === "agency" ? "#007AFF" : "#999",
-                }}
-              >
-                {t.agency}
-              </Text>
-            </Pressable>
+      <KeyboardAwareScroll contentContainerStyle={styles.scroll}>
+        <View style={styles.column}>
+          <View style={styles.heading}>
+            <Text style={styles.title} accessibilityRole="header">{t.createAccount}</Text>
+            <Text style={styles.subtitle}>{t.registerSubtitle}</Text>
           </View>
-        </View>
 
-        <View style={{ gap: 8 }}>
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "800",
-              color: "#666",
-              marginLeft: 4,
-            }}
-          >
-            {t.displayName}
-          </Text>
-          <TextInput
-            autoCapitalize="words"
-            value={displayName}
-            onChangeText={setDisplayName}
-            maxLength={120}
-            style={{
-              backgroundColor: "#F2F2F7",
-              borderRadius: 14,
-              padding: 16,
-              fontSize: 16,
-              borderWidth: 1,
-              borderColor: "#EEE",
-            }}
-          />
-        </View>
-
-        <View style={{ gap: 8 }}>
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "800",
-              color: "#666",
-              marginLeft: 4,
-            }}
-          >
-            EMAIL
-          </Text>
-          <TextInput
-            placeholder="example@mail.com"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={value => { setEmail(value); setRegistrationError(""); }}
-            editable={!loading}
-            style={{
-              backgroundColor: "#F2F2F7",
-              borderRadius: 14,
-              padding: 16,
-              fontSize: 16,
-              borderWidth: 1,
-              borderColor: "#EEE",
-            }}
-          />
-        </View>
-
-        <View style={{ gap: 8 }}>
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "800",
-              color: "#666",
-              marginLeft: 4,
-            }}
-          >
-            {t.setPassword}
-          </Text>
-          <TextInput
-            placeholder={t.setPasswordPlaceholder}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            value={password}
-            onChangeText={setPassword}
-            style={{
-              backgroundColor: "#F2F2F7",
-              borderRadius: 14,
-              padding: 16,
-              fontSize: 16,
-              borderWidth: 1,
-              borderColor: "#EEE",
-            }}
-          />
-        </View>
-
-        <Text style={{ fontSize: 13, color: "#666", marginTop: -12 }}>
-          {t.setPasswordPlaceholder}
-        </Text>
-
-        {role === "family" && (
-          <>
-            <View style={{ gap: 8 }}>
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: "800",
-                  color: "#666",
-                  marginLeft: 4,
-                }}
-              >
-                {t.emergencyPhone1}
-              </Text>
-              <TextInput
-                placeholder="例如：0912345678"
-                keyboardType="phone-pad"
-                value={emergencyPhone1}
-                onChangeText={setEmergencyPhone1}
-                style={{
-                  backgroundColor: "#F2F2F7",
-                  borderRadius: 14,
-                  padding: 16,
-                  fontSize: 16,
-                  borderWidth: 1,
-                  borderColor: "#EEE",
-                }}
-              />
+          <View style={styles.form}>
+            <View style={styles.roleGroup} accessibilityRole="radiogroup" accessibilityLabel={t.role}>
+              <Text style={styles.groupLabel}>{t.role}</Text>
+              {roleOptions.map((option) => {
+                const selected = role === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected, checked: selected, disabled: loading }}
+                    accessibilityLabel={`${option.label}, ${option.description}`}
+                    disabled={loading}
+                    onPress={() => setRole(option.value)}
+                    style={({ pressed }) => [
+                      styles.roleCard,
+                      selected && styles.roleCardSelected,
+                      pressed && !selected && styles.roleCardPressed,
+                    ]}
+                  >
+                    <View style={[styles.roleIcon, selected && styles.roleIconSelected]}>
+                      <Ionicons name={option.icon} size={24} color={selected ? colors.primary : colors.textSecondary} />
+                    </View>
+                    <View style={styles.roleText}>
+                      <Text style={[styles.roleLabel, selected && styles.roleLabelSelected]}>{option.label}</Text>
+                      <Text style={styles.roleDesc} numberOfLines={2}>{option.description}</Text>
+                    </View>
+                    <Ionicons
+                      name={selected ? "radio-button-on" : "radio-button-off"}
+                      size={24}
+                      color={selected ? colors.primary : colors.textDisabled}
+                    />
+                  </Pressable>
+                );
+              })}
             </View>
 
-            <View style={{ gap: 8 }}>
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: "800",
-                  color: "#666",
-                  marginLeft: 4,
-                }}
+            <TextField
+              label={t.displayName}
+              autoCapitalize="words"
+              value={displayName}
+              onChangeText={setDisplayName}
+              maxLength={120}
+              editable={!loading}
+              error={nameError}
+            />
+
+            <TextField
+              label={c.emailLabel}
+              placeholder={c.emailExample}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              textContentType="emailAddress"
+              autoComplete="email"
+              value={email}
+              onChangeText={value => { setEmail(value); setRegistrationError(""); }}
+              editable={!loading}
+            />
+
+            <TextField
+              label={t.setPassword}
+              helper={t.setPasswordPlaceholder}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="newPassword"
+              value={password}
+              onChangeText={setPassword}
+              editable={!loading}
+            />
+
+            {role === "family" && (
+              <>
+                <TextField
+                  label={t.emergencyPhone1}
+                  placeholder={t.emergencyPhonePlaceholder1}
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  value={emergencyPhone1}
+                  onChangeText={setEmergencyPhone1}
+                  editable={!loading}
+                  error={phoneError && !emergencyPhone1.trim() ? phoneError : undefined}
+                />
+                <TextField
+                  label={t.emergencyPhone2}
+                  placeholder={t.emergencyPhonePlaceholder2}
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  value={emergencyPhone2}
+                  onChangeText={setEmergencyPhone2}
+                  editable={!loading}
+                  error={phoneError && !emergencyPhone2.trim() ? phoneError : undefined}
+                />
+              </>
+            )}
+
+            <View style={styles.consentBlock}>
+              <PrivacyPolicyLink />
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: privacyAccepted, disabled: loading }}
+                aria-checked={privacyAccepted}
+                aria-disabled={loading}
+                accessibilityLabel={privacy.consent}
+                disabled={loading}
+                onPress={() => setPrivacyAccepted(value => !value)}
+                style={({ pressed }) => [styles.consentRow, pressed && styles.pressed]}
               >
-                {t.emergencyPhone2}
-              </Text>
-              <TextInput
-                placeholder="例如：0987654321"
-                keyboardType="phone-pad"
-                value={emergencyPhone2}
-                onChangeText={setEmergencyPhone2}
-                style={{
-                  backgroundColor: "#F2F2F7",
-                  borderRadius: 14,
-                  padding: 16,
-                  fontSize: 16,
-                  borderWidth: 1,
-                  borderColor: "#EEE",
-                }}
-              />
+                <Ionicons
+                  name={privacyAccepted ? "checkbox" : "square-outline"}
+                  size={26}
+                  color={privacyAccepted ? colors.primary : colors.textMuted}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
+                />
+                <Text style={styles.consentText}>{privacy.consent}</Text>
+              </Pressable>
+              <Text style={styles.scopeText}>{privacy.scope}</Text>
             </View>
-          </>
-        )}
 
-        <View style={{ gap: 8 }}>
-          <PrivacyPolicyLink />
-          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: privacyAccepted, disabled: loading }}
-            aria-checked={privacyAccepted} aria-disabled={loading}
-            accessibilityLabel={privacy.consent} disabled={loading}
-            onPress={() => setPrivacyAccepted(value => !value)}
-            style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 8 }}>
-            <Text accessibilityElementsHidden style={{ fontSize: 23, color: "#005FCC" }}>{privacyAccepted ? "☑" : "☐"}</Text>
-            <Text style={{ flex: 1, fontSize: 15, lineHeight: 23, color: "#333" }}>{privacy.consent}</Text>
-          </Pressable>
-          <Text style={{ fontSize: 12, lineHeight: 19, color: "#666" }}>{privacy.scope}</Text>
-        </View>
+            {generalError ? (
+              <Text accessibilityRole="alert" style={styles.error}>{generalError}</Text>
+            ) : null}
 
-        {registrationError ? (
-          <Text accessibilityRole="alert" style={{ color: "#B42318", fontSize: 15, lineHeight: 23 }}>
-            {registrationError}
-          </Text>
-        ) : null}
+            <Button
+              label={t.finishRegister}
+              size="lg"
+              fullWidth
+              loading={loading}
+              disabled={!privacyAccepted}
+              onPress={onRegister}
+            />
+          </View>
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={onRegister}
-          disabled={loading || !privacyAccepted}
-          style={({ pressed }) => ({
-            marginTop: 10,
-            padding: 18,
-            borderRadius: 16,
-            backgroundColor: loading || !privacyAccepted ? "#CCC" : "#007AFF",
-            alignItems: "center",
-            opacity: pressed ? 0.8 : 1,
-          })}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={{ color: "#FFF", fontSize: 18, fontWeight: "900" }}>
-              {t.finishRegister}
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.switchLink, pressed && styles.pressed]}
+          >
+            <Text style={styles.switchText}>
+              {t.hasAccount}
+              <Text style={styles.switchAction}>{t.backLogin}</Text>
             </Text>
-          )}
-        </Pressable>
-      </View>
-
-      <Pressable
-        onPress={() => router.back()}
-        style={{ marginTop: 24, alignSelf: "center" }}
-      >
-        <Text style={{ color: "#666", fontSize: 15, fontWeight: "600" }}>
-          {t.hasAccount}<Text style={{ color: "#007AFF", fontWeight: "900" }}>
-            {t.backLogin}
-          </Text>
-        </Text>
-      </Pressable>
-    </ScreenScrollView>
+          </Pressable>
+        </View>
+      </KeyboardAwareScroll>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  scroll: { flexGrow: 1, justifyContent: "center", paddingHorizontal: spacing.xl, paddingTop: spacing.xxl },
+  column: { width: "100%", maxWidth: 480, alignSelf: "center" },
+  heading: { gap: spacing.sm, marginBottom: spacing.xl },
+  title: { ...typography.display },
+  subtitle: { ...typography.body, color: colors.textSecondary },
+  form: { gap: spacing.lg },
+  groupLabel: { ...typography.label, marginBottom: spacing.xs },
+  roleGroup: { gap: spacing.sm },
+  roleCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    minHeight: 72,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  roleCardSelected: { borderWidth: 2, margin: -1, borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  roleCardPressed: { backgroundColor: colors.surfaceSunken },
+  roleIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceSunken,
+  },
+  roleIconSelected: { backgroundColor: colors.surface },
+  roleText: { flex: 1, minWidth: 0, gap: 2 },
+  roleLabel: { ...typography.bodyStrong },
+  roleLabelSelected: { color: colors.primary },
+  roleDesc: { ...typography.bodySmall },
+  consentBlock: { gap: spacing.xs },
+  consentRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+    minHeight: layout.minTouchTarget,
+    paddingVertical: spacing.sm,
+  },
+  consentText: { ...typography.bodySmall, flex: 1, color: colors.text },
+  scopeText: { ...typography.caption },
+  error: { ...typography.bodySmall, color: colors.danger, fontWeight: "600" },
+  switchLink: {
+    minHeight: layout.minTouchTarget,
+    justifyContent: "center",
+    alignSelf: "center",
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.xl,
+  },
+  switchText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
+  switchAction: { color: colors.primary, fontWeight: "700" },
+  pressed: { opacity: 0.6 },
+});
