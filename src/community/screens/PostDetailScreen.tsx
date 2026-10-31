@@ -753,15 +753,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   commentInput: {
-    ...typography.body,
+    // No lineHeight: on iOS it pushes the text/placeholder below centre.
+    fontSize: typography.body.fontSize,
+    color: typography.body.color,
+    includeFontPadding: false,
+    textAlignVertical: "center",
     flex: 1,
     minHeight: 48,
     maxHeight: 120,
     backgroundColor: colors.surfaceSunken,
     borderRadius: radii.sheet,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingVertical: spacing.md,
   },
   sendBtn: {
     width: layout.minTouchTarget,

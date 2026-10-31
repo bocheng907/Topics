@@ -247,6 +247,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 48,
     paddingVertical: 0,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   clearBtn: {
     width: 48,

@@ -101,7 +101,10 @@ const styles = StyleSheet.create({
     default: { borderWidth: 2, margin: -1 },
   }) as ViewStyle,
   fieldDisabled: { backgroundColor: colors.surfaceSunken },
-  // Single-line: no lineHeight (iOS offsets the placeholder downward with it).
+  // Single-line: no lineHeight (iOS offsets the placeholder downward with it)
+  // and no vertical padding -- the native field centres the line inside
+  // minHeight on both platforms. includeFontPadding off so Android doesn't add
+  // extra space above the glyphs.
   input: {
     fontSize: typography.body.fontSize,
     fontWeight: typography.body.fontWeight,
@@ -109,10 +112,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     minHeight: 50,
     paddingHorizontal: spacing.md + 2,
-    paddingVertical: spacing.md,
+    paddingVertical: 0,
+    includeFontPadding: false,
     textAlignVertical: "center",
   },
-  inputMultiline: { lineHeight: typography.body.lineHeight, minHeight: 112, paddingTop: spacing.md, textAlignVertical: "top" },
+  // Multiline: text starts at the top with equal top/bottom padding.
+  inputMultiline: {
+    lineHeight: typography.body.lineHeight,
+    minHeight: 112,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    textAlignVertical: "top",
+  },
   helper: { ...typography.caption, marginTop: 6 },
   error: { ...typography.caption, color: colors.danger, fontWeight: "600", marginTop: 6 },
 });
