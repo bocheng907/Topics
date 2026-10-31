@@ -451,6 +451,23 @@ function UiKit() {
               ]}
             />
           </View>
+          <Text style={[typography.caption, styles.mt]}>
+            選中的分頁：實心圖示 + 主色文字，背後淡色圓角膠囊（淡入／縮放）；固定貼底，無頂部指示條。下方為照顧者版（中間保留緊急按鈕空位）。
+          </Text>
+          <View style={[styles.navDemo, styles.mt]}>
+            <BottomNav
+              safeAreaBottom={false}
+              activeKey={activeTab}
+              onSelect={setActiveTab}
+              centerGap={88}
+              items={[
+                { key: "home", icon: "home-outline", activeIcon: "home", label: "首頁" },
+                { key: "calendar", icon: "calendar-outline", activeIcon: "calendar", label: "行事曆" },
+                { key: "chat", icon: "notifications-outline", activeIcon: "notifications", label: "通知", badge: 12 },
+                { key: "me", icon: "chatbubbles-outline", activeIcon: "chatbubbles", label: "聊天" },
+              ]}
+            />
+          </View>
         </Block>
       </ScrollView>
 
