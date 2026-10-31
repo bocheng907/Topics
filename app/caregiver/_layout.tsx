@@ -27,6 +27,7 @@ import {
 } from "@/src/ui/components";
 import { useCommunityProfile } from "@/src/community/useCommunityProfile";
 import { colors, layout, shadows } from "@/src/ui/theme";
+import { useDirectionalTabs, type DirectionalTab } from "@/src/ui/useDirectionalTabs";
 
 const hideBottomNavRoutes = [
   "chat-room",
@@ -44,6 +45,14 @@ const hideBottomNavRoutes = [
   "account-settings",
   "agency-binding",
   "result",
+];
+
+/** Bottom-nav tabs in display order (left to right). */
+const caregiverTabs: DirectionalTab[] = [
+  { key: "caregiver", routeName: "index", href: "/caregiver" },
+  { key: "calendar", routeName: "calendar", href: "/caregiver/calendar" },
+  { key: "notifications", routeName: "notifications", href: "/caregiver/notifications" },
+  { key: "chat-list", routeName: "chat-list", href: "/caregiver/chat-list" },
 ];
 
 /** Emergency button size and how far it rises above the bottom bar. */
@@ -71,6 +80,7 @@ function CaregiverShell() {
   useSyncCaregiverServices();
 
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
+  const { tabAnimationFor, selectTab } = useDirectionalTabs(caregiverTabs, currentPage);
 
   const activeCareTarget = useActiveCareTarget();
   const activePatientId =
@@ -222,13 +232,6 @@ function CaregiverShell() {
     { key: "chat-list", icon: "chatbubbles-outline", activeIcon: "chatbubbles", label: t.navChat },
   ];
 
-  const onSelectNav = (key: string) => {
-    if (key === "caregiver") router.navigate("/caregiver" as any);
-    else if (key === "calendar") router.navigate("/caregiver/calendar" as any);
-    else if (key === "notifications") router.navigate("/caregiver/notifications" as any);
-    else if (key === "chat-list") router.navigate("/caregiver/chat-list" as any);
-  };
-
   return (
     <View style={styles.container}>
       {/* The bottom bar floats over the content; reserve its height (+ safe area) so screens only need
@@ -240,17 +243,18 @@ function CaregiverShell() {
         ]}
       >
         <Stack
-          screenOptions={{
+          screenOptions={({ route }) => ({
             headerShown: false,
             gestureEnabled: false,
             animation: "none",
-          }}
+            ...tabAnimationFor(route.name),
+          })}
         />
       </View>
 
       {showBottomNav && (
         <View style={styles.footerWrapper} pointerEvents="box-none">
-          <BottomNav items={navItems} activeKey={currentPage} onSelect={onSelectNav} centerGap={FAB_SIZE + 20} />
+          <BottomNav items={navItems} activeKey={currentPage} onSelect={selectTab} centerGap={FAB_SIZE + 20} />
           <View style={styles.fabContainer} pointerEvents="box-none">
             <Pressable
               style={({ pressed }) => [styles.fabButton, pressed && styles.fabPressed]}

@@ -26,6 +26,7 @@ import {
 import { useCommunityProfile } from "@/src/community/useCommunityProfile";
 import { colors } from "@/src/ui/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useDirectionalTabs, type DirectionalTab } from "@/src/ui/useDirectionalTabs";
 
 const hideBottomNavRoutes = [
   "camera",
@@ -45,6 +46,14 @@ const hideBottomNavRoutes = [
   "emergency-contacts",
   "report-care-issue",
   "new-post",
+];
+
+/** Bottom-nav tabs in display order (left to right). */
+const familyTabs: DirectionalTab[] = [
+  { key: "family", routeName: "index", href: "/family" },
+  { key: "calendar", routeName: "calendar", href: "/family/calendar" },
+  { key: "notifications", routeName: "notifications", href: "/family/notifications" },
+  { key: "chat-list", routeName: "chat-list", href: "/family/chat-list" },
 ];
 
 export default function FamilyLayout() {
@@ -67,6 +76,7 @@ function FamilyShell() {
   const { activePatient } = useActiveCareTarget();
 
   const hideBottomNav = hideBottomNavRoutes.includes(currentPage);
+  const { tabAnimationFor, selectTab } = useDirectionalTabs(familyTabs, currentPage);
 
   const handleLogout = async () => {
     // Web 測試
@@ -169,20 +179,19 @@ function FamilyShell() {
     { key: "chat-list", icon: "chatbubbles-outline", activeIcon: "chatbubbles", label: t.navChat },
   ];
 
-  const onSelectNav = (key: string) => {
-    if (key === "family") router.navigate("/family" as any);
-    else if (key === "calendar") router.push("/family/calendar" as any);
-    else if (key === "notifications") router.push("/family/notifications" as any);
-    else if (key === "chat-list") router.push("/family/chat-list" as any);
-  };
-
   return (
     <View style={styles.container}>
       <View style={[styles.content, hideBottomNav && { paddingBottom: insets.bottom }]}>
-        <Stack screenOptions={{ headerShown: false, gestureEnabled: false }} />
+        <Stack
+          screenOptions={({ route }) => ({
+            headerShown: false,
+            gestureEnabled: false,
+            ...tabAnimationFor(route.name),
+          })}
+        />
       </View>
 
-      {!hideBottomNav && <BottomNav items={navItems} activeKey={currentPage} onSelect={onSelectNav} />}
+      {!hideBottomNav && <BottomNav items={navItems} activeKey={currentPage} onSelect={selectTab} />}
 
       <SideDrawer
         open={drawer.isOpen}
