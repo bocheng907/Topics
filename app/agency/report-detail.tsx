@@ -163,6 +163,12 @@ export default function AgencyReportDetailScreen() {
           {
             text: c.ok,
             onPress: () => {
+              // Return to the caregiver detail already on the stack instead of
+              // stacking a second copy (which made Back land on itself).
+              if (router.canGoBack()) {
+                router.back();
+                return;
+              }
               router.replace({
                 pathname: "/agency/caregiver-detail",
                 params: {
