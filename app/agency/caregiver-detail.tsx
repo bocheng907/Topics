@@ -6,6 +6,7 @@ import { useAgencyReports } from "@/src/agency/useAgencyReports";
 import { agencyCopy, agencyLocale, type AgencyCopy } from "@/src/i18n/copy/agencyCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { AppHeader, Card, EmptyState, ListRow, SectionHeader, StatusBadge, type StatusTone } from "@/src/ui/components";
+import UserAvatar from "@/src/ui/components/UserAvatar";
 import { colors, layout, spacing, typography } from "@/src/ui/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -19,7 +20,6 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -355,16 +355,6 @@ export default function AgencyCaregiverDetailScreen() {
           .toLocaleString(agencyLocale[language])
       : "—";
 
-  const avatarText =
-    detail.displayName
-      .trim()
-      .charAt(0) ||
-    detail.email
-      .trim()
-      .charAt(0)
-      .toUpperCase() ||
-    c.avatarFallback;
-
   return (
     <View style={styles.container}>
       {header}
@@ -376,13 +366,12 @@ export default function AgencyCaregiverDetailScreen() {
         {/* 看護資訊 */}
         <Card style={styles.heroCard}>
           <View style={styles.heroTop}>
-            {detail.avatarUrl ? (
-              <Image source={{ uri: detail.avatarUrl }} style={styles.heroAvatar} />
-            ) : (
-              <View style={[styles.heroAvatar, styles.heroAvatarFallback]}>
-                <Text style={styles.heroAvatarText}>{avatarText}</Text>
-              </View>
-            )}
+            <UserAvatar
+              uri={detail.avatarUrl}
+              name={detail.displayName.trim() || detail.email}
+              uid={uid}
+              size={72}
+            />
 
             <View style={styles.heroInfo}>
               <Text style={styles.heroName} numberOfLines={2}>
@@ -553,23 +542,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.lg,
-  },
-
-  heroAvatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-  },
-
-  heroAvatarFallback: {
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  heroAvatarText: {
-    ...typography.title,
-    color: colors.primary,
   },
 
   heroInfo: {

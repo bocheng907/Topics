@@ -13,6 +13,9 @@ import { useAuth } from "@/src/auth/useAuth";
 import { useChatTranslation } from "@/src/chat/useChatTranslation";
 import { ChatTranslationStatus, chatTranslationCopy } from "@/src/chat/ChatTranslationStatus";
 import { chatLocales } from "@/src/chat/chatTranslation";
+import { chatIdentity } from "@/src/chat/chatIdentity";
+import { useChatProfiles } from "@/src/chat/useChatProfiles";
+import UserAvatar from "@/src/ui/components/UserAvatar";
 
 export default function CaregiverChatListScreen() {
   const { activePatientId, activePatient } = useActiveCareTarget();
@@ -24,6 +27,11 @@ export default function CaregiverChatListScreen() {
   const [previousPatient, setPreviousPatient] = useState(scope);
   if (previousPatient !== scope) { setPreviousPatient(scope); setLastMessage(null); }
   const translated = useChatTranslation(lastMessage ? [lastMessage] : [], language, scope);
+  // 最後一則訊息若是對方傳的，顯示對方頭像（與聊天室同一份 getChatProfiles 結果）；否則顯示長輩字首
+  const { profiles } = useChatProfiles(user?.uid, activePatientId, "caregiver", lastMessage ? [lastMessage] : []);
+  const counterpart = lastMessage?.senderId && lastMessage.senderId !== user?.uid
+    ? { ...chatIdentity(lastMessage, profiles, activePatient?.name ?? ""), uid: lastMessage.senderId as string }
+    : null;
 
   useEffect(() => {
     if (!activePatientId || !user?.uid) {
@@ -81,11 +89,12 @@ export default function CaregiverChatListScreen() {
           accessibilityRole="button"
           accessibilityState={{ disabled: !activePatientId }}
         >
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {activePatient?.name ? activePatient.name.substring(0, 1) : ""}
-            </Text>
-          </View>
+          <UserAvatar
+            uri={counterpart?.avatarUrl}
+            name={counterpart?.displayName || activePatient?.name}
+            uid={counterpart?.uid || activePatientId}
+            size={56}
+          />
 
           <View style={styles.chatInfo}>
             <View style={styles.chatHeader}>
@@ -145,16 +154,6 @@ const styles = StyleSheet.create({
   },
   chatItemPressed: { backgroundColor: colors.surfaceSunken },
   chatItemDisabled: { opacity: 0.5 },
-  avatar: {
-    flexShrink: 0,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primarySoft,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: { fontSize: 22, fontWeight: "700", color: colors.primary },
   chatInfo: { flex: 1, minWidth: 0, gap: spacing.xs },
   chatHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 },
   caregiverName: { ...typography.bodyStrong, fontSize: 18, flexShrink: 1, minWidth: 0 },

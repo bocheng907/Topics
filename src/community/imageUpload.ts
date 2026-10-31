@@ -62,7 +62,7 @@ export async function uploadPostImage(params: {
   const { uid, postId, image, onProgress } = params;
 
   if (image.fileSize && image.fileSize > MAX_POST_IMAGE_BYTES) {
-    throw Object.assign(new Error("圖片超過 10MB"), { code: "community/image-too-large" });
+    throw Object.assign(new Error("image exceeds 10MB"), { code: "community/image-too-large" });
   }
 
   const contentType = guessContentType(image);
@@ -70,7 +70,7 @@ export async function uploadPostImage(params: {
 
   if (blob.size > MAX_POST_IMAGE_BYTES) {
     (blob as Blob & { close?: () => void }).close?.();
-    throw Object.assign(new Error("圖片超過 10MB"), { code: "community/image-too-large" });
+    throw Object.assign(new Error("image exceeds 10MB"), { code: "community/image-too-large" });
   }
 
   const path = `${COMMUNITY_IMAGE_ROOT}/${uid}/${postId}/${randomUUID()}.${extensionFor(contentType)}`;
@@ -116,12 +116,15 @@ export async function deletePostImages(urls: string[]): Promise<void> {
   );
 }
 
-/** 把上傳錯誤轉成給使用者看的訊息 */
-export function describeUploadError(error: unknown): string {
+/** 上傳錯誤的穩定代碼；畫面用 communityUploadErrorMessage 依語言轉成文字 */
+export type UploadErrorCode = "tooLarge" | "unauthorized" | "canceled" | "timeout" | "failed";
+
+/** 把上傳錯誤歸類成穩定代碼 */
+export function uploadErrorCode(error: unknown): UploadErrorCode {
   const code = (error as { code?: string })?.code ?? "";
-  if (code === "community/image-too-large") return "單張圖片不可超過 10MB，請換一張較小的圖片";
-  if (code === "storage/unauthorized") return "沒有上傳圖片的權限，請聯絡管理員確認 Storage 規則";
-  if (code === "storage/canceled") return "圖片上傳已取消";
-  if (code === "storage/retry-limit-exceeded") return "網路不穩定，圖片上傳逾時，請稍後再試";
-  return "圖片上傳失敗，請確認網路後再試";
+  if (code === "community/image-too-large") return "tooLarge";
+  if (code === "storage/unauthorized") return "unauthorized";
+  if (code === "storage/canceled") return "canceled";
+  if (code === "storage/retry-limit-exceeded") return "timeout";
+  return "failed";
 }

@@ -97,7 +97,7 @@ export default function PostCard({ post, variant = "list", onPress, divider = tr
 
       <View style={styles.listFooter}>
         <View style={styles.authorRow}>
-          <Avatar name={post.author.name} uid={post.author.uid} size={28} />
+          <Avatar name={post.author.name} uri={post.author.avatarUrl} uid={post.author.uid} size={28} />
           <Text style={styles.authorName} numberOfLines={1}>
             {post.author.name}
           </Text>

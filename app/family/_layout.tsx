@@ -191,6 +191,8 @@ function FamilyShell() {
           <SideDrawerProfile
             roleLabel={t.familyMode}
             name={drawerProfile.name || user?.email || undefined}
+            avatarUri={drawerProfile.avatarUrl}
+            uid={user?.uid}
             detail={activePatient?.name ? `${t.drawerCareTarget}${language === "zh" ? "：" : ": "}${activePatient.name}` : undefined}
           />
         }

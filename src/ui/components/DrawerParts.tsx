@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "../theme";
 import { Chip, StatusBadge } from "./Feedback";
 import type { IconName } from "./types";
+import UserAvatar from "./UserAvatar";
 
 /** User / role block shown at the top of the side drawer. */
 export function SideDrawerProfile({
@@ -12,8 +13,14 @@ export function SideDrawerProfile({
   roleLabel,
   icon = "person",
   detail,
+  avatarUri,
+  uid,
 }: {
   name?: string;
+  /** Profile photo URL; falls back to a colored initial when uid/name is given. */
+  avatarUri?: string | null;
+  /** Used to pick a stable initial-avatar color. Without avatarUri or uid the role icon is shown. */
+  uid?: string | null;
   roleLabel: string;
   icon?: IconName;
   /** Optional secondary line, e.g. the active care recipient. */
@@ -21,9 +28,13 @@ export function SideDrawerProfile({
 }) {
   return (
     <View style={styles.profile}>
-      <View style={styles.avatar}>
-        <Ionicons name={icon} size={26} color={colors.primary} />
-      </View>
+      {avatarUri || uid ? (
+        <UserAvatar uri={avatarUri} name={name} uid={uid} size={52} />
+      ) : (
+        <View style={styles.avatar}>
+          <Ionicons name={icon} size={26} color={colors.primary} />
+        </View>
+      )}
       <View style={styles.profileText}>
         <StatusBadge label={roleLabel} tone="primary" />
         {name ? (

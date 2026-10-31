@@ -24,14 +24,14 @@ import {
   MAX_POST_IMAGE_BYTES,
   MAX_POST_IMAGES,
   deletePostImages,
-  describeUploadError,
+  uploadErrorCode,
   uploadPostImage,
   type LocalPostImage,
 } from "@/src/community/imageUpload";
 import { POST_CATEGORIES, getCategoryStyle } from "@/src/community/theme";
 import type { PostCategory } from "@/src/community/types";
 import { useCommunityProfile } from "@/src/community/useCommunityProfile";
-import { communityCategoryLabel, communityCopy } from "@/src/i18n/copy/communityCopy";
+import { communityCategoryLabel, communityCopy, communityUploadErrorMessage } from "@/src/i18n/copy/communityCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { AppAlert } from "@/src/ui/AppAlert";
 import { AppHeader, EmptyState, KeyboardAwareScroll, TextField } from "@/src/ui/components";
@@ -137,7 +137,7 @@ export default function NewPostScreen() {
     // 送出前的敏感字詞檢查：只警告、讓使用者自己修改
     const check = checkPostContent(title, content);
     if (!check.passed) {
-      AppAlert.alert(c.contentNeedsEditTitle, check.message);
+      AppAlert.alert(c.contentNeedsEditTitle, c.contentBlockedBody(check.matched.join(c.listSeparator)));
       return;
     }
 
@@ -173,7 +173,7 @@ export default function NewPostScreen() {
         } catch (error) {
           console.log("[community] upload post image failed:", error);
           throw Object.assign(new Error("upload failed"), {
-            userMessage: describeUploadError(error),
+            userMessage: communityUploadErrorMessage(c, uploadErrorCode(error)),
           });
         }
 
@@ -198,6 +198,7 @@ export default function NewPostScreen() {
           authorUid: uid,
           authorName: profile.name,
           authorRole: communityAuthorRole(user?.role),
+          authorAvatarUrl: profile.avatarUrl,
           imageUrls: finalUrls,
         });
       }

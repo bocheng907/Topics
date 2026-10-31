@@ -2,6 +2,7 @@
 // Category / report-reason VALUES stay in Chinese because they are stored in
 // Firestore; only their on-screen labels are translated here.
 import type { Language } from "@/src/i18n/translations";
+import type { UploadErrorCode } from "@/src/community/imageUpload";
 
 const zh = {
   // shared
@@ -72,6 +73,14 @@ const zh = {
   cantPublishTitle: "無法發布",
   loginFirst: "請先登入後再發文",
   contentNeedsEditTitle: "內容需要修改",
+  contentBlockedBody: (words: string) => `內容包含以下不適合的字詞，請修改後再發布：
+${words}`,
+  listSeparator: "、",
+  uploadErrTooLarge: "單張圖片不可超過 10MB，請換一張較小的圖片",
+  uploadErrUnauthorized: "沒有上傳圖片的權限，請聯絡管理員確認 Storage 規則",
+  uploadErrCanceled: "圖片上傳已取消",
+  uploadErrTimeout: "網路不穩定，圖片上傳逾時，請稍後再試",
+  uploadErrFailed: "圖片上傳失敗，請確認網路後再試",
   uploadingImage: (i: number, n: number) => `上傳圖片 ${i}/${n}`,
   savingProgress: "儲存中…",
   publishingProgress: "發布中…",
@@ -213,6 +222,14 @@ const en: CommunityCopy = {
   cantPublishTitle: "Cannot post",
   loginFirst: "Please sign in before posting",
   contentNeedsEditTitle: "Please revise your post",
+  contentBlockedBody: (words: string) => `Your post contains words that are not allowed. Please edit them before posting:
+${words}`,
+  listSeparator: ", ",
+  uploadErrTooLarge: "Each image must be 10MB or smaller. Please choose a smaller image.",
+  uploadErrUnauthorized: "You don't have permission to upload images. Please contact the administrator.",
+  uploadErrCanceled: "Image upload was canceled.",
+  uploadErrTimeout: "The connection is unstable and the upload timed out. Please try again later.",
+  uploadErrFailed: "Image upload failed. Check your connection and try again.",
   uploadingImage: (i: number, n: number) => `Uploading image ${i}/${n}`,
   savingProgress: "Saving…",
   publishingProgress: "Posting…",
@@ -350,6 +367,14 @@ const vi: CommunityCopy = {
   cantPublishTitle: "Không thể đăng",
   loginFirst: "Vui lòng đăng nhập trước khi đăng bài",
   contentNeedsEditTitle: "Cần sửa nội dung",
+  contentBlockedBody: (words: string) => `Nội dung có các từ không phù hợp sau, vui lòng sửa trước khi đăng:
+${words}`,
+  listSeparator: ", ",
+  uploadErrTooLarge: "Mỗi ảnh không được vượt quá 10MB, vui lòng chọn ảnh nhỏ hơn.",
+  uploadErrUnauthorized: "Bạn không có quyền tải ảnh lên, vui lòng liên hệ quản trị viên.",
+  uploadErrCanceled: "Đã hủy tải ảnh lên.",
+  uploadErrTimeout: "Mạng không ổn định, tải ảnh bị quá thời gian. Vui lòng thử lại sau.",
+  uploadErrFailed: "Tải ảnh thất bại. Hãy kiểm tra mạng và thử lại.",
   uploadingImage: (i: number, n: number) => `Đang tải ảnh ${i}/${n}`,
   savingProgress: "Đang lưu…",
   publishingProgress: "Đang đăng…",
@@ -487,6 +512,14 @@ const id: CommunityCopy = {
   cantPublishTitle: "Tidak dapat mengirim",
   loginFirst: "Silakan masuk sebelum menulis",
   contentNeedsEditTitle: "Isi perlu diperbaiki",
+  contentBlockedBody: (words: string) => `Isi mengandung kata yang tidak pantas berikut. Perbaiki sebelum memposting:
+${words}`,
+  listSeparator: ", ",
+  uploadErrTooLarge: "Setiap gambar maksimal 10MB. Pilih gambar yang lebih kecil.",
+  uploadErrUnauthorized: "Anda tidak memiliki izin mengunggah gambar. Hubungi administrator.",
+  uploadErrCanceled: "Unggahan gambar dibatalkan.",
+  uploadErrTimeout: "Koneksi tidak stabil dan unggahan habis waktu. Coba lagi nanti.",
+  uploadErrFailed: "Gagal mengunggah gambar. Periksa koneksi dan coba lagi.",
   uploadingImage: (i: number, n: number) => `Mengunggah gambar ${i}/${n}`,
   savingProgress: "Menyimpan…",
   publishingProgress: "Mengirim…",
@@ -594,5 +627,21 @@ export function communityReasonLabel(c: CommunityCopy, reason: string): string {
       return c.reasonOther;
     default:
       return reason;
+  }
+}
+
+/** On-screen message for a community image upload error code. */
+export function communityUploadErrorMessage(c: CommunityCopy, code: UploadErrorCode): string {
+  switch (code) {
+    case "tooLarge":
+      return c.uploadErrTooLarge;
+    case "unauthorized":
+      return c.uploadErrUnauthorized;
+    case "canceled":
+      return c.uploadErrCanceled;
+    case "timeout":
+      return c.uploadErrTimeout;
+    default:
+      return c.uploadErrFailed;
   }
 }

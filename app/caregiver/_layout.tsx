@@ -271,6 +271,8 @@ function CaregiverShell() {
           <SideDrawerProfile
             roleLabel={t.caregiverMode}
             name={drawerProfile.name || user?.email || undefined}
+            avatarUri={drawerProfile.avatarUrl}
+            uid={user?.uid}
             detail={activePatientName ? `${t.drawerCareTarget}${language === "zh" ? "：" : ": "}${activePatientName}` : undefined}
           />
         }

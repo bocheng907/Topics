@@ -10,6 +10,7 @@ import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { AppHeader, Card, EmptyState, ListRow } from "@/src/ui/components";
+import UserAvatar from "@/src/ui/components/UserAvatar";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,7 +19,6 @@ import { router } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -203,16 +203,6 @@ export default function AgencyHomeScreen() {
                 reports
               );
 
-              const avatarText =
-                caregiver.displayName
-                  .trim()
-                  .charAt(0) ||
-                caregiver.caregiverEmail
-                  .trim()
-                  .charAt(0)
-                  .toUpperCase() ||
-                c.avatarFallback;
-
               const name = caregiver.displayName || c.unnamedCaregiver;
               const badgeLabel = badge ? c.openReports(formatBadgeCount(badge.count), c[badge.type]) : "";
 
@@ -237,18 +227,12 @@ export default function AgencyHomeScreen() {
                     } as any)
                   }
                 >
-                  {caregiver.avatarUrl ? (
-                    <Image
-                      source={{
-                        uri: caregiver.avatarUrl,
-                      }}
-                      style={styles.caregiverAvatar}
-                    />
-                  ) : (
-                    <View style={[styles.caregiverAvatar, styles.avatarFallback]}>
-                      <Text style={styles.avatarText}>{avatarText}</Text>
-                    </View>
-                  )}
+                  <UserAvatar
+                    uri={caregiver.avatarUrl}
+                    name={caregiver.displayName.trim() || caregiver.caregiverEmail}
+                    uid={caregiver.caregiverUid}
+                    size={52}
+                  />
 
                   <View style={styles.caregiverInfo}>
                     <Text style={styles.caregiverName} numberOfLines={1}>
@@ -435,23 +419,6 @@ const styles = StyleSheet.create({
 
   caregiverRowPressed: {
     backgroundColor: colors.surfaceSunken,
-  },
-
-  caregiverAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-  },
-
-  avatarFallback: {
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  avatarText: {
-    ...typography.header,
-    color: colors.primary,
   },
 
   caregiverInfo: {

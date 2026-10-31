@@ -127,7 +127,15 @@ function AgencyShell() {
       <SideDrawer
         open={drawer.isOpen}
         onClose={drawer.close}
-        header={<SideDrawerProfile roleLabel={t.agencyMode} icon="business" name={drawerProfile.name || user.email || undefined} />}
+        header={
+          <SideDrawerProfile
+            roleLabel={t.agencyMode}
+            icon="business"
+            name={drawerProfile.name || user.email || undefined}
+            avatarUri={drawerProfile.avatarUrl}
+            uid={user.uid}
+          />
+        }
         sections={sections}
       />
     </View>

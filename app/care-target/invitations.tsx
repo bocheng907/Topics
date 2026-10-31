@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { careTargetCopy } from "@/src/i18n/copy/careTargetCopy";
 import { AppHeader, Button, Card, SectionHeader, StatusBadge, type StatusTone } from "@/src/ui/components";
+import UserAvatar from "@/src/ui/components/UserAvatar";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { router } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -158,7 +159,11 @@ export default function InvitationsScreen() {
             <SectionHeader title={ct.pendingSection} style={styles.sectionHeader} />
             <Card style={styles.stack}>
               <Text style={styles.meta}>{t.applicant}</Text>
-              <Text selectable style={styles.uid}>{data.applicantUid}</Text>
+              <View style={styles.identityRow}>
+                {/* 邀請 API 只回傳 UID（無名稱 / 頭像），因此顯示中性人像圖示 */}
+                <UserAvatar uid={data.applicantUid} size={40} />
+                <Text selectable style={[styles.uid, styles.identityText]}>{data.applicantUid}</Text>
+              </View>
               <Text style={styles.meta}>{t.role}: {data.role === "family" ? t.secondary : t.caregiver}</Text>
               <View style={styles.buttonRow}>
                 <Button label={t.approve} icon="checkmark" disabled={busy} onPress={() => confirm("approve")} style={styles.flexButton} />
@@ -182,7 +187,10 @@ export default function InvitationsScreen() {
             {!secondaryUids.length && <Text style={styles.meta}>{t.noSecondary}</Text>}
             {secondaryUids.map(targetUid =>
               <View key={targetUid} style={styles.memberRow}>
-                <Text selectable style={styles.uid}>{targetUid}</Text>
+                <View style={styles.identityRow}>
+                  <UserAvatar uid={targetUid} size={40} />
+                  <Text selectable style={[styles.uid, styles.identityText]}>{targetUid}</Text>
+                </View>
                 <Button label={t.transfer} variant="danger" disabled={busy} onPress={() => confirmTransfer(targetUid)} />
               </View>)}
           </Card>
@@ -221,6 +229,8 @@ const styles = StyleSheet.create({
   codeHint: {...typography.caption, color: colors.primary, marginTop: spacing.xs},
   stack: {gap: spacing.sm},
   uid: {...typography.bodySmall, color: colors.text},
+  identityRow: {flexDirection: "row", alignItems: "center", gap: spacing.md},
+  identityText: {flex: 1, minWidth: 0},
   buttonRow: {flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.xs},
   flexButton: {flexGrow: 1},
   memberRow: {

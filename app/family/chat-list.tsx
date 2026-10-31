@@ -16,6 +16,9 @@ import { useChatTranslation } from "@/src/chat/useChatTranslation";
 import { ChatTranslationStatus, chatTranslationCopy } from "@/src/chat/ChatTranslationStatus";
 import { chatLocales } from "@/src/chat/chatTranslation";
 import type { Language } from "@/src/i18n/translations";
+import { chatIdentity } from "@/src/chat/chatIdentity";
+import { useChatProfiles } from "@/src/chat/useChatProfiles";
+import UserAvatar from "@/src/ui/components/UserAvatar";
 
 function useLastMessage(patientId: string | null, room: CareChatRoom) {
   const { user } = useAuth();
@@ -53,6 +56,12 @@ export default function FamilyChatListScreen() {
   const preview = (message: any, translated: typeof caregiverTranslation, fallback: string) =>
     !message ? fallback : message.imageUrl ? chatTranslationCopy[language].photo : translated.text(message) || fallback;
   const elderName = activePatient?.name || t.chatRoom;
+  // 照服員對話：最後一則若是對方傳的，顯示對方頭像（與聊天室同一份 getChatProfiles 結果）
+  const { profiles: caregiverProfiles } = useChatProfiles(
+    user?.uid, activePatientId, "caregiver", caregiverMessage ? [caregiverMessage] : []);
+  const caregiverCounterpart = caregiverMessage?.senderId && caregiverMessage.senderId !== user?.uid
+    ? { ...chatIdentity(caregiverMessage, caregiverProfiles, ""), uid: caregiverMessage.senderId as string }
+    : null;
 
   const open = (room: CareChatRoom) => router.push({
     pathname: "/family/chat-room",
@@ -74,9 +83,18 @@ export default function FamilyChatListScreen() {
       accessibilityLabel={`${title}, ${elderName}`}
       style={({ pressed }) => [styles.card, pressed && styles.pressed, !activePatientId && styles.disabled]}
     >
-      <View style={styles.avatar}>
-        <Ionicons name={icon} size={26} color={colors.primary} />
-      </View>
+      {room === "caregiver" && caregiverCounterpart ? (
+        <UserAvatar
+          uri={caregiverCounterpart.avatarUrl}
+          name={caregiverCounterpart.displayName}
+          uid={caregiverCounterpart.uid}
+          size={52}
+        />
+      ) : (
+        <View style={styles.avatar}>
+          <Ionicons name={icon} size={26} color={colors.primary} />
+        </View>
+      )}
       <View style={styles.info}>
         <View style={styles.row}>
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
