@@ -381,6 +381,15 @@ function UiKit() {
             meta="10/31 09:30 · 10 分鐘前"
             style={styles.mt}
           />
+          <Text style={[styles.groupNote, styles.mtLg]}>variant="block"：家屬首頁用，經典雙色色塊（整塊依狀態上色＋底部狀態條）</Text>
+          <View style={[styles.cardPair, styles.mt]}>
+            <VitalCard variant="block" style={styles.flex} title="體溫" status="normal" statusLabel="正常" values={[{ value: "36.6" }]} meta="°C" />
+            <VitalCard variant="block" style={styles.flex} title="血壓" status="abnormal" statusLabel="異常" values={[{ value: 152 }, { value: 96 }]} meta="mmHg" />
+          </View>
+          <View style={[styles.cardPair, styles.mt]}>
+            <VitalCard variant="block" style={styles.flex} title="心率" status="outdated" statusLabel="未更新" values={[{ value: "72" }]} meta="bpm" />
+            <VitalCard variant="block" style={styles.flex} title="血糖" status="nodata" statusLabel="無資料" values={[{ value: "--" }]} />
+          </View>
         </Block>
 
         {/* --------------------------------------------------- UserAvatar */}

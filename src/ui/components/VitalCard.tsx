@@ -3,6 +3,7 @@
 // The screen decides the status (thresholds, staleness); this component only draws it:
 // normal stays quiet, abnormal is loud, outdated / no data go grey. Status is always
 // shown with an icon + text, never by colour alone.
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { colors, radii, spacing, typography } from "../theme";
@@ -25,8 +26,10 @@ export type VitalCardProps = {
   /**
    * "compact": home-screen grid tile (single big value, unit in the meta line).
    * "detailed": dashboard card (labelled value columns, unit next to each value).
+   * "block": classic two-tone tile — title above, whole body tinted by status with the
+   *   value(s) stacked in the middle, a deeper strip at the bottom with icon + status text.
    */
-  variant?: "compact" | "detailed";
+  variant?: "compact" | "detailed" | "block";
   accessibilityLabel?: string;
   /** Width / padding overrides from the screen's grid. */
   style?: StyleProp<ViewStyle>;
@@ -37,6 +40,13 @@ const statusLook: Record<VitalStatus, { tone: StatusTone; icon: IconName }> = {
   abnormal: { tone: "danger", icon: "warning" },
   outdated: { tone: "neutral", icon: "time-outline" },
   nodata: { tone: "neutral", icon: "remove-circle-outline" },
+};
+
+const blockTone: Record<VitalStatus, { body: string; strip: string }> = {
+  normal: { body: colors.vitalNormal, strip: colors.vitalNormalStrong },
+  abnormal: { body: colors.vitalAbnormal, strip: colors.vitalAbnormalStrong },
+  outdated: { body: colors.vitalIdle, strip: colors.vitalIdleStrong },
+  nodata: { body: colors.vitalIdle, strip: colors.vitalIdleStrong },
 };
 
 export function VitalCard({
@@ -50,6 +60,34 @@ export function VitalCard({
   style,
 }: VitalCardProps) {
   const look = statusLook[status];
+  if (variant === "block") {
+    const tone = blockTone[status];
+    return (
+      <View accessible accessibilityLabel={accessibilityLabel} style={[styles.block, style]}>
+        <Text style={styles.blockTitle} numberOfLines={2}>{title}</Text>
+        <View style={styles.blockWrap}>
+          <View style={[styles.blockBody, { backgroundColor: tone.body }]}>
+            {values.map((v, index) => (
+              <Text
+                key={index}
+                style={[styles.blockValue, values.length > 1 && styles.blockValueStacked]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                {v.value}
+              </Text>
+            ))}
+            {meta ? <Text style={styles.blockUnit} numberOfLines={2}>{meta}</Text> : null}
+          </View>
+          <View style={[styles.blockStrip, { backgroundColor: tone.strip }]}>
+            <Ionicons name={look.icon} size={16} color={colors.onPrimary} />
+            <Text style={styles.blockStatus} numberOfLines={1}>{statusLabel}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
   const isAbnormal = status === "abnormal";
   const isMuted = status === "outdated" || status === "nodata";
   const compact = variant === "compact";
@@ -143,4 +181,22 @@ const styles = StyleSheet.create({
   meta: { ...typography.caption },
   metaCompact: { marginTop: 2 },
   metaDetailed: { marginTop: spacing.xs },
+
+  block: { minWidth: 0, alignItems: "center" },
+  blockTitle: { ...typography.bodyStrong, width: "100%", textAlign: "center", marginBottom: spacing.sm },
+  blockWrap: { width: "100%", flex: 1, minHeight: 140, borderRadius: radii.control + 2, overflow: "hidden" },
+  blockBody: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: spacing.sm, paddingVertical: spacing.md },
+  blockValue: { fontSize: 32, lineHeight: 40, fontWeight: "700", color: colors.text, maxWidth: "100%", textAlign: "center" },
+  blockValueStacked: { fontSize: 28, lineHeight: 34 },
+  blockUnit: { ...typography.bodySmall, color: colors.text, maxWidth: "100%", textAlign: "center", marginTop: 2 },
+  blockStrip: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  blockStatus: { ...typography.label, color: colors.onPrimary, flexShrink: 1 },
 });

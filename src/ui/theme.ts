@@ -39,6 +39,16 @@ export const colors = {
   warningSoft: "#FFF4DB",
   success: "#2E7D4F",
   successSoft: "#E6F4EC",
+
+  // Vital "block" tiles (family home): body = calm mid-tone with dark value text,
+  // strip = deep shade with white text. Contrast: text #1F2A37 on body ≥ 8:1,
+  // white on strip ≥ 5:1.
+  vitalNormal: "#A6D9B5",
+  vitalNormalStrong: "#2E7D4F",
+  vitalAbnormal: "#F5AFA8",
+  vitalAbnormalStrong: "#B42318",
+  vitalIdle: "#D5DAE1",
+  vitalIdleStrong: "#5B6472",
 } as const;
 
 export type ColorToken = keyof typeof colors;

@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useHealthThresholds } from "@/src/health/useHealthThresholds";
 import { translations } from "@/src/i18n/translations";
-import { familyCopy, relativeTimeLabel } from "@/src/i18n/copy/familyCopy";
+import { familyCopy } from "@/src/i18n/copy/familyCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { useMedicationProgress } from "@/src/reminders/useMedicationProgress";
 import { progressCopy } from "@/src/reminders/medicationProgress";
@@ -27,7 +27,7 @@ type BloodPressureVital = { sys: number; dia: number; ts: number } | null;
 type SugarVital = { val: number; type: string; ts: number } | null;
 type VitalType = 'temp' | 'hr' | 'bp' | 'sugar';
 
-// 狀態外觀（正常安靜、異常醒目、未更新／無資料灰階）由共用 VitalCard 負責
+// 狀態外觀（經典雙色色塊：綠＝正常、紅＝異常、灰＝未更新／無資料）由共用 VitalCard variant="block" 負責
 
 export default function FamilyHomeScreen() {
   const { width, fontScale } = useWindowDimensions();
@@ -192,21 +192,21 @@ export default function FamilyHomeScreen() {
 
   const renderVitalBlock = (item: { title: string; type: VitalType; data: any }, status: VitalStatus) => {
     const { title, type, data } = item;
-    const value = !data ? '--' : type === 'bp' ? `${data.sys}/${data.dia}` : String(data.val);
+    const values = !data ? [{ value: '--' }] : type === 'bp' ? [{ value: data.sys }, { value: data.dia }] : [{ value: String(data.val) }];
     const unit = type === 'temp' ? '°C' : type === 'hr' ? 'bpm' : type === 'bp' ? 'mmHg' : 'mg/dL';
-    const unitLine = data && type === 'sugar' && data.type ? `${unit} · ${data.type}` : unit;
-    const timeLabel = data?.ts ? relativeTimeLabel(fc, data.ts, now) : null;
+    const unitLine = data && type === 'sugar' && data.type ? `${data.type} · ${unit}` : unit;
+    const valueText = !data ? '--' : type === 'bp' ? `${data.sys}/${data.dia}` : String(data.val);
 
     return (
       <VitalCard
         key={type}
-        variant="compact"
+        variant="block"
         title={title}
         status={status}
         statusLabel={statusLabel[status]}
-        values={[{ value }]}
-        meta={`${unitLine}${timeLabel ? ` · ${timeLabel}` : ''}`}
-        accessibilityLabel={`${title}, ${statusLabel[status]}, ${value} ${unitLine}${timeLabel ? `, ${timeLabel}` : ''}`}
+        values={values}
+        meta={data ? unitLine : undefined}
+        accessibilityLabel={`${title}, ${statusLabel[status]}, ${valueText} ${unitLine}`}
         style={{ width: vitalWidth }}
       />
     );
