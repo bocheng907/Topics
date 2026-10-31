@@ -456,6 +456,10 @@ export const translations = {
     voiceTaskToilet: "上廁所",
     voiceTaskSleep: "上床睡覺",
     voiceTaskEmotion: "安撫情緒",
+    uiBack: "返回上一頁",
+    uiOpenMenu: "開啟選單",
+    uiCloseMenu: "關閉選單",
+    uiLoading: "載入中",
   },
   en: {
     cameraAlbumPermissionTitle: "Photo permission required",
@@ -891,6 +895,10 @@ export const translations = {
     voiceTaskToilet: "Use the toilet",
     voiceTaskSleep: "Go to bed",
     voiceTaskEmotion: "Calm down",
+    uiBack: "Go back",
+    uiOpenMenu: "Open menu",
+    uiCloseMenu: "Close menu",
+    uiLoading: "Loading",
   },
   vi: {
     cameraAlbumPermissionTitle: "Cần quyền truy cập ảnh",
@@ -1326,6 +1334,10 @@ export const translations = {
     voiceTaskToilet: "Đi vệ sinh",
     voiceTaskSleep: "Đi ngủ",
     voiceTaskEmotion: "Trấn an cảm xúc",
+    uiBack: "Quay lại trang trước",
+    uiOpenMenu: "Mở menu",
+    uiCloseMenu: "Đóng menu",
+    uiLoading: "Đang tải",
   },
   id: {
     cameraAlbumPermissionTitle: "Izin foto diperlukan",
@@ -1761,5 +1773,9 @@ export const translations = {
     voiceTaskToilet: "Ke toilet",
     voiceTaskSleep: "Pergi tidur",
     voiceTaskEmotion: "Tenangkan emosi",
+    uiBack: "Kembali ke halaman sebelumnya",
+    uiOpenMenu: "Buka menu",
+    uiCloseMenu: "Tutup menu",
+    uiLoading: "Memuat",
   },
 } as const;
