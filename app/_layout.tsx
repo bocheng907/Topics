@@ -6,6 +6,7 @@ import { registerForPushToken } from "@/src/notifications/registerForPushToken";
 import { LanguageProvider } from "@/src/store/LanguageContext";
 import { StoreProvider } from "@/src/store/StoreProvider";
 import { ClientOnly } from "@/src/ui/ClientOnly";
+import { colors } from "@/src/ui/theme";
 import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
 import { useEffect } from "react";
 
@@ -54,6 +55,7 @@ function RootLayoutNav() {
         headerTitleAlign: "center",
         headerShown: false,
         gestureEnabled: false,
+        contentStyle: { backgroundColor: colors.canvas },
       }}
     >
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />

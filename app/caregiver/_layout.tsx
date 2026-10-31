@@ -235,20 +235,16 @@ function CaregiverShell() {
 
   return (
     <View style={styles.container}>
-      {/* The bottom bar floats over the content; reserve its height (+ safe area) so screens only need
-          a small bottom padding for the raised emergency button. */}
-      <View
-        style={[
-          styles.content,
-          { paddingBottom: showBottomNav ? layout.bottomNavHeight + insets.bottom : insets.bottom },
-        ]}
-      >
-        {/* paddingBottom above already reserves the BottomNav + home indicator (or just the indicator). */}
-        <BottomInsetHandledProvider>
+      {/* The bottom bar floats over the content; reserve its height (+ safe area) only while it is shown.
+          When it is hidden nothing is reserved: screens run to the bottom edge and pad insets.bottom
+          themselves (useScreenBottomInset), so the indicator area shows the screen's own background. */}
+      <View style={[styles.content, showBottomNav && { paddingBottom: layout.bottomNavHeight + insets.bottom }]}>
+        <BottomInsetHandledProvider handled={showBottomNav}>
           <Stack
             screenOptions={({ route }) => ({
               headerShown: false,
               gestureEnabled: false,
+              contentStyle: { backgroundColor: colors.canvas },
               animation: "none",
               ...tabAnimationFor(route.name),
             })}
@@ -291,7 +287,7 @@ function CaregiverShell() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface, overflow: "hidden" },
+  container: { flex: 1, backgroundColor: colors.canvas, overflow: "hidden" },
   content: { flex: 1 },
   // Transparent top padding keeps the raised button inside the wrapper's bounds (so it stays tappable on Android).
   footerWrapper: {

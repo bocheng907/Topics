@@ -13,6 +13,7 @@ import { pickDynamicLocalizedString } from '@/src/i18n/dynamicTranslation';
 import { translations, type Language } from '@/src/i18n/translations';
 import { useLanguage } from '@/src/store/LanguageContext';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 function pickAbnormalTitle(record: any, language: Language) {
   return pickDynamicLocalizedString(record, 'title', language, ['titleZh', 'titleOriginal'], record?.titleOriginal ?? '');
@@ -27,6 +28,7 @@ function pickAbnormalEntryNotes(entry: any, language: Language) {
 }
 
 export default function FamilyConditionScreen() {
+  const bottomInset = useScreenBottomInset();
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
@@ -162,7 +164,7 @@ export default function FamilyConditionScreen() {
 
   const renderList = () => (
     <View style={styles.viewContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         <Text style={styles.listHint}>{t.conditionHint}</Text>
 
         {records.length === 0 ? (
@@ -202,7 +204,7 @@ export default function FamilyConditionScreen() {
 
   const renderDetail = () => (
     <View style={styles.viewContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         {renderDoctorToggle(t.doctorModeOn, t.doctorModeSwitch)}
 
         <View style={styles.mediaContainer}>
@@ -229,7 +231,7 @@ export default function FamilyConditionScreen() {
 
   const renderFolder = () => (
     <View style={styles.viewContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         {renderDoctorToggle(t.chineseModeOn, t.switchChinese)}
 
         <View style={styles.folderHeader}>
@@ -294,7 +296,7 @@ export default function FamilyConditionScreen() {
 
     return (
       <View style={styles.viewContainer}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]} showsVerticalScrollIndicator={false}>
           {renderDoctorToggle(t.chineseModeOn, t.switchChinese)}
 
           <View style={styles.folderBadge}>

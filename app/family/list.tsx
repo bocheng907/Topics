@@ -31,6 +31,7 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type TabType = "records" | "meds";
 
@@ -190,6 +191,7 @@ async function deletePrescriptionCascade(prescriptionId: string) {
 }
 
 export default function FamilyListScreen() {
+  const bottomInset = useScreenBottomInset();
   const { activePatientId } = useActiveCareTarget();
   const { ready: authReady } = useAuthContext();
   const { language } = useLanguage();
@@ -417,7 +419,7 @@ export default function FamilyListScreen() {
         style={styles.tabBar}
       />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]}>
         {tab === "records" ? (
           <>
             {list.length === 0 ? (

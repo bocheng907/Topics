@@ -39,6 +39,7 @@ import { useLanguage } from "@/src/store/LanguageContext";
 import { eventCopy } from "@/src/ui/calendarEventCopy";
 import { AppHeader, Fab, FAB_CLEARANCE, KeyboardAwareScroll } from "@/src/ui/components";
 import { colors, eventColors, layout, spacing } from "@/src/ui/theme";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type CalendarEventRecord = {
   id: string;
@@ -333,6 +334,7 @@ function getEventTimeParts(event: CalendarEventViewModel) {
 }
 
 export default function CaregiverCalendarScreen() {
+  const bottomInset = useScreenBottomInset();
   const { user } = useAuth();
   const { activePatientId, activePatient } = useActiveCareTarget();
   const { language } = useLanguage();
@@ -1153,7 +1155,7 @@ export default function CaregiverCalendarScreen() {
 
       <KeyboardAwareScroll
         safeAreaBottom={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: FAB_CLEARANCE + spacing.lg + bottomInset }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.column}>

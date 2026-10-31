@@ -26,7 +26,6 @@ import {
 } from "@/src/ui/components";
 import { useCommunityProfile } from "@/src/community/useCommunityProfile";
 import { colors } from "@/src/ui/theme";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDirectionalTabs, type DirectionalTab } from "@/src/ui/useDirectionalTabs";
 
 const hideBottomNavRoutes = [
@@ -68,7 +67,6 @@ export default function FamilyLayout() {
 function FamilyShell() {
   const segments = useSegments() as string[];
   const currentPage = segments[segments.length - 1];
-  const insets = useSafeAreaInsets();
   const { language, setLanguage } = useLanguage();
   const t = translations[language];
   const drawer = useDrawer();
@@ -182,13 +180,16 @@ function FamilyShell() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.content, hideBottomNav && { paddingBottom: insets.bottom }]}>
-        {/* The BottomNav (or the paddingBottom above when it is hidden) already clears the home indicator. */}
-        <BottomInsetHandledProvider>
+      <View style={styles.content}>
+        {/* With the BottomNav shown, the nav sits below the content and pads the home indicator itself.
+            With it hidden nothing is reserved: screens run to the bottom edge and pad insets.bottom
+            themselves (useScreenBottomInset), so the indicator area shows the screen's own background. */}
+        <BottomInsetHandledProvider handled={!hideBottomNav}>
           <Stack
             screenOptions={({ route }) => ({
               headerShown: false,
               gestureEnabled: false,
+              contentStyle: { backgroundColor: colors.canvas },
               ...tabAnimationFor(route.name),
             })}
           />
@@ -216,6 +217,6 @@ function FamilyShell() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface, overflow: "hidden" },
+  container: { flex: 1, backgroundColor: colors.canvas, overflow: "hidden" },
   content: { flex: 1 },
 });

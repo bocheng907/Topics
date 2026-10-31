@@ -16,8 +16,10 @@ import { chatLocales } from "@/src/chat/chatTranslation";
 import { chatIdentity } from "@/src/chat/chatIdentity";
 import { useChatProfiles } from "@/src/chat/useChatProfiles";
 import UserAvatar from "@/src/ui/components/UserAvatar";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 export default function CaregiverChatListScreen() {
+  const bottomInset = useScreenBottomInset();
   const { activePatientId, activePatient } = useActiveCareTarget();
   const { language } = useLanguage();
   const { user } = useAuth();
@@ -71,7 +73,7 @@ export default function CaregiverChatListScreen() {
     <View style={styles.container}>
       <AppHeader title={t.chatRoom} left="menu" />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]}>
         <Card padding={0}>
         <Pressable
           onPress={() =>

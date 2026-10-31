@@ -18,6 +18,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenBottomInset } from "../BottomInsetContext";
 import { colors, layout, radii, shadows, spacing, typography } from "../theme";
 
 const kavBehavior: KeyboardAvoidingViewProps["behavior"] =
@@ -28,7 +29,7 @@ const kavBehavior: KeyboardAvoidingViewProps["behavior"] =
 export type KeyboardAwareScrollProps = ScrollViewProps & {
   /** Extra offset for content above the KeyboardAvoidingView (e.g. a header). */
   keyboardVerticalOffset?: number;
-  /** Adds the bottom safe-area inset to the scroll content. */
+  /** Adds bottom spacing + the safe-area inset (unless the BottomNav already clears it) to the scroll content. */
   safeAreaBottom?: boolean;
 };
 
@@ -40,7 +41,8 @@ export function KeyboardAwareScroll({
   children,
   ...rest
 }: KeyboardAwareScrollProps) {
-  const insets = useSafeAreaInsets();
+  // 0 when the BottomNav below this screen already clears the home indicator.
+  const bottomInset = useScreenBottomInset();
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={kavBehavior} keyboardVerticalOffset={keyboardVerticalOffset}>
       <ScrollView
@@ -49,7 +51,7 @@ export function KeyboardAwareScroll({
         {...rest}
         contentContainerStyle={[
           styles.scrollContent,
-          safeAreaBottom && { paddingBottom: spacing.xl + insets.bottom },
+          safeAreaBottom && { paddingBottom: spacing.xl + bottomInset },
           contentContainerStyle,
         ]}
       >

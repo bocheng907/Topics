@@ -43,6 +43,7 @@ import {
   formatNotificationDateTime,
   getDateGroupKey,
 } from "@/src/notifications/formatNotificationDateTime";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type NotificationRow = NotificationDocument & Record<string, any> & { id: string };
 
@@ -51,6 +52,7 @@ type Props = {
 };
 
 export function NotificationListView({ detailRoute }: Props) {
+  const bottomInset = useScreenBottomInset();
   const { user: currentUser } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
@@ -208,7 +210,7 @@ export function NotificationListView({ detailRoute }: Props) {
         style={styles.listFlex}
         sections={sections}
         keyExtractor={(item, index) => item.id || `${item.title}-${index}`}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: spacing.xl + bottomInset }]}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
         renderSectionHeader={({ section }) => (

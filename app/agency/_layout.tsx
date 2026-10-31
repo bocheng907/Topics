@@ -120,6 +120,7 @@ function AgencyShell() {
           screenOptions={{
             headerShown: false,
             gestureEnabled: false,
+            contentStyle: { backgroundColor: colors.canvas },
           }}
         />
       </View>
@@ -146,7 +147,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     overflow: "hidden",
-    backgroundColor: colors.surface,
+    backgroundColor: colors.canvas,
   },
 
   content: {

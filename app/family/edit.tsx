@@ -17,6 +17,7 @@ import {
 } from "@/src/i18n/dynamicTranslation";
 import { pickLocalizedString, translations, type Language } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type EditItem = {
   itemId?: string;
@@ -76,6 +77,7 @@ function safeParseItems(itemsJson: string | undefined, language: Language): Edit
 }
 
 function FamilyEditScreen() {
+  const bottomInset = useScreenBottomInset();
   const { id, itemsJson } = useLocalSearchParams<{ id?: string; itemsJson?: string }>();
   const { ready } = useAuthContext();
   const { language } = useLanguage();
@@ -246,7 +248,7 @@ function FamilyEditScreen() {
         right={<Button label={t.save} icon="checkmark" variant="ghost" onPress={handleSave} />}
       />
 
-      <KeyboardAwareScroll safeAreaBottom={false} contentContainerStyle={styles.scrollContent}>
+      <KeyboardAwareScroll safeAreaBottom={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]}>
         <Card style={styles.editCard}>
           <Text style={styles.itemTag}>{fc.prescriptionBasicInfo}</Text>
 

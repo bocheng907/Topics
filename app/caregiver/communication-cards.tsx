@@ -16,6 +16,7 @@ import { useActiveCareTarget } from '@/src/care-target/useActiveCareTarget';
 import { translations } from '@/src/i18n/translations';
 import { useLanguage } from '@/src/store/LanguageContext';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 const initialTasks = [
   { id: 1, title: '乖乖吃藥', image: require('@/assets/images/medication.png') },
@@ -33,6 +34,7 @@ export default function CaregiverVoiceScreen() {
 }
 
 function CaregiverVoiceContent() {
+  const bottomInset = useScreenBottomInset();
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
@@ -154,7 +156,7 @@ function CaregiverVoiceContent() {
     <View style={styles.container}>
       <AppHeader title={t.communicationCards} fallbackHref={"/caregiver" as Href} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         <View style={styles.hintRow}>
           <Ionicons name="volume-medium-outline" size={22} color={colors.textSecondary} />
           <Text style={styles.hintText}>{c.cardsHint}</Text>

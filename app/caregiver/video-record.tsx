@@ -27,6 +27,7 @@ import { arrayRemove, arrayUnion, collection, deleteDoc, doc, onSnapshot, query,
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { createMediaUploadFilename } from '@/firebase/uploadFilename';
 import { readLocalBlob } from "@/src/media/readLocalBlob";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 function pickAbnormalTitle(record: any, language: Language) {
   return pickDynamicLocalizedString(record, 'title', language, ['titleZh', 'titleOriginal'], record?.titleOriginal ?? '');
@@ -41,6 +42,7 @@ function pickAbnormalEntryNotes(entry: any, language: Language) {
 }
 
 export default function AbnormalRecordScreen() {
+  const bottomInset = useScreenBottomInset();
   const { user } = useAuth();
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
@@ -442,14 +444,14 @@ export default function AbnormalRecordScreen() {
   );
 
   const renderFooter = (node: React.ReactNode) => (
-    <View style={[styles.footer, { paddingBottom: spacing.md }]}>{node}</View>
+    <View style={[styles.footer, { paddingBottom: spacing.md + bottomInset }]}>{node}</View>
   );
 
   // --- UI 渲染區塊 ---
 
   const renderList = () => (
     <View style={styles.viewContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         <Text style={styles.listHint}>{t.conditionHint}</Text>
         {records.length === 0 ? (
           <EmptyState icon="videocam-outline" title={c.recordEmpty} />
@@ -487,7 +489,7 @@ export default function AbnormalRecordScreen() {
 
   const renderDetail = () => (
     <View style={styles.viewContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         <View style={styles.doctorModeRow}>{renderDoctorToggle(t.doctorModeOn, t.doctorModeSwitch)}</View>
 
         <View style={styles.mediaContainer}>
@@ -510,7 +512,7 @@ export default function AbnormalRecordScreen() {
 
   const renderFolder = () => (
     <View style={styles.viewContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         <View style={styles.doctorModeRow}>{renderDoctorToggle(t.chineseModeOn, t.switchChinese)}</View>
 
         <View style={styles.folderHeader}>
@@ -566,7 +568,7 @@ export default function AbnormalRecordScreen() {
     const eDateStr = Number.isNaN(eDateObj.getTime()) ? '—' : formatLongDate(eDateObj, language);
     return (
       <View style={styles.viewContainer}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]} showsVerticalScrollIndicator={false}>
           <View style={styles.doctorModeRow}>{renderDoctorToggle(t.chineseModeOn, t.switchChinese)}</View>
 
           <View style={styles.folderBadge}>

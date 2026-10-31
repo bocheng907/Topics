@@ -31,6 +31,7 @@ import { useAuth } from "@/src/auth/useAuth";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type TabType = "records" | "meds";
 
@@ -181,6 +182,7 @@ async function deletePrescriptionCascade(prescriptionId: string) {
 }
 
 export default function CaregiverListScreen() {
+  const bottomInset = useScreenBottomInset();
   const { activePatientId } = useActiveCareTarget();
   const { user } = useAuth();
   const { language } = useLanguage();
@@ -396,7 +398,7 @@ export default function CaregiverListScreen() {
         />
       </SegmentedTabBar>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]}>
         {tab === "records" ? (
           <>
             {list.length === 0 ? (

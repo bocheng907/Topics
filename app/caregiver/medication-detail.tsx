@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams, useNavigation, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type MedicationRecord = {
   prescriptionId: string;
@@ -57,6 +58,7 @@ function splitUsage(usage: string | undefined, notProvided: string) {
 }
 
 export default function CaregiverMedicationDetailScreen() {
+  const bottomInset = useScreenBottomInset();
   const { language } = useLanguage();
   const c = caregiverCopy[language];
   const sep = language === "zh" ? "：" : ": ";
@@ -91,7 +93,7 @@ export default function CaregiverMedicationDetailScreen() {
       <StatusBar barStyle="dark-content" />
       <AppHeader title={c.medTitle} fallbackHref={"/caregiver/list" as Href} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]}>
         <Card tone="selected" style={styles.summaryCard}>
           <Text style={styles.drugName}>{name || c.medDrugNameFallback}</Text>
           <Text style={styles.summaryCount}>{c.medRecordCount(records.length)}</Text>

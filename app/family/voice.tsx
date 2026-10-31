@@ -26,6 +26,7 @@ import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc,
 import { deleteObject, getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { createMediaUploadFilename } from '@/firebase/uploadFilename';
 import { readLocalBlob } from "@/src/media/readLocalBlob";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 // 初始任務模板 (純圖片，不帶任何錄音狀態)
 const initialTasks = [
@@ -44,6 +45,7 @@ export default function FamilyVoiceScreen() {
 }
 
 function FamilyVoiceContent() {
+  const bottomInset = useScreenBottomInset();
   const { user } = useAuth();
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
@@ -342,7 +344,7 @@ function FamilyVoiceContent() {
       <AppHeader title={t.recordVoice} fallbackHref="/family" />
 
       {/* 列表區域 */}
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         <Card padding={0}>
           {tasks.map((task, index) => {
             const title = taskTitles[task.id] ?? task.title;

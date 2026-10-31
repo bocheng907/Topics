@@ -28,6 +28,7 @@ import {
   getSourceLabel,
 } from "@/src/notifications/notificationCategories";
 import { formatNotificationDateTime } from "@/src/notifications/formatNotificationDateTime";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type NotificationDetail = NotificationDocument & Record<string, any>;
 type TranslationSet = (typeof translations)[keyof typeof translations];
@@ -86,6 +87,7 @@ function buildInfoRows(
 }
 
 export function NotificationDetailView() {
+  const bottomInset = useScreenBottomInset();
   const params = useLocalSearchParams<Record<string, string | string[]>>();
   const { user: currentUser } = useAuth();
   const { language } = useLanguage();
@@ -170,8 +172,8 @@ export function NotificationDetailView() {
         fallbackHref={(currentUser?.role === "caregiver" ? "/caregiver/notifications" : "/family/notifications") as Href}
       />
 
-      <SafeAreaView style={styles.flex} edges={["left", "right", "bottom"]}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <SafeAreaView style={styles.flex} edges={["left", "right"]}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + bottomInset }]} showsVerticalScrollIndicator={false}>
           {loading ? (
             <ActivityIndicator color={colors.primary} style={styles.loader} accessibilityLabel={t.reading} />
           ) : errorText ? (

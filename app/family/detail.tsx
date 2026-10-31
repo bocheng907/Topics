@@ -14,6 +14,7 @@ import {
 import { pickLocalizedString, translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 function formatPrescriptionMemo(value: any): string {
   if (typeof value === "string") {
@@ -38,6 +39,7 @@ function formatPrescriptionMemo(value: any): string {
 }
 
 export default function FamilyDetailScreen() {
+  const bottomInset = useScreenBottomInset();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { ready } = useAuthContext();
   const { language } = useLanguage();
@@ -142,7 +144,7 @@ export default function FamilyDetailScreen() {
         right={<Button label={t.edit} icon="create-outline" variant="ghost" onPress={openEdit} />}
       />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]}>
         <View style={styles.titleBlock}>
           <Text style={styles.mainTitle}>{p.title || t.prescriptionDetail}</Text>
           <Text style={styles.subInfo}>

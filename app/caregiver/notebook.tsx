@@ -35,6 +35,7 @@ import {
   pickDynamicLocalizedString,
 } from "@/src/i18n/dynamicTranslation";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type CareNote = {
   id: string;
@@ -83,6 +84,7 @@ function getNoteTime(note: CareNote) {
 }
 
 export default function CaregiverNotebookScreen() {
+  const bottomInset = useScreenBottomInset();
   const { user } = useAuth();
   const { activePatientId, activePatient, ready } = useActiveCareTarget();
   const { language } = useLanguage();
@@ -318,7 +320,7 @@ export default function CaregiverNotebookScreen() {
     <View style={styles.screen}>
       {header}
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         {!activePatientId ? (
           <EmptyState icon="person-outline" title={c.noteNoPatient} />
         ) : (

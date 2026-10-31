@@ -13,6 +13,7 @@ import {
 } from "@/src/i18n/dynamicTranslation";
 import { pickLocalizedString, translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 function formatPrescriptionMemo(value: any): string {
   if (typeof value === "string") {
@@ -37,6 +38,7 @@ function formatPrescriptionMemo(value: any): string {
 }
 
 export default function CaregiverDetailScreen() {
+  const bottomInset = useScreenBottomInset();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { language } = useLanguage();
   const t = translations[language];
@@ -145,7 +147,7 @@ export default function CaregiverDetailScreen() {
         }
       />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]}>
         <View style={styles.titleBlock}>
           <Text style={styles.mainTitle}>{p.title || t.prescriptionDetail}</Text>
           <Text style={styles.subInfo}>

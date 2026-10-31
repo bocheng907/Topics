@@ -25,8 +25,10 @@ import { analyzePrescriptionByUrl } from "@/src/api/analyzePrescription";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 function CameraScreen() {
+  const bottomInset = useScreenBottomInset();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [qrMode, setQrMode] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -204,7 +206,7 @@ function CameraScreen() {
         onBack={() => router.replace(user?.role === "family" ? "/family" : "/caregiver")}
       />
 
-      <ScrollView key={refreshKey} contentContainerStyle={styles.container}>
+      <ScrollView key={refreshKey} contentContainerStyle={[styles.container, { paddingBottom: spacing.xxl + bottomInset }]}>
         <Text style={styles.subtitle}>{t.cameraSubtitle}</Text>
 
         <View style={styles.actions}>

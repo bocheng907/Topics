@@ -31,6 +31,7 @@ import {
   TextInput,
   View
 } from "react-native";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type VitalStatus = "normal" | "abnormal" | "outdated" | "nodata";
 type SingleVital = { val: number; ts: number; } | null;
@@ -57,6 +58,7 @@ const CRITICAL_BOUNDS = {
 };
 
 export default function FamilyDashboardScreen() {
+  const bottomInset = useScreenBottomInset();
   const { ready, activePatient, activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
@@ -432,7 +434,7 @@ export default function FamilyDashboardScreen() {
         />
       ) : null}
 
-      <KeyboardAwareScroll safeAreaBottom={false} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScroll safeAreaBottom={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]} showsVerticalScrollIndicator={false}>
 
         {/* ================= 歷史趨勢 ================= */}
         {activeTab === "history" && (

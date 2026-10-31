@@ -45,8 +45,10 @@ import { chatMessageCollection, normalizeChatRoom } from "@/src/chat/rooms";
 import { useChatProfiles } from "@/src/chat/useChatProfiles";
 import { chatIdentity } from "@/src/chat/chatIdentity";
 import { readLocalBlob } from "@/src/media/readLocalBlob";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 export default function FamilyChatRoomScreen() {
+  const bottomInset = useScreenBottomInset();
   const [inputText, setInputText] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -321,7 +323,7 @@ export default function FamilyChatRoomScreen() {
       )}
 
       <ChatTranslationStatus language={language} {...translated} />
-      <View style={styles.inputArea}>
+      <View style={[styles.inputArea, { paddingBottom: spacing.sm + bottomInset }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy.photo}

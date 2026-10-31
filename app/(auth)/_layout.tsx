@@ -1,3 +1,4 @@
+import { colors } from "@/src/ui/theme";
 import { Stack } from "expo-router";
 
 import { translations } from "@/src/i18n/translations";
@@ -11,6 +12,7 @@ export default function AuthLayout() {
     <Stack
       screenOptions={{
         headerTitleAlign: "center",
+        contentStyle: { backgroundColor: colors.canvas },
       }}
     >
       <Stack.Screen name="login" options={{ title: t.loginNow }} />

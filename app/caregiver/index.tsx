@@ -36,6 +36,7 @@ import {
   getPatientDocumentCode,
   makeMedicationLogDocumentId,
 } from "@/src/data/firestoreDocumentIds";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type CareTarget = {
   id: string;
@@ -115,6 +116,7 @@ function hhmmToMinutes(hhmm?: string) {
 }
 
 export default function CaregiverHomeScreen() {
+  const bottomInset = useScreenBottomInset();
   const { width, fontScale } = useWindowDimensions();
   const { narrowCards } = getHomeLayout(width, fontScale);
   const { user } = useAuth();
@@ -411,7 +413,7 @@ export default function CaregiverHomeScreen() {
     return (
       <View style={styles.container}>
         <AppHeader title={t.navHome} left="menu" />
-        <ScrollView contentContainerStyle={styles.noTargetContainer}>
+        <ScrollView contentContainerStyle={[styles.noTargetContainer, { paddingBottom: spacing.xl + bottomInset }]}>
           <Card style={styles.noTargetCard}>
             <View style={styles.noTargetIcon}>
               <Ionicons name="person-add-outline" size={36} color={colors.primary} />
@@ -445,7 +447,7 @@ export default function CaregiverHomeScreen() {
     <View style={styles.container}>
       <AppHeader title={t.navHome} left="menu" />
       <SafeAreaView style={styles.body} edges={["left", "right"]}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]}>
           <View style={styles.userInfo}>
             <Text style={styles.overline}>{c.homeCaringFor}</Text>
             <Text style={styles.userName} numberOfLines={2}>

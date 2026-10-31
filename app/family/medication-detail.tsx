@@ -14,6 +14,7 @@ import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { translations } from "@/src/i18n/translations";
 import { familyCopy } from "@/src/i18n/copy/familyCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type MedicationRecord = {
   prescriptionId: string;
@@ -61,6 +62,7 @@ function splitUsage(usage: string | undefined, notProvided: string) {
 }
 
 export default function FamilyMedicationDetailScreen() {
+  const bottomInset = useScreenBottomInset();
     const navigation = useNavigation();
 
     useLayoutEffect(() => {
@@ -105,7 +107,7 @@ export default function FamilyMedicationDetailScreen() {
 
       <AppHeader title={name || fc.drugNamePlaceholder} fallbackHref="/family/list" />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxxl + bottomInset }]}>
         <Card style={styles.summaryCard}>
           <View style={styles.summaryTopRow}>
             <View style={styles.iconCircle}>

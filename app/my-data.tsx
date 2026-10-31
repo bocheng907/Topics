@@ -11,6 +11,7 @@ import { router, type Href } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type Summary = {
   profile: {displayName: string; email: string; role: string; createdAt: string | null;
@@ -23,6 +24,7 @@ type Summary = {
 };
 
 export default function MyDataScreen() {
+  const bottomInset = useScreenBottomInset();
   const {language} = useLanguage();
   const t = myDataCopy[language];
   const x = myDataExtraCopy[language];
@@ -71,8 +73,8 @@ export default function MyDataScreen() {
   return (
     <View style={styles.screen}>
       <AppHeader title={t.title} left="back" fallbackHref={"/" as Href} />
-      <SafeAreaView style={styles.flex} edges={["left", "right", "bottom"]}>
-        <ScrollView contentContainerStyle={styles.content}>
+      <SafeAreaView style={styles.flex} edges={["left", "right"]}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: spacing.xxl + bottomInset }]}>
           <Text style={styles.scope}>{t.scope}</Text>
 
           {busy ? (
