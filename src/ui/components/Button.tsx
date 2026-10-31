@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, t
 import { colors, radii, spacing, typography } from "../theme";
 import type { IconName } from "./types";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "accent";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "ghostDanger" | "accent";
 export type ButtonSize = "md" | "lg";
 
 export type ButtonProps = {
@@ -27,6 +27,8 @@ const palette: Record<ButtonVariant, { bg: string; bgPressed: string; fg: string
   secondary: { bg: colors.surface, bgPressed: colors.primarySoft, fg: colors.primary, border: colors.primaryBorder },
   ghost: { bg: "transparent", bgPressed: colors.primarySoft, fg: colors.primary },
   danger: { bg: colors.danger, bgPressed: colors.dangerPressed, fg: colors.onPrimary },
+  /** Quiet destructive action inside a card (e.g. "Delete"); the confirm dialog carries the weight. */
+  ghostDanger: { bg: "transparent", bgPressed: colors.dangerSoft, fg: colors.danger },
   /** Reserved for urgent / key actions such as an emergency call. */
   accent: { bg: colors.accent, bgPressed: colors.accentPressed, fg: colors.onAccent },
 };

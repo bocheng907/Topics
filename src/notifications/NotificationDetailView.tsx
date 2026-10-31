@@ -1,9 +1,12 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import { doc, getDoc } from "firebase/firestore";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { AppHeader, Card, Divider, EmptyState, StatusBadge } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
+
 
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
@@ -161,152 +164,99 @@ export function NotificationDetailView() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={22} color="#111827" />
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-        <Ionicons name="menu" size={26} color="#111827" />
-      </ScreenHeader>
+      <AppHeader
+        title={t.notification}
+        left="back"
+        fallbackHref={(currentUser?.role === "caregiver" ? "/caregiver/notifications" : "/family/notifications") as Href}
+      />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <Text style={styles.messageText}>{t.reading}</Text>
-        ) : errorText ? (
-          <Text style={styles.messageText}>{errorText}</Text>
-        ) : (
-          <>
-            <View style={styles.card}>
-              <Text style={styles.title}>{displayTitle}</Text>
-
-              <View style={styles.tagRow}>
-                <View style={[styles.tag, { backgroundColor: visual.tintSoft }]}>
-                  <Text style={[styles.tagText, { color: visual.tint }]}>
-                    {t[CATEGORY_LABEL_KEY[visual.category]]}
-                  </Text>
+      <SafeAreaView style={styles.flex} edges={["left", "right", "bottom"]}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {loading ? (
+            <ActivityIndicator color={colors.primary} style={styles.loader} accessibilityLabel={t.reading} />
+          ) : errorText ? (
+            <Card>
+              <EmptyState icon="notifications-off-outline" title={errorText} />
+            </Card>
+          ) : (
+            <>
+              <Card style={styles.headCard}>
+                <View style={styles.headRow}>
+                  {/* Same category glyph and tint as the notification list, so the item is recognisable. */}
+                  <View style={[styles.iconCircle, { backgroundColor: visual.tintSoft }]}>
+                    <Ionicons name={visual.icon} size={22} color={visual.tint} />
+                  </View>
+                  <Text style={styles.title} accessibilityRole="header">{displayTitle}</Text>
                 </View>
-                {visual.level ? (
-                  <View style={[styles.tag, { backgroundColor: visual.tintSoft }]}>
-                    <Text style={[styles.tagText, { color: visual.tint }]}>
-                      {visual.level === "critical"
-                        ? t.notificationLevelCritical
-                        : t.notificationLevelWarning}
-                    </Text>
+
+                <View style={styles.tagRow}>
+                  <StatusBadge label={t[CATEGORY_LABEL_KEY[visual.category]]} tone="neutral" />
+                  {visual.level ? (
+                    <StatusBadge
+                      label={visual.level === "critical" ? t.notificationLevelCritical : t.notificationLevelWarning}
+                      tone={visual.level === "critical" ? "danger" : "warning"}
+                      icon={visual.level === "critical" ? "alert-circle" : "warning"}
+                    />
+                  ) : null}
+                </View>
+
+                {!!displayDateTime && (
+                  <View style={styles.dateRow}>
+                    <Ionicons name="time-outline" size={18} color={colors.textMuted} />
+                    <Text style={styles.dateTime}>{displayDateTime}</Text>
                   </View>
-                ) : null}
-              </View>
+                )}
+              </Card>
 
-              {!!displayDateTime && <Text style={styles.dateTime}>{displayDateTime}</Text>}
-            </View>
+              {!!localizedBody && (
+                <Card>
+                  <Text style={styles.body} selectable>{localizedBody}</Text>
+                </Card>
+              )}
 
-            {!!localizedBody && (
-              <View style={styles.card}>
-                <Text style={styles.body}>{localizedBody}</Text>
-              </View>
-            )}
-
-            {infoRows.length > 0 && (
-              <View style={styles.card}>
-                {infoRows.map((row, index) => (
-                  <View
-                    key={row.label}
-                    style={[styles.infoRow, index === infoRows.length - 1 && styles.infoRowLast]}
-                  >
-                    <Text style={styles.infoLabel}>{row.label}</Text>
-                    <Text style={styles.infoValue}>{row.value}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </>
-        )}
-      </ScrollView>
+              {infoRows.length > 0 && (
+                <Card padding={0}>
+                  {infoRows.map((row, index) => (
+                    <View key={row.label}>
+                      {index > 0 ? <Divider inset={spacing.lg} /> : null}
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>{row.label}</Text>
+                        <Text style={styles.infoValue} selectable>{row.value}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </Card>
+              )}
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FAFAFA",
-  },
-  header: { backgroundColor: "#D9D4F3", paddingTop: 12, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 56 },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    paddingRight: 12,
-  },
-  backText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
+  container: { flex: 1, backgroundColor: colors.canvas },
+  flex: { flex: 1 },
   content: {
     flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 32,
-    gap: 14,
+    padding: layout.screenPaddingX,
+    paddingBottom: spacing.xxl,
+    gap: spacing.lg,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-  },
-  title: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 12,
-  },
-  tagRow: { flexDirection: "row", gap: 8, marginBottom: 12, flexWrap: "wrap" },
-  tag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, maxWidth: "100%" },
-  tagText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  dateTime: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  body: {
-    fontSize: 18,
-    lineHeight: 28,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  infoRowLast: {
-    borderBottomWidth: 0,
-    paddingBottom: 0,
-  },
-  infoLabel: { fontSize: 14, color: "#9CA3AF", fontWeight: "600", flex: 1 },
-  infoValue: {
-    flex: 1,
-    fontSize: 15,
-    color: "#111827",
-    fontWeight: "600",
-    textAlign: "right",
-  },
-  messageText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#374151",
-  },
+  loader: { marginVertical: spacing.xxxl },
+  headCard: { gap: spacing.md },
+  headRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  iconCircle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  title: { ...typography.title, flex: 1, minWidth: 0 },
+  tagRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  dateRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  dateTime: { ...typography.bodySmall, color: colors.textMuted },
+  body: { ...typography.body, fontSize: 18, lineHeight: 28 },
+  infoRow: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 2 },
+  infoLabel: { ...typography.caption },
+  infoValue: { ...typography.bodyStrong },
 });

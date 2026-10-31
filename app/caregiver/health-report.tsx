@@ -1,7 +1,6 @@
-import { AppHeader, Button, Card, Chip, KeyboardAwareScroll } from "@/src/ui/components";
+import { AppHeader, Button, Card, Chip, KeyboardAwareScroll, SegmentedTabBar, SegmentedTabs } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { caregiverCopy } from "@/src/i18n/copy/caregiverCopy";
-import { SegmentedTabBar, SegmentedTabs } from "@/src/caregiver/SegmentedTabs";
 // app/caregiver/health-report.tsx
 import { db } from '@/firebase/firebaseConfig';
 import type { Href } from 'expo-router';

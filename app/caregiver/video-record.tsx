@@ -1,7 +1,6 @@
-import { AppHeader, Button, Card, EmptyState, IconButton, KeyboardAwareScroll, StatusBadge, TextField } from "@/src/ui/components";
+import { AppHeader, Button, Card, EmptyState, IconButton, KeyboardAwareScroll, SegmentedTabs, StatusBadge, TextField } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { caregiverCopy, formatLongDate } from "@/src/i18n/copy/caregiverCopy";
-import { SegmentedTabs } from "@/src/caregiver/SegmentedTabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Ionicons } from '@expo/vector-icons';

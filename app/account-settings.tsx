@@ -1,53 +1,23 @@
 import * as ImagePicker from "expo-image-picker";
 import { randomUUID } from "expo-crypto";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import { storage, db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { collection, doc, getDoc, getDocs, limit, query, writeBatch, serverTimestamp, where } from "firebase/firestore";
-import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import type { Href } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { readLocalBlob } from "@/src/media/readLocalBlob";
-
-const copy = {
-  zh: {title: "更正個人資料", back: "返回", name: "姓名／顯示名稱",
-    phone1: "緊急聯絡電話 1", phone2: "緊急聯絡電話 2",
-    note: "Email 與角色涉及帳號身分及權限，不能在此頁直接修改。如需更正，請聯絡智慧醫療團隊。",
-    familyRequired: "家屬帳號需保留兩組緊急聯絡電話。", save: "儲存更正",
-    saving: "儲存中…", done: "已儲存。", failed: "儲存失敗，請稍後再試。",
-    duplicate: "帳號資料不唯一，請聯絡管理員處理。"},
-  en: {title: "Correct personal data", back: "Back", name: "Name / display name",
-    phone1: "Emergency phone 1", phone2: "Emergency phone 2",
-    note: "Email and role identify your account and permissions. Contact the care team to correct them.",
-    familyRequired: "Family accounts must keep two emergency phone numbers.",
-    save: "Save changes", saving: "Saving…", done: "Saved.",
-    failed: "Unable to save. Try again.", duplicate: "The account profile is not unique. Contact an administrator."},
-  vi: {title: "Sửa dữ liệu cá nhân", back: "Quay lại", name: "Tên hiển thị",
-    phone1: "Số khẩn cấp 1", phone2: "Số khẩn cấp 2",
-    note: "Email và vai trò liên quan đến danh tính và quyền. Hãy liên hệ nhóm để sửa.",
-    familyRequired: "Tài khoản gia đình phải giữ hai số điện thoại khẩn cấp.",
-    save: "Lưu", saving: "Đang lưu…", done: "Đã lưu.",
-    failed: "Không thể lưu.", duplicate: "Hồ sơ tài khoản không duy nhất. Hãy liên hệ quản trị viên."},
-  id: {title: "Perbaiki data pribadi", back: "Kembali", name: "Nama tampilan",
-    phone1: "Telepon darurat 1", phone2: "Telepon darurat 2",
-    note: "Email dan peran menentukan identitas dan izin. Hubungi tim untuk mengubahnya.",
-    familyRequired: "Akun keluarga harus memiliki dua nomor darurat.",
-    save: "Simpan", saving: "Menyimpan…", done: "Tersimpan.",
-    failed: "Tidak dapat menyimpan.", duplicate: "Profil akun tidak unik. Hubungi administrator."},
-} as const;
+import { accountSettingsCopy } from "@/src/i18n/copy/accountCopy";
+import { AppHeader, Button, Card, KeyboardAwareScroll, SectionHeader, TextField, UserAvatar } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 
 export default function AccountSettingsScreen() {
   const {user, ready} = useAuth();
   const {language} = useLanguage();
-  const t = copy[language];
-  const extra = {
-    zh: {avatar: "選擇頭貼（儲存後生效）", phone: "照護員聯絡電話"},
-    en: {avatar: "Choose avatar (save to apply)", phone: "Caregiver phone"},
-    vi: {avatar: "Chọn ảnh (lưu để áp dụng)", phone: "Điện thoại người chăm sóc"},
-    id: {avatar: "Pilih foto (simpan untuk menerapkan)", phone: "Telepon caregiver"},
-  }[language];
+  const t = accountSettingsCopy[language];
   const [avatarUrl, setAvatarUrl] = useState("");
   const [caregiverPhone, setCaregiverPhone] = useState("");
   const [name, setName] = useState("");
@@ -150,48 +120,112 @@ export default function AccountSettingsScreen() {
     }
   }
 
-  return <ScreenScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-    <Pressable onPress={() => router.back()} disabled={busy}>
-      <Text style={styles.link}>{t.back}</Text>
-    </Pressable>
-    <Text style={styles.title}>{t.title}</Text>
-    {busy && !profileRef && <ActivityIndicator />}
-    {!!avatarUrl && <Image source={{uri: avatarUrl}} style={{width: 88, height: 88, borderRadius: 44}} />}
-    <Pressable onPress={chooseAvatar} disabled={busy || !profileRef}><Text style={styles.link}>{extra.avatar}</Text></Pressable>
-    {user?.role === "caregiver" && <>
-      <Text style={styles.label}>{extra.phone}</Text>
-      <TextInput value={caregiverPhone} onChangeText={setCaregiverPhone} maxLength={64}
-        editable={!busy} keyboardType="phone-pad" style={styles.input} />
-    </>}
-    <Text style={styles.label}>{t.name}</Text>
-    <TextInput value={name} onChangeText={setName} maxLength={120}
-      editable={!busy} autoComplete="name" style={styles.input} />
-    {user?.role === "family" && <>
-    <Text style={styles.label}>{t.phone1}</Text>
-    <TextInput value={phone1} onChangeText={setPhone1} maxLength={64}
-      editable={!busy} keyboardType="phone-pad" autoComplete="tel" style={styles.input} />
-    <Text style={styles.label}>{t.phone2}</Text>
-    <TextInput value={phone2} onChangeText={setPhone2} maxLength={64}
-      editable={!busy} keyboardType="phone-pad" autoComplete="tel" style={styles.input} />
-    <Text style={styles.hint}>{t.familyRequired}</Text>
-    </>}
-    <Text style={styles.note}>{t.note}</Text>
-    <Pressable onPress={save} disabled={busy || !profileRef}
-      style={[styles.button, (busy || !profileRef) && styles.disabled]}>
-      <Text style={styles.buttonText}>{busy ? t.saving : t.save}</Text>
-    </Pressable>
-    {!!status && <Text accessibilityRole="alert" style={styles.status}>{status}</Text>}
-  </ScreenScrollView>;
+  const locked = busy || !profileRef;
+  const statusOk = status === t.done;
+
+  return (
+    <View style={styles.screen}>
+      {/* Leaving is blocked while an upload or save is in flight, as before. */}
+      <AppHeader title={t.title} left="back" fallbackHref={"/" as Href} onBack={busy ? () => {} : undefined} />
+      <KeyboardAwareScroll contentContainerStyle={styles.content}>
+        {busy && !profileRef ? (
+          <View style={styles.loading}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={styles.loadingText}>{t.loading}</Text>
+          </View>
+        ) : null}
+
+        <Card style={styles.avatarCard}>
+          <UserAvatar uri={avatarUrl} name={name} uid={user?.uid} size={88} />
+          <Button
+            label={t.changeAvatar}
+            icon="camera-outline"
+            variant="secondary"
+            onPress={chooseAvatar}
+            disabled={locked}
+            style={styles.avatarButton}
+          />
+          <Text style={styles.avatarHint}>{t.avatarHint}</Text>
+        </Card>
+
+        <SectionHeader title={t.basicSection} />
+        <Card style={styles.fieldCard}>
+          <TextField label={t.name} value={name} onChangeText={setName} maxLength={120}
+            editable={!busy} autoComplete="name" />
+        </Card>
+
+        {user?.role === "caregiver" ? (
+          <>
+            <SectionHeader title={t.contactSection} />
+            <Card style={styles.fieldCard}>
+              <TextField label={t.caregiverPhone} value={caregiverPhone} onChangeText={setCaregiverPhone}
+                maxLength={64} editable={!busy} keyboardType="phone-pad" />
+            </Card>
+          </>
+        ) : null}
+
+        {user?.role === "family" ? (
+          <>
+            <SectionHeader title={t.emergencySection} />
+            <Card style={styles.fieldCard}>
+              <TextField label={t.phone1} value={phone1} onChangeText={setPhone1} maxLength={64}
+                editable={!busy} keyboardType="phone-pad" autoComplete="tel" required />
+              <TextField label={t.phone2} value={phone2} onChangeText={setPhone2} maxLength={64}
+                editable={!busy} keyboardType="phone-pad" autoComplete="tel" required
+                helper={t.familyRequired} />
+            </Card>
+          </>
+        ) : null}
+
+        <SectionHeader title={t.accountSection} />
+        <Card tone="sunken" style={styles.noteCard}>
+          <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />
+          <Text style={styles.noteText}>{t.note}</Text>
+        </Card>
+
+        {status ? (
+          <View accessibilityRole="alert" style={[styles.status, statusOk ? styles.statusOk : styles.statusError]}>
+            <Ionicons name={statusOk ? "checkmark-circle" : "alert-circle"} size={20}
+              color={statusOk ? colors.success : colors.danger} />
+            <Text style={[styles.statusText, { color: statusOk ? colors.success : colors.danger }]}>{status}</Text>
+          </View>
+        ) : null}
+
+        <Button
+          label={busy && profileRef ? t.saving : t.save}
+          size="lg"
+          fullWidth
+          loading={busy && !!profileRef}
+          disabled={locked}
+          onPress={save}
+          style={styles.saveButton}
+        />
+      </KeyboardAwareScroll>
+    </View>
+  );
 }
+
 const styles = StyleSheet.create({
-  container: { padding: 24, paddingTop: 20, gap: 12, maxWidth: 680, width: "100%", alignSelf: "center", paddingBottom: 40 },
-  title: {fontSize: 28, fontWeight: "800", marginBottom: 8},
-  link: {fontSize: 16, color: "#1264A3"}, label: {fontSize: 15, fontWeight: "600"},
-  input: {borderWidth: 1, borderColor: "#777", borderRadius: 10,
-    padding: 14, fontSize: 16, backgroundColor: "#FFF"},
-  hint: {fontSize: 13, color: "#9A5A00"}, note: {fontSize: 14, lineHeight: 22,
-    color: "#555", backgroundColor: "#F3F4F6", padding: 14, borderRadius: 10},
-  button: {backgroundColor: "#1264A3", padding: 16, borderRadius: 10, marginTop: 8},
-  buttonText: {color: "#FFF", textAlign: "center", fontSize: 16, fontWeight: "700"},
-  disabled: {opacity: 0.45}, status: {fontSize: 15, lineHeight: 22},
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: { gap: 0, width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" },
+  loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingVertical: spacing.md },
+  loadingText: { ...typography.body, color: colors.textSecondary },
+  avatarCard: { alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl },
+  avatarButton: { alignSelf: "center" },
+  avatarHint: { ...typography.bodySmall, color: colors.textMuted, textAlign: "center" },
+  fieldCard: { gap: spacing.lg },
+  noteCard: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  noteText: { ...typography.bodySmall, flex: 1 },
+  status: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radii.control,
+  },
+  statusOk: { backgroundColor: colors.successSoft },
+  statusError: { backgroundColor: colors.dangerSoft },
+  statusText: { ...typography.bodyStrong, flex: 1 },
+  saveButton: { marginTop: spacing.xl },
 });

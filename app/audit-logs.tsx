@@ -1,31 +1,34 @@
 import { auth, db } from "@/firebase/firebaseConfig";
 import { useAuditAccess } from "@/src/auth/useAuditAccess";
-import { Stack, router } from "expo-router";
+import { auditLogCopy } from "@/src/i18n/copy/accountCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
+import { AppHeader, Button, Card, Divider, EmptyState, StatusBadge, TextField } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { Stack, type Href } from "expo-router";
 import { collection, getDocsFromServer, limit, orderBy, query, startAfter,
   type DocumentData, type QueryDocumentSnapshot } from "firebase/firestore";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Entry = { id: string; data: DocumentData };
-const labels: Record<string, string> = {
-  login: "登入回報", logout_requested: "登出請求",
-  prescription_create: "新增藥單", prescription_update: "修改藥單", prescription_delete: "刪除藥單",
-  prescription_item_create: "新增藥品", prescription_item_update: "修改藥品", prescription_item_delete: "刪除藥品",
-  members_create: "建立照護成員", members_update: "變更照護成員", members_delete: "移除照護成員",
-  threshold_create: "新增健康閾值", threshold_update: "修改健康閾值", threshold_delete: "刪除健康閾值",
-};
-function time(value: unknown) {
+type LoadError = "" | "denied" | "network";
+
+function time(value: unknown, fallback: string) {
   const date = (value as { toDate?: () => Date })?.toDate?.();
-  return date && Number.isFinite(date.getTime()) ? date.toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }) : "未提供";
+  return date && Number.isFinite(date.getTime()) ? date.toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }) : fallback;
 }
 
 export default function AuditLogs() {
   const access = useAuditAccess();
   const insets = useSafeAreaInsets();
+  const { language } = useLanguage();
+  const c = auditLogCopy[language];
+  const labels = c.operations;
   const [rows, setRows] = useState<Entry[]>([]);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<LoadError>("");
   const [more, setMore] = useState(false);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -50,7 +53,8 @@ export default function AuditLogs() {
       if (current !== generation.current) return;
       const denied = (e as { code?: string }).code === "permission-denied";
       if (denied) { setRows([]); setMore(false); cursor.current = null; }
-      setError(denied ? "沒有查閱權限，請重新確認管理員身分。" : "暫時無法取得紀錄，請檢查網路後重試。");
+      // Store the error kind (not the text) so a language switch re-renders it without reloading.
+      setError(denied ? "denied" : "network");
     } finally {
       if (current === generation.current) { loading.current = false; setBusy(false); }
     }
@@ -78,51 +82,165 @@ export default function AuditLogs() {
   const needle = search.trim().toLowerCase();
   const visible = rows.filter(({ data }) => [labels[data.operation], data.operation,
     data.actorId, data.patientId, data.resourcePath].some(value => String(value ?? "").toLowerCase().includes(needle)));
-  return <View style={[styles.page, { paddingTop: insets.top + 12, paddingBottom: insets.bottom }]}>
+  const errorText = error === "denied" ? c.errorDenied : error === "network" ? c.errorNetwork : "";
+
+  const header = (
+    <AppHeader
+      title={c.title}
+      left="back"
+      fallbackHref={"/" as Href}
+      right={<StatusBadge label={c.adminBadge} tone="neutral" icon="shield-checkmark-outline" style={styles.adminBadge} />}
+    />
+  );
+
+  return <View style={styles.page}>
     <Stack.Screen options={{ headerShown: false }} />
-    <View style={styles.header}>
-      <Pressable accessibilityRole="button" onPress={() => router.canGoBack() ? router.back() : router.replace("/")} style={styles.button}><Text style={styles.link}>返回</Text></Pressable>
-      <Text style={styles.title}>操作紀錄</Text>
-      <Text style={styles.badge}>管理員</Text>
-    </View>
-    {!access.ready ? <ActivityIndicator accessibilityLabel="確認權限中" /> : !access.allowed ?
-      <View style={styles.notice}><Text style={styles.heading}>僅限授權管理員查閱</Text><Text style={styles.muted}>此頁面包含系統操作紀錄。若剛取得授權，請更新權限後再試。</Text>
-        <Pressable accessibilityRole="button" style={styles.button} onPress={() => void access.refresh()}><Text style={styles.link}>更新權限</Text></Pressable></View> : <>
-      <View style={styles.toolbar}><Text style={styles.muted}>最新紀錄優先 · 台灣時間 · 每次載入 50 筆</Text>
-        <TextInput accessibilityLabel="搜尋已載入的操作紀錄" placeholder="搜尋已載入紀錄：操作、身分或資源" value={search} onChangeText={setSearch} style={styles.search} />
-        <View style={styles.row}><Text style={styles.muted}>已載入 {rows.length} 筆 · 顯示 {visible.length} 筆</Text>
-          <Pressable accessibilityRole="button" disabled={busy} style={styles.button} onPress={() => requestLoad(true)}><Text style={styles.link}>重新整理</Text></Pressable></View>
-        {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+    {header}
+    {!access.ready ? (
+      <ActivityIndicator style={styles.centerLoader} color={colors.primary} accessibilityLabel={c.checkingAccess} />
+    ) : !access.allowed ? (
+      <View style={styles.restricted}>
+        <EmptyState
+          icon="lock-closed-outline"
+          title={c.restrictedTitle}
+          body={c.restrictedBody}
+          actionLabel={c.refreshAccess}
+          onAction={() => void access.refresh()}
+        />
       </View>
-      <FlatList data={visible} keyExtractor={item => item.id} contentContainerStyle={styles.list}
-        ListEmptyComponent={!busy ? <Text style={styles.muted}>{error ? "請重試載入。" : rows.length ? "已載入的紀錄中沒有符合項目。" : "目前尚無操作紀錄。"}</Text> : undefined}
-        renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityState={{ expanded: expanded === item.id }} onPress={() => setExpanded(expanded === item.id ? null : item.id)} style={styles.card}>
-          <Text style={styles.heading}>{labels[item.data.operation] ?? item.data.operation ?? "未知操作"}</Text>
-          <Text style={styles.muted}>{time(item.data.occurredAt ?? item.data.createdAt)}</Text>
-          <Text selectable style={styles.body}>操作者：{item.data.actorId ?? "來源未提供身分"}</Text>
-          <Text style={styles.source}>{item.data.source === "authenticated_client_signal" ? "App 回報事件" : "後端資料變更事件"}</Text>
-          {expanded === item.id && <View style={styles.detail}>
-            <Text selectable style={styles.body}>資源：{item.data.resourcePath ?? "登入工作階段"}</Text>
-            <Text selectable style={styles.body}>照護對象 ID：{item.data.patientId ?? "未提供"}</Text>
-            <Text style={styles.body}>身分類型：{item.data.actorType ?? "未知"}</Text>
-            <Text style={styles.body}>變更欄位：{Array.isArray(item.data.changedFields) ? item.data.changedFields.join("、") || "無" : "不適用"}{item.data.fieldsTruncated ? "（僅顯示前 100 欄）" : ""}</Text>
-            <Text style={styles.muted}>記錄時間：{time(item.data.createdAt)}</Text>
-            <Text selectable style={styles.muted}>紀錄 ID：{item.id}</Text>
-            {item.data.source === "authenticated_client_signal" && <Text style={styles.muted}>此為 App 回報；登出請求不代表已完成登出。</Text>}
-          </View>}
-        </Pressable>}
-        ListFooterComponent={<View style={styles.footer}>{busy ? <ActivityIndicator accessibilityLabel="載入紀錄中" /> : more ? <Pressable accessibilityRole="button" style={styles.button} onPress={() => requestLoad(false)}><Text style={styles.link}>載入更多</Text></Pressable> : rows.length > 0 ? <Text style={styles.muted}>已載入全部可查閱紀錄</Text> : null}</View>} />
+    ) : <>
+      <View style={styles.toolbar}>
+        <Text style={styles.hint}>{c.toolbarHint}</Text>
+        <TextField
+          accessibilityLabel={c.searchLabel}
+          placeholder={c.searchPlaceholder}
+          value={search}
+          onChangeText={setSearch}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <View style={styles.toolbarRow}>
+          <Text style={styles.hint}>{c.loadedCount(rows.length, visible.length)}</Text>
+          <Button label={c.refresh} icon="refresh" variant="ghost" disabled={busy} onPress={() => requestLoad(true)} />
+        </View>
+        {errorText ? (
+          <View accessibilityRole="alert" style={styles.error}>
+            <Ionicons name="alert-circle" size={20} color={colors.danger} />
+            <Text style={styles.errorText}>{errorText}</Text>
+          </View>
+        ) : null}
+      </View>
+      <FlatList
+        data={visible}
+        keyExtractor={item => item.id}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={[styles.list, { paddingBottom: spacing.xl + insets.bottom }]}
+        ListEmptyComponent={!busy ? (
+          <EmptyState
+            icon="document-text-outline"
+            title={error ? c.emptyRetry : rows.length ? c.emptyNoMatch : c.emptyNone}
+          />
+        ) : undefined}
+        renderItem={({ item }) => {
+          const open = expanded === item.id;
+          const fromClient = item.data.source === "authenticated_client_signal";
+          return (
+            <Card padding={0}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: open }}
+                accessibilityHint={open ? c.hideDetails : c.showDetails}
+                onPress={() => setExpanded(open ? null : item.id)}
+                style={({ pressed }) => [styles.entry, pressed && styles.entryPressed]}
+              >
+                <View style={styles.entryTop}>
+                  <Text style={styles.entryTitle}>{labels[item.data.operation] ?? item.data.operation ?? c.unknownOperation}</Text>
+                  <Ionicons name={open ? "chevron-up" : "chevron-down"} size={20} color={colors.textMuted} />
+                </View>
+                <Text style={styles.hint}>{time(item.data.occurredAt ?? item.data.createdAt, c.notProvided)}</Text>
+                <Text selectable style={styles.body}>{c.actor}: {item.data.actorId ?? c.actorMissing}</Text>
+                <StatusBadge label={fromClient ? c.sourceClient : c.sourceBackend} tone="neutral"
+                  icon={fromClient ? "phone-portrait-outline" : "server-outline"} />
+              </Pressable>
+              {open ? (
+                <>
+                  <Divider />
+                  <View style={styles.detail}>
+                    <Detail label={c.resource} value={item.data.resourcePath ?? c.resourceSession} selectable />
+                    <Detail label={c.patientId} value={item.data.patientId ?? c.notProvided} selectable />
+                    <Detail label={c.actorType} value={item.data.actorType ?? c.unknown} />
+                    <Detail
+                      label={c.changedFields}
+                      value={`${Array.isArray(item.data.changedFields) ? item.data.changedFields.join(c.fieldSeparator) || c.none : c.notApplicable}${item.data.fieldsTruncated ? c.truncated : ""}`}
+                    />
+                    <Detail label={c.recordedAt} value={time(item.data.createdAt, c.notProvided)} />
+                    <Detail label={c.recordId} value={item.id} selectable />
+                    {fromClient ? <Text style={styles.hint}>{c.clientNote}</Text> : null}
+                  </View>
+                </>
+              ) : null}
+            </Card>
+          );
+        }}
+        ListFooterComponent={<View style={styles.footer}>
+          {busy ? <ActivityIndicator color={colors.primary} accessibilityLabel={c.loadingRecords} />
+            : more ? <Button label={c.loadMore} variant="secondary" onPress={() => requestLoad(false)} />
+            : rows.length > 0 ? <Text style={styles.hint}>{c.allLoaded}</Text> : null}
+        </View>}
+      />
     </>}
   </View>;
 }
 
+function Detail({ label, value, selectable }: { label: string; value: string; selectable?: boolean }) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text selectable={selectable} style={styles.body}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: "#F4F7FA" }, header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, gap: 12, paddingBottom: 12 },
-  title: { flex: 1, fontSize: 24, fontWeight: "800", color: "#173447" }, badge: { color: "#37677B", fontSize: 13 },
-  toolbar: { paddingHorizontal: 20, gap: 8 }, search: { backgroundColor: "white", borderColor: "#CBD5DF", borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16 },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }, list: { padding: 20, gap: 12 },
-  card: { padding: 18, borderRadius: 16, backgroundColor: "white", borderWidth: 1, borderColor: "#DFE7EC", gap: 8 }, heading: { fontSize: 18, fontWeight: "700", color: "#173447" },
-  body: { fontSize: 14, color: "#2D4858", lineHeight: 22 }, muted: { fontSize: 13, color: "#526776", lineHeight: 21 }, source: { fontSize: 12, color: "#27677C" },
-  detail: { borderTopWidth: 1, borderTopColor: "#E5ECF0", paddingTop: 12, gap: 8 }, button: { minHeight: 44, padding: 10, justifyContent: "center" }, link: { color: "#12617D", fontSize: 16, fontWeight: "700" },
-  notice: { padding: 24, gap: 16 }, error: { color: "#A22C33", lineHeight: 22 }, footer: { padding: 20, alignItems: "center" },
+  page: { flex: 1, backgroundColor: colors.canvas },
+  centerLoader: { flex: 1 },
+  adminBadge: { alignSelf: "center", marginRight: spacing.sm },
+  restricted: { flex: 1, justifyContent: "center", paddingHorizontal: layout.screenPaddingX },
+  toolbar: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.lg,
+    gap: spacing.sm,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+  },
+  toolbarRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: spacing.sm },
+  hint: { ...typography.bodySmall, color: colors.textMuted },
+  error: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.control,
+    backgroundColor: colors.dangerSoft,
+  },
+  errorText: { ...typography.body, color: colors.danger, flex: 1 },
+  list: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.sm,
+    gap: spacing.md,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+  },
+  entry: { padding: spacing.lg, gap: spacing.xs },
+  entryPressed: { backgroundColor: colors.surfaceSunken },
+  entryTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.md },
+  entryTitle: { ...typography.bodyStrong, flex: 1 },
+  body: { ...typography.body },
+  detail: { padding: spacing.lg, gap: spacing.md },
+  detailRow: { gap: 2 },
+  detailLabel: { ...typography.caption },
+  footer: { padding: spacing.xl, alignItems: "center" },
 });

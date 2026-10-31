@@ -388,15 +388,13 @@ export default function CaregiverNotebookScreen() {
 
                       <View style={styles.noteActions}>
                         <Button label={c.edit} variant="secondary" icon="create-outline" onPress={() => openEditModal(note)} />
-                        <Pressable
+                        <Button
+                          label={c.delete}
+                          variant="ghostDanger"
+                          icon="trash-outline"
                           onPress={() => confirmDelete(note)}
-                          accessibilityRole="button"
                           accessibilityLabel={`${c.delete} ${localizedTitle}`}
-                          style={({ pressed }) => [styles.deleteButton, pressed && { backgroundColor: colors.dangerSoft }]}
-                        >
-                          <Ionicons name="trash-outline" size={20} color={colors.danger} />
-                          <Text style={styles.deleteButtonText}>{c.delete}</Text>
-                        </Pressable>
+                        />
                       </View>
                     </Card>
                   );
@@ -479,15 +477,6 @@ const styles = StyleSheet.create({
   noteContent: { ...typography.body, color: colors.textSecondary },
   noteContentEmpty: { ...typography.body, color: colors.textMuted },
   noteActions: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
-  deleteButton: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.control,
-  },
-  deleteButtonText: { ...typography.label, fontSize: 17, color: colors.danger },
   contentInput: { minHeight: 150 },
   checkboxRow: {
     minHeight: 48,

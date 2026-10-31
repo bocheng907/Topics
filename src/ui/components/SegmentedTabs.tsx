@@ -1,24 +1,21 @@
-// src/caregiver/SegmentedTabs.tsx
-// Small segmented control for caregiver screens (two to four options). Presentation only.
+// src/ui/components/SegmentedTabs.tsx
+// Shared segmented control (two to four options). Presentation only: the screen owns the value.
+// Replaces the former src/family/SegmentedTabs.tsx and src/caregiver/SegmentedTabs.tsx.
 import React from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { colors, layout, radii, spacing, typography } from "../theme";
 
 export type SegmentedOption<K extends string> = { key: K; label: string };
 
-export function SegmentedTabs<K extends string>({
-  options,
-  value,
-  onChange,
-  disabled,
-  style,
-}: {
+export type SegmentedTabsProps<K extends string> = {
   options: readonly SegmentedOption<K>[];
   value: K;
   onChange: (key: K) => void;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
-}) {
+};
+
+export function SegmentedTabs<K extends string>({ options, value, onChange, disabled, style }: SegmentedTabsProps<K>) {
   return (
     <View style={[styles.track, style]} accessibilityRole="tablist">
       {options.map((option) => {
@@ -52,9 +49,13 @@ export function SegmentedTabs<K extends string>({
   );
 }
 
-/** Surface strip that hosts SegmentedTabs directly under an AppHeader. */
+/** Surface strip that hosts SegmentedTabs directly under an AppHeader (centred on wide screens). */
 export function SegmentedTabBar({ children }: { children: React.ReactNode }) {
-  return <View style={styles.bar}>{children}</View>;
+  return (
+    <View style={styles.bar}>
+      <View style={styles.barInner}>{children}</View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -65,14 +66,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
+  barInner: { width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" },
+  // alignSelf "stretch" (not width 100%) so callers can add marginHorizontal without overflow.
   track: {
     flexDirection: "row",
-    backgroundColor: colors.surfaceSunken,
-    borderRadius: radii.control,
+    alignSelf: "stretch",
+    gap: 2,
     padding: 3,
-    width: "100%",
-    maxWidth: layout.maxContentWidth,
-    alignSelf: "center",
+    borderRadius: radii.control + 2,
+    backgroundColor: colors.surfaceSunken,
   },
   segment: {
     flex: 1,
@@ -81,7 +83,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.sm,
-    borderRadius: radii.control - 2,
+    borderRadius: radii.control - 1,
     borderWidth: 1,
     borderColor: "transparent",
   },

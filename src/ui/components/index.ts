@@ -9,3 +9,6 @@ export { Chip, EmptyState, StatusBadge, type StatusTone } from "./Feedback";
 export { SideDrawer, SideDrawerRow, type SideDrawerItem, type SideDrawerProps, type SideDrawerSection } from "./SideDrawer";
 export { DrawerLanguageSwitcher, SideDrawerProfile } from "./DrawerParts";
 export { BottomNav, type BottomNavItem, type BottomNavProps } from "./BottomNav";
+export { default as UserAvatar, avatarColor, avatarInitial, type UserAvatarProps } from "./UserAvatar";
+export { SegmentedTabBar, SegmentedTabs, type SegmentedOption, type SegmentedTabsProps } from "./SegmentedTabs";
+export { VitalCard, type VitalCardProps, type VitalStatus, type VitalValue } from "./VitalCard";

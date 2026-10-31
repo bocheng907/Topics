@@ -1,9 +1,8 @@
 // app/family/dashboard.tsx
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { AppHeader, Button, Card, Chip, KeyboardAwareScroll, StatusBadge, type IconName, type StatusTone } from "@/src/ui/components";
+import { AppHeader, Button, Card, Chip, KeyboardAwareScroll, SegmentedTabs, VitalCard } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { familyCopy, relativeTimeLabel } from "@/src/i18n/copy/familyCopy";
-import { SegmentedTabs } from "@/src/family/SegmentedTabs";
 import { Ionicons } from "@expo/vector-icons";
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
@@ -55,13 +54,6 @@ const CRITICAL_BOUNDS = {
   diastolic:   { minSafe: 50,   maxSafe: 100  },
   bloodSugarBefore: { minSafe: 60, maxSafe: 200 },
   bloodSugarAfter:  { minSafe: 60, maxSafe: 250 },
-};
-
-const statusLook: Record<VitalStatus, { tone: StatusTone; icon: IconName }> = {
-  normal: { tone: "success", icon: "checkmark-circle" },
-  abnormal: { tone: "danger", icon: "warning" },
-  outdated: { tone: "neutral", icon: "time-outline" },
-  nodata: { tone: "neutral", icon: "remove-circle-outline" },
 };
 
 export default function FamilyDashboardScreen() {
@@ -375,46 +367,19 @@ export default function FamilyDashboardScreen() {
     values: { label?: string; value: string | number; unit: string }[],
     ts: number | undefined,
   ) => {
-    const look = statusLook[status];
-    const isAbnormal = status === "abnormal";
-    const isMuted = status === "outdated" || status === "nodata";
     const timeText = ts ? `${formatTime(ts)} · ${relativeTimeLabel(fc, ts, now)}` : t.noRecord;
     return (
-      <View
+      <VitalCard
         key={key}
-        accessible
+        variant="detailed"
+        title={title}
+        status={status}
+        statusLabel={statusLabel[status]}
+        values={values}
+        meta={timeText}
         accessibilityLabel={`${title}, ${statusLabel[status]}, ${values.map(v => `${v.label ?? ""} ${v.value} ${v.unit}`).join(", ")}, ${timeText}`}
-        style={[
-          styles.vitalCard,
-          values.length === 1 && styles.vitalCardHalf,
-          isAbnormal && styles.vitalCardAbnormal,
-          status === "nodata" && styles.vitalCardNoData,
-        ]}
-      >
-        <View style={styles.vitalTop}>
-          <Text style={styles.vitalTitle} numberOfLines={2}>{title}</Text>
-          <StatusBadge label={statusLabel[status]} tone={look.tone} icon={look.icon} style={isAbnormal ? styles.badgeOnDanger : null} />
-        </View>
-        <View style={styles.vitalValues}>
-          {values.map((v, index) => (
-            <View key={index} style={styles.vitalValueCol}>
-              {v.label ? <Text style={styles.vitalValueLabel}>{v.label}</Text> : null}
-              <View style={styles.valueRow}>
-                <Text
-                  style={[styles.valueMain, isAbnormal && styles.valueAbnormal, isMuted && styles.valueMuted]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
-                >
-                  {v.value}
-                </Text>
-                <Text style={styles.valueUnit}>{v.unit}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-        <Text style={styles.vitalMeta} numberOfLines={2}>{timeText}</Text>
-      </View>
+        style={values.length === 1 && styles.vitalCardHalf}
+      />
     );
   };
 
@@ -460,7 +425,7 @@ export default function FamilyDashboardScreen() {
 
       {activeTab !== "settings" ? (
         <SegmentedTabs
-          tabs={[{ key: "history", label: t.historyTrend }, { key: "today", label: t.todayRecords }] as const}
+          options={[{ key: "history", label: t.historyTrend }, { key: "today", label: t.todayRecords }] as const}
           value={activeTab}
           onChange={setActiveTab}
           style={styles.tabBar}
@@ -630,30 +595,7 @@ const styles = StyleSheet.create({
 
   settingsBtn: { alignSelf: "flex-end", marginBottom: spacing.lg },
   vitalGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: spacing.md },
-  vitalCard: {
-    width: "100%",
-    minWidth: 0,
-    padding: spacing.lg,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
   vitalCardHalf: { width: "48%", padding: spacing.md },
-  vitalCardAbnormal: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderWidth: 2 },
-  vitalCardNoData: { backgroundColor: colors.surfaceSunken, borderColor: colors.surfaceSunken },
-  vitalTop: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.xs },
-  vitalTitle: { ...typography.label, color: colors.textSecondary, flexShrink: 1, paddingTop: 2 },
-  badgeOnDanger: { backgroundColor: colors.surface },
-  vitalValues: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.sm },
-  vitalValueCol: { flex: 1, minWidth: 0 },
-  vitalValueLabel: { ...typography.caption, color: colors.textSecondary },
-  valueRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.xs, flexWrap: "wrap" },
-  valueMain: { fontSize: 30, lineHeight: 38, fontWeight: "700", color: colors.text, flexShrink: 1 },
-  valueAbnormal: { color: colors.danger },
-  valueMuted: { color: colors.textMuted },
-  valueUnit: { ...typography.caption, color: colors.textSecondary },
-  vitalMeta: { ...typography.caption, marginTop: spacing.xs },
 
   settingsContent: { flex: 1 },
   infoBanner: {

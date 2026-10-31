@@ -13,9 +13,13 @@ import {
   IconButton,
   ListRow,
   SectionHeader,
+  SegmentedTabBar,
+  SegmentedTabs,
   SideDrawer,
   StatusBadge,
   TextField,
+  UserAvatar,
+  VitalCard,
   type SideDrawerSection,
 } from "@/src/ui/components";
 import { colors, eventColors, radii, spacing, typography, type ColorToken, type TypographyToken } from "@/src/ui/theme";
@@ -58,6 +62,8 @@ function UiKit() {
   const [notify, setNotify] = useState(true);
   const [title, setTitle] = useState("");
   const [loadingDemo, setLoadingDemo] = useState(false);
+  const [segment, setSegment] = useState<"today" | "history">("today");
+  const [mealSegment, setMealSegment] = useState<"before" | "after">("before");
 
   const toggleChip = (key: string) =>
     setChips((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
@@ -228,6 +234,11 @@ function UiKit() {
               <Button label="稍後再說" variant="ghost" />
               <Button label="刪除" variant="danger" icon="trash-outline" />
             </View>
+            <Text style={[styles.groupNote, styles.mt]}>ghostDanger：卡片內的次要刪除，確認對話框才是最終動作</Text>
+            <View style={[styles.wrap, styles.mt]}>
+              <Button label="刪除" variant="ghostDanger" icon="trash-outline" />
+              <Button label="移除成員" variant="ghostDanger" />
+            </View>
             <View style={[styles.wrap, styles.mt]}>
               <Button
                 label={loadingDemo ? "傳送中" : "點我看載入"}
@@ -316,6 +327,74 @@ function UiKit() {
               actionLabel="新增事件"
               onAction={() => setSheetOpen(true)}
             />
+          </Card>
+        </Block>
+
+        {/* ------------------------------------------------ SegmentedTabs */}
+        <Block title="分段切換 SegmentedTabs">
+          <Text style={styles.groupNote}>SegmentedTabBar：放在 AppHeader 正下方的白色條</Text>
+          <View style={[styles.headerDemo, styles.mt]}>
+            <SegmentedTabBar>
+              <SegmentedTabs
+                options={[{ key: "today", label: "今日紀錄" }, { key: "history", label: "歷史趨勢" }]}
+                value={segment}
+                onChange={setSegment}
+              />
+            </SegmentedTabBar>
+          </View>
+          <Card style={styles.mt}>
+            <Text style={styles.groupNote}>卡片內使用；disabled 時整組鎖定</Text>
+            <SegmentedTabs
+              options={[{ key: "before", label: "飯前" }, { key: "after", label: "飯後" }]}
+              value={mealSegment}
+              onChange={setMealSegment}
+              style={styles.mt}
+            />
+            <SegmentedTabs
+              options={[{ key: "before", label: "飯前" }, { key: "after", label: "飯後" }]}
+              value="before"
+              onChange={() => {}}
+              disabled
+              style={styles.mt}
+            />
+          </Card>
+        </Block>
+
+        {/* ---------------------------------------------------- VitalCard */}
+        <Block title="生理數據 VitalCard">
+          <Text style={styles.groupNote}>狀態由畫面判斷；正常安靜、異常醒目、未更新／無資料灰階，皆有圖示＋文字</Text>
+          <View style={[styles.cardPair, styles.mt]}>
+            <VitalCard style={styles.flex} title="體溫" status="normal" statusLabel="正常" values={[{ value: "36.6" }]} meta="°C · 10 分鐘前" />
+            <VitalCard style={styles.flex} title="血壓" status="abnormal" statusLabel="異常" values={[{ value: "152/96" }]} meta="mmHg · 1 小時前" />
+          </View>
+          <View style={[styles.cardPair, styles.mt]}>
+            <VitalCard style={styles.flex} title="心率" status="outdated" statusLabel="未更新" values={[{ value: "72" }]} meta="bpm · 2 天前" />
+            <VitalCard style={styles.flex} title="血糖" status="nodata" statusLabel="無資料" values={[{ value: "--" }]} meta="mg/dL" />
+          </View>
+          <Text style={[styles.groupNote, styles.mtLg]}>variant="detailed"：儀表板用，多欄數值、單位緊接數值</Text>
+          <VitalCard
+            variant="detailed"
+            title="血壓"
+            status="normal"
+            statusLabel="正常"
+            values={[{ label: "收縮壓", value: 118, unit: "mmHg" }, { label: "舒張壓", value: 76, unit: "mmHg" }]}
+            meta="10/31 09:30 · 10 分鐘前"
+            style={styles.mt}
+          />
+        </Block>
+
+        {/* --------------------------------------------------- UserAvatar */}
+        <Block title="頭像 UserAvatar">
+          <Card>
+            <Text style={styles.groupNote}>無照片時顯示字首；底色依 uid 固定；無名稱時顯示人像圖示</Text>
+            <View style={[styles.wrap, styles.mt]}>
+              <UserAvatar name="王小明" uid="demo-1" size={56} />
+              <UserAvatar name="Linh" uid="demo-2" size={56} />
+              <UserAvatar name="Siti" uid="demo-3" size={56} />
+              <UserAvatar size={56} />
+              <UserAvatar name="陳" uid="demo-4" size={40} />
+              <UserAvatar name="Ana" uid="demo-5" size={88} />
+            </View>
           </Card>
         </Block>
 

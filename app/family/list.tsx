@@ -1,7 +1,6 @@
-import { AppHeader, Button, Card, Divider, EmptyState } from "@/src/ui/components";
+import { AppHeader, Button, Card, Divider, EmptyState, SegmentedTabs } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { familyCopy } from "@/src/i18n/copy/familyCopy";
-import { SegmentedTabs } from "@/src/family/SegmentedTabs";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 // app/family/list.tsx
 import React, { useEffect, useState } from "react";
@@ -412,7 +411,7 @@ export default function FamilyListScreen() {
 
       <AppHeader title={extraText.prescriptionRecords} fallbackHref="/family" />
       <SegmentedTabs
-        tabs={[{ key: "records", label: extraText.prescriptionRecords }, { key: "meds", label: extraText.medicationList }] as const}
+        options={[{ key: "records", label: extraText.prescriptionRecords }, { key: "meds", label: extraText.medicationList }] as const}
         value={tab}
         onChange={setTab}
         style={styles.tabBar}

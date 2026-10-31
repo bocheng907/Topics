@@ -1,16 +1,10 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { AppHeader, Button, Card, Chip, EmptyState, KeyboardAwareScroll, SectionHeader, TextField } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
+import { emergencyContactsCopy } from "@/src/i18n/copy/accountCopy";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { router } from "expo-router";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { router, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
@@ -31,12 +25,8 @@ export default function FamilyEmergencyContactsScreen() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const isPrimaryFamily = usePrimaryFamily(selectedPatientId || null);
-  const primaryOnly = {
-    zh: "僅主要家屬可更正照顧對象的緊急聯絡電話。",
-    en: "Only the primary family member can change the care target's emergency contacts.",
-    vi: "Chỉ người nhà chính có thể sửa số liên lạc khẩn cấp.",
-    id: "Hanya keluarga utama yang dapat mengubah kontak darurat.",
-  }[language];
+  const ec = emergencyContactsCopy[language];
+
 
   const validSelection = linkedCareTargets.some(item => item.id === selectedPatientId);
   const fallbackId = linkedCareTargets.some(item => item.id === activePatientId) ?
@@ -114,198 +104,106 @@ export default function FamilyEmergencyContactsScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <AppHeader title={t.emergencyPhoneSettings} left="back" fallbackHref={"/family" as Href} />
 
-      <ScreenHeader style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
-          <Ionicons name="chevron-back" size={28} color="#333" />
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-      </ScreenHeader>
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>{t.emergencyPhoneSettings}</Text>
+      <KeyboardAwareScroll contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.subtitle}>{t.emergencyContactsSubtitle}</Text>
 
         {!ready ? (
-          <Text style={styles.messageText}>{t.loading}</Text>
+          <ActivityIndicator color={colors.primary} style={styles.loader} accessibilityLabel={t.loading} />
         ) : linkedCareTargets.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.emptyText}>{t.emergencyContactsNoPatient}</Text>
-            <Pressable
-              style={styles.primaryBtn}
-              onPress={() => router.push("/care-target/create" as any)}
-            >
-              <Text style={styles.primaryBtnText}>{t.createCareTarget}</Text>
-            </Pressable>
-          </View>
+          <Card>
+            <EmptyState
+              icon="people-outline"
+              title={t.emergencyContactsNoPatient}
+              actionLabel={t.createCareTarget}
+              onAction={() => router.push("/care-target/create" as any)}
+            />
+          </Card>
         ) : (
           <>
             {linkedCareTargets.length > 1 && (
-              <View style={styles.patientPickerBlock}>
-                <Text style={styles.label}>{t.emergencyContactsSelectPatient}</Text>
+              <>
+                <SectionHeader title={t.emergencyContactsSelectPatient} />
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.patientChipsRow}
                   style={styles.patientChipsWrap}
                 >
-                  {linkedCareTargets.map((patient) => {
-                    const active = patient.id === selectedPatientId;
-                    return (
-                      <Pressable
-                        key={patient.id}
-                        style={[
-                          styles.patientChip,
-                          active ? styles.patientChipActive : styles.patientChipInactive,
-                        ]}
-                        onPress={() => setSelectedPatientId(patient.id)}
-                      >
-                        <Text
-                          style={[
-                            styles.patientChipText,
-                            active ? styles.patientChipTextActive : styles.patientChipTextInactive,
-                          ]}
-                        >
-                          {patient.name || t.unknown}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                  {linkedCareTargets.map((patient) => (
+                    <Chip
+                      key={patient.id}
+                      label={patient.name || t.unknown}
+                      selected={patient.id === selectedPatientId}
+                      onPress={() => setSelectedPatientId(patient.id)}
+                      style={styles.patientChip}
+                    />
+                  ))}
                 </ScrollView>
-              </View>
+              </>
             )}
 
-            <View style={styles.card}>
+            <SectionHeader title={ec.phonesSection} />
+            <Card style={styles.card}>
               {loading ? (
-                <Text style={styles.messageText}>{t.loading}</Text>
+                <ActivityIndicator color={colors.primary} style={styles.loader} accessibilityLabel={t.loading} />
               ) : (
                 <>
-                  <View style={styles.inputBox}>
-                    <Text style={styles.label}>{t.emergencyPhone1}</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={phone1}
-                      onChangeText={setPhone1}
-                      editable={isPrimaryFamily}
-                      keyboardType="phone-pad"
-                      placeholder={t.emergencyPhonePlaceholder1}
-                      placeholderTextColor="#999"
-                    />
-                  </View>
-
-                  <View style={styles.inputBox}>
-                    <Text style={styles.label}>{t.emergencyPhone2}</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={phone2}
-                      onChangeText={setPhone2}
-                      editable={isPrimaryFamily}
-                      keyboardType="phone-pad"
-                      placeholder={t.emergencyPhonePlaceholder2}
-                      placeholderTextColor="#999"
-                    />
-                  </View>
+                  <TextField
+                    label={t.emergencyPhone1}
+                    value={phone1}
+                    onChangeText={setPhone1}
+                    editable={isPrimaryFamily}
+                    keyboardType="phone-pad"
+                    autoComplete="tel"
+                    placeholder={t.emergencyPhonePlaceholder1}
+                  />
+                  <TextField
+                    label={t.emergencyPhone2}
+                    value={phone2}
+                    onChangeText={setPhone2}
+                    editable={isPrimaryFamily}
+                    keyboardType="phone-pad"
+                    autoComplete="tel"
+                    placeholder={t.emergencyPhonePlaceholder2}
+                  />
                 </>
               )}
-            </View>
+            </Card>
 
-            {!isPrimaryFamily && <Text style={styles.messageText}>{primaryOnly}</Text>}
-            <Pressable
-              style={[styles.primaryBtn, !canSave && styles.primaryBtnDisabled]}
+            {!isPrimaryFamily && (
+              <Card tone="sunken" style={styles.notice}>
+                <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />
+                <Text style={styles.noticeText}>{ec.primaryOnly}</Text>
+              </Card>
+            )}
+            <Button
+              label={saving ? t.loading : t.save}
+              size="lg"
+              fullWidth
+              loading={saving}
               disabled={!canSave}
               onPress={handleSave}
-            >
-              <Text style={styles.primaryBtnText}>{saving ? t.loading : t.save}</Text>
-            </Pressable>
+              style={styles.saveButton}
+            />
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScroll>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
-  header: { paddingTop: 12, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#F0F0F0", minHeight: 56 },
-  backBtn: { flexDirection: "row", alignItems: "center" },
-  backText: { fontSize: 20, fontWeight: "bold", color: "#333", marginLeft: 2 },
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-    gap: 16,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "900",
-    color: "#000",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#666",
-    lineHeight: 20,
-    marginTop: -8,
-  },
-  card: {
-    padding: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    backgroundColor: "#fff",
-    gap: 16,
-  },
-  inputBox: { gap: 8 },
-  label: { fontSize: 15, color: "#666", fontWeight: "600" },
-  input: {
-    backgroundColor: "#F5F5F5",
-    padding: 14,
-    borderRadius: 12,
-    fontSize: 16,
-    color: "#333",
-  },
-  patientPickerBlock: { gap: 8 },
+  container: { flex: 1, backgroundColor: colors.canvas },
+  content: { gap: 0, width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" },
+  subtitle: { ...typography.bodySmall, paddingHorizontal: spacing.xs },
+  loader: { marginVertical: spacing.xl },
   patientChipsWrap: { flexGrow: 0, flexShrink: 0 },
-  patientChipsRow: { flexGrow: 0, gap: 8, paddingVertical: 2 },
-  patientChip: {
-    flexShrink: 0,
-    flexGrow: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 18,
-    borderWidth: 1,
-  },
-  patientChipActive: {
-    backgroundColor: "#007AFF",
-    borderColor: "#007AFF",
-  },
-  patientChipInactive: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#DDD",
-  },
-  patientChipText: { fontSize: 14, fontWeight: "700" },
-  patientChipTextActive: { color: "#FFFFFF" },
-  patientChipTextInactive: { color: "#444" },
-  primaryBtn: {
-    backgroundColor: "#007AFF",
-    padding: 16,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  primaryBtnDisabled: {
-    backgroundColor: "#B8D4FF",
-  },
-  primaryBtnText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "900",
-  },
-  emptyText: {
-    fontSize: 15,
-    color: "#666",
-    lineHeight: 22,
-  },
-  messageText: {
-    fontSize: 15,
-    color: "#666",
-  },
+  patientChipsRow: { flexGrow: 0, gap: spacing.sm, paddingVertical: 2 },
+  patientChip: { minHeight: 48 },
+  card: { gap: spacing.lg },
+  notice: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, marginTop: spacing.lg },
+  noticeText: { ...typography.bodySmall, flex: 1 },
+  saveButton: { marginTop: spacing.xl },
 });

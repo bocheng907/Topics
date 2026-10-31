@@ -8,7 +8,7 @@ import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { getHomeLayout } from "@/src/ui/homeLayout";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type DimensionValue } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AppHeader, Button, Card, EmptyState, StatusBadge, type IconName, type StatusTone } from "@/src/ui/components";
+import { AppHeader, Button, Card, EmptyState, VitalCard, type IconName, type VitalStatus } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -21,20 +21,13 @@ import { useMedicationProgress } from "@/src/reminders/useMedicationProgress";
 import { progressCopy } from "@/src/reminders/medicationProgress";
 import { joinNavigationCopy } from "@/src/care-target/joinNavigationCopy";
 
-// 定義生理數據狀態型別
-type VitalStatus = 'normal' | 'abnormal' | 'outdated' | 'nodata';
+// 生理數據狀態型別（VitalStatus）來自共用的 VitalCard
 type SingleVital = { val: number; ts: number } | null;
 type BloodPressureVital = { sys: number; dia: number; ts: number } | null;
 type SugarVital = { val: number; type: string; ts: number } | null;
 type VitalType = 'temp' | 'hr' | 'bp' | 'sugar';
 
-// 狀態外觀：正常時安靜、異常時醒目、未更新／無資料時灰階；皆附圖示與文字（不只靠顏色）
-const statusLook: Record<VitalStatus, { tone: StatusTone; icon: IconName }> = {
-  normal: { tone: 'success', icon: 'checkmark-circle' },
-  abnormal: { tone: 'danger', icon: 'warning' },
-  outdated: { tone: 'neutral', icon: 'time-outline' },
-  nodata: { tone: 'neutral', icon: 'remove-circle-outline' },
-};
+// 狀態外觀（正常安靜、異常醒目、未更新／無資料灰階）由共用 VitalCard 負責
 
 export default function FamilyHomeScreen() {
   const { width, fontScale } = useWindowDimensions();
@@ -199,48 +192,23 @@ export default function FamilyHomeScreen() {
 
   const renderVitalBlock = (item: { title: string; type: VitalType; data: any }, status: VitalStatus) => {
     const { title, type, data } = item;
-    const look = statusLook[status];
-    const isAbnormal = status === 'abnormal';
-    const isMuted = status === 'outdated' || status === 'nodata';
     const value = !data ? '--' : type === 'bp' ? `${data.sys}/${data.dia}` : String(data.val);
     const unit = type === 'temp' ? '°C' : type === 'hr' ? 'bpm' : type === 'bp' ? 'mmHg' : 'mg/dL';
     const unitLine = data && type === 'sugar' && data.type ? `${unit} · ${data.type}` : unit;
     const timeLabel = data?.ts ? relativeTimeLabel(fc, data.ts, now) : null;
 
     return (
-      <View
+      <VitalCard
         key={type}
-        accessible
+        variant="compact"
+        title={title}
+        status={status}
+        statusLabel={statusLabel[status]}
+        values={[{ value }]}
+        meta={`${unitLine}${timeLabel ? ` · ${timeLabel}` : ''}`}
         accessibilityLabel={`${title}, ${statusLabel[status]}, ${value} ${unitLine}${timeLabel ? `, ${timeLabel}` : ''}`}
-        style={[
-          styles.vitalCard,
-          { width: vitalWidth },
-          isAbnormal && styles.vitalCardAbnormal,
-          status === 'nodata' && styles.vitalCardNoData,
-        ]}
-      >
-        <View style={styles.vitalTop}>
-          <Text style={styles.vitalTitle} numberOfLines={2}>{title}</Text>
-          <StatusBadge
-            label={statusLabel[status]}
-            tone={look.tone}
-            icon={look.icon}
-            style={isAbnormal ? styles.badgeOnDanger : null}
-          />
-        </View>
-        <Text
-          style={[styles.vitalValue, isAbnormal && styles.vitalValueAbnormal, isMuted && styles.vitalValueMuted]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
-        >
-          {value}
-        </Text>
-        <Text style={styles.vitalMeta} numberOfLines={2}>
-          {unitLine}
-          {timeLabel ? ` · ${timeLabel}` : ''}
-        </Text>
-      </View>
+        style={{ width: vitalWidth }}
+      />
     );
   };
 
@@ -492,24 +460,6 @@ const styles = StyleSheet.create({
   alertText: { ...typography.bodyStrong, color: colors.danger, flex: 1 },
   vitalsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: spacing.md },
 
-  vitalCard: {
-    minWidth: 0,
-    minHeight: 136,
-    padding: spacing.md,
-    borderRadius: radii.card - 2,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  vitalCardAbnormal: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderWidth: 2, padding: spacing.md - 1 },
-  vitalCardNoData: { backgroundColor: colors.surfaceSunken, borderColor: colors.surfaceSunken },
-  vitalTop: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.xs },
-  vitalTitle: { ...typography.label, color: colors.textSecondary, flexShrink: 1, paddingTop: 2 },
-  badgeOnDanger: { backgroundColor: colors.surface },
-  vitalValue: { fontSize: 30, lineHeight: 38, fontWeight: "700", color: colors.text, marginTop: spacing.sm },
-  vitalValueAbnormal: { color: colors.danger },
-  vitalValueMuted: { color: colors.textMuted },
-  vitalMeta: { ...typography.caption, marginTop: 2 },
 
   chartBtn: { marginTop: spacing.lg },
 

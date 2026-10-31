@@ -1,7 +1,6 @@
-import { AppHeader, Button, Card, Divider, EmptyState, StatusBadge } from "@/src/ui/components";
+import { AppHeader, Button, Card, Divider, EmptyState, SegmentedTabBar, SegmentedTabs, StatusBadge } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { caregiverCopy, sourceLabelText } from "@/src/i18n/copy/caregiverCopy";
-import { SegmentedTabBar, SegmentedTabs } from "@/src/caregiver/SegmentedTabs";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 // app/caregiver/list.tsx
 import React, { useEffect, useState } from "react";
@@ -448,15 +447,13 @@ export default function CaregiverListScreen() {
                         })
                       }
                     />
-                    <Pressable
+                    <Button
+                      label={t.delete}
+                      variant="ghostDanger"
+                      icon="trash-outline"
                       onPress={() => confirmDelete(prescription.prescriptionId)}
-                      accessibilityRole="button"
                       accessibilityLabel={`${t.delete} ${prescription.title || ""}`.trim()}
-                      style={({ pressed }) => [styles.deleteBtn, pressed && { backgroundColor: colors.dangerSoft }]}
-                    >
-                      <Ionicons name="trash-outline" size={20} color={colors.danger} />
-                      <Text style={styles.deleteText}>{t.delete}</Text>
-                    </Pressable>
+                    />
                   </View>
                 </Card>
               ))
@@ -580,15 +577,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
-  deleteBtn: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.control,
-  },
-  deleteText: { ...typography.label, fontSize: 17, color: colors.danger },
 
   summaryCard: { gap: 2 },
   summaryLabel: { ...typography.label, color: colors.textSecondary },
