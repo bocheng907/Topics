@@ -49,6 +49,7 @@ import { AppHeader, EmptyState, IconButton } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
+import { useKeyboardVisible } from "@/src/ui/useKeyboardVisible";
 
 /** 讀取失敗的原因（畫面上依語言顯示） */
 type LoadError = "" | "notFound" | "gone" | "failed";
@@ -66,6 +67,8 @@ export default function PostDetailScreen() {
   const c = communityCopy[language];
   const insets = useSafeAreaInsets();
   const bottomInset = useScreenBottomInset();
+  // With the keyboard up the bar sits on the keyboard, so the home-indicator padding is dropped.
+  const keyboardVisible = useKeyboardVisible();
 
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -517,7 +520,7 @@ export default function PostDetailScreen() {
       </ScrollView>
 
       {/* 底部留言輸入框 */}
-      <View style={[styles.inputBar, { paddingBottom: spacing.md + bottomInset }]}>
+      <View style={[styles.inputBar, { paddingBottom: spacing.md + (keyboardVisible ? 0 : bottomInset) }]}>
         <TextInput
           style={[styles.commentInput, Platform.OS === "web" && ({ outlineStyle: "none" } as object)]}
           placeholder={published ? c.commentPlaceholder : c.commentDisabledPlaceholder}

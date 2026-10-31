@@ -46,9 +46,12 @@ import { useChatProfiles } from "@/src/chat/useChatProfiles";
 import { chatIdentity } from "@/src/chat/chatIdentity";
 import { readLocalBlob } from "@/src/media/readLocalBlob";
 import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
+import { useKeyboardVisible } from "@/src/ui/useKeyboardVisible";
 
 export default function CaregiverChatRoomScreen() {
   const bottomInset = useScreenBottomInset();
+  // With the keyboard up the bar sits on the keyboard, so the home-indicator padding is dropped.
+  const keyboardVisible = useKeyboardVisible();
   const [inputText, setInputText] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -324,7 +327,7 @@ export default function CaregiverChatRoomScreen() {
       )}
 
       <ChatTranslationStatus language={language} {...translated} />
-      <View style={[styles.inputArea, { paddingBottom: spacing.sm + bottomInset }]}>
+      <View style={[styles.inputArea, { paddingBottom: spacing.sm + (keyboardVisible ? 0 : bottomInset) }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy.photo}
