@@ -390,6 +390,20 @@ function UiKit() {
             <VitalCard variant="block" style={styles.flex} title="心率" status="outdated" statusLabel="未更新" values={[{ value: "72" }]} meta="bpm" />
             <VitalCard variant="block" style={styles.flex} title="血糖" status="nodata" statusLabel="無資料" values={[{ value: "--" }]} />
           </View>
+          <Text style={[styles.groupNote, styles.mtLg]}>variant="panel"：健康數據頁用，深色標題列＋狀態色內容＋量測時間膠囊</Text>
+          <View style={[styles.cardPair, styles.mt]}>
+            <VitalCard variant="panel" style={styles.flex} title="體溫" status="normal" statusLabel="正常" values={[{ value: "36.6", unit: "°C" }]} meta="今天 09:30" />
+            <VitalCard variant="panel" style={styles.flex} title="心率" status="outdated" statusLabel="未更新" values={[{ value: 72, unit: "bpm" }]} meta="10/29 08:10" />
+          </View>
+          <VitalCard
+            variant="panel"
+            title="血壓"
+            status="abnormal"
+            statusLabel="異常"
+            values={[{ label: "收縮壓", value: 152, unit: "mmHg" }, { label: "舒張壓", value: 96, unit: "mmHg" }]}
+            meta="今天 09:30"
+            style={styles.mt}
+          />
         </Block>
 
         {/* --------------------------------------------------- UserAvatar */}

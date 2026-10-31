@@ -28,8 +28,10 @@ export type VitalCardProps = {
    * "detailed": dashboard card (labelled value columns, unit next to each value).
    * "block": classic two-tone tile — title above, whole body tinted by status with the
    *   value(s) stacked in the middle, a deeper strip at the bottom with icon + status text.
+   * "panel": classic dashboard card — deep status-coloured header (title, icon + status,
+   *   per-value labels), status-tinted body with value + unit columns and a time pill (meta).
    */
-  variant?: "compact" | "detailed" | "block";
+  variant?: "compact" | "detailed" | "block" | "panel";
   accessibilityLabel?: string;
   /** Width / padding overrides from the screen's grid. */
   style?: StyleProp<ViewStyle>;
@@ -84,6 +86,43 @@ export function VitalCard({
             <Ionicons name={look.icon} size={16} color={colors.onPrimary} />
             <Text style={styles.blockStatus} numberOfLines={1}>{statusLabel}</Text>
           </View>
+        </View>
+      </View>
+    );
+  }
+  if (variant === "panel") {
+    const tone = blockTone[status];
+    const hasLabels = values.some(v => v.label);
+    return (
+      <View accessible accessibilityLabel={accessibilityLabel} style={[styles.panel, style]}>
+        <View style={[styles.panelHeader, { backgroundColor: tone.strip }]}>
+          <Text style={styles.panelTitle} numberOfLines={2}>{title}</Text>
+          <View style={styles.panelStatus}>
+            <Ionicons name={look.icon} size={16} color={colors.onPrimary} />
+            <Text style={styles.panelStatusText} numberOfLines={1}>{statusLabel}</Text>
+          </View>
+          {hasLabels ? (
+            <View style={styles.panelRow}>
+              {values.map((v, index) => (
+                <Text key={index} style={styles.panelSubLabel} numberOfLines={1}>{v.label ?? ""}</Text>
+              ))}
+            </View>
+          ) : null}
+        </View>
+        <View style={[styles.panelBody, { backgroundColor: tone.body }]}>
+          <View style={styles.panelRow}>
+            {values.map((v, index) => (
+              <View key={index} style={styles.panelCol}>
+                <Text style={styles.blockValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{v.value}</Text>
+                {v.unit ? <Text style={styles.panelUnit}>{v.unit}</Text> : null}
+              </View>
+            ))}
+          </View>
+          {meta ? (
+            <View style={[styles.panelTime, { backgroundColor: tone.strip }]}>
+              <Text style={styles.panelTimeText} numberOfLines={1}>{meta}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
     );
@@ -199,4 +238,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   blockStatus: { ...typography.label, color: colors.onPrimary, flexShrink: 1 },
+
+  panel: { minWidth: 0, borderRadius: radii.card, overflow: "hidden" },
+  panelHeader: { alignItems: "center", paddingHorizontal: spacing.sm, paddingTop: spacing.sm, paddingBottom: spacing.sm, gap: 2 },
+  panelTitle: { ...typography.header, color: colors.onPrimary, textAlign: "center", maxWidth: "100%" },
+  panelStatus: { flexDirection: "row", alignItems: "center", gap: spacing.xs, maxWidth: "100%" },
+  panelStatusText: { ...typography.label, color: colors.onPrimary, flexShrink: 1 },
+  panelRow: { flexDirection: "row", width: "100%" },
+  panelSubLabel: { ...typography.label, color: colors.onPrimary, flex: 1, textAlign: "center", marginTop: spacing.xs },
+  panelBody: { flex: 1, alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.sm, paddingVertical: spacing.lg, gap: spacing.md },
+  panelCol: { flex: 1, minWidth: 0, alignItems: "center" },
+  panelUnit: { ...typography.bodyStrong, color: colors.text },
+  panelTime: { borderRadius: radii.pill, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, maxWidth: "100%" },
+  panelTimeText: { ...typography.label, color: colors.onPrimary, textAlign: "center" },
 });

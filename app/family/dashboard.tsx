@@ -2,7 +2,7 @@
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { AppHeader, Button, Card, Chip, KeyboardAwareScroll, SegmentedTabs, VitalCard } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
-import { familyCopy, relativeTimeLabel } from "@/src/i18n/copy/familyCopy";
+import { familyCopy } from "@/src/i18n/copy/familyCopy";
 import { Ionicons } from "@expo/vector-icons";
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
@@ -367,18 +367,18 @@ export default function FamilyDashboardScreen() {
     values: { label?: string; value: string | number; unit: string }[],
     ts: number | undefined,
   ) => {
-    const timeText = ts ? `${formatTime(ts)} · ${relativeTimeLabel(fc, ts, now)}` : t.noRecord;
+    const timeText = ts ? formatTime(ts) : t.noRecord;
     return (
       <VitalCard
         key={key}
-        variant="detailed"
+        variant="panel"
         title={title}
         status={status}
         statusLabel={statusLabel[status]}
         values={values}
         meta={timeText}
         accessibilityLabel={`${title}, ${statusLabel[status]}, ${values.map(v => `${v.label ?? ""} ${v.value} ${v.unit}`).join(", ")}, ${timeText}`}
-        style={values.length === 1 && styles.vitalCardHalf}
+        style={values.length === 1 ? styles.vitalCardHalf : styles.vitalCardFull}
       />
     );
   };
@@ -595,7 +595,8 @@ const styles = StyleSheet.create({
 
   settingsBtn: { alignSelf: "flex-end", marginBottom: spacing.lg },
   vitalGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: spacing.md },
-  vitalCardHalf: { width: "48%", padding: spacing.md },
+  vitalCardHalf: { width: "48%" },
+  vitalCardFull: { width: "100%" },
 
   settingsContent: { flex: 1 },
   infoBanner: {
