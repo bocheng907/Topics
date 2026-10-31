@@ -132,19 +132,22 @@ export function NotificationListView({ detailRoute }: Props) {
     }));
   }, [filtered, t, language]);
 
-  const handlePress = async (item: NotificationRow) => {
-    try {
-      await updateDoc(doc(db, NOTIFICATIONS_COLLECTION, item.id), {
-        isRead: true,
-      });
-    } catch (error) {
-      console.log("notification mark-as-read failed:", error);
-    }
-
+  const handlePress = (item: NotificationRow) => {
     router.push({
       pathname: detailRoute,
       params: { id: item.id },
     } as any);
+
+    if (item.isRead === true) return;
+    // Mark as read once the detail screen has covered the list, so the row
+    // doesn't visibly flip to "read" before the navigation happens.
+    setTimeout(() => {
+      updateDoc(doc(db, NOTIFICATIONS_COLLECTION, item.id), {
+        isRead: true,
+      }).catch((error) => {
+        console.log("notification mark-as-read failed:", error);
+      });
+    }, 600);
   };
 
   return (
