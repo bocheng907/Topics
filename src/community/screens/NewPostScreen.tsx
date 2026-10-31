@@ -10,13 +10,10 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -31,10 +28,14 @@ import {
   uploadPostImage,
   type LocalPostImage,
 } from "@/src/community/imageUpload";
-import { COMMUNITY_COLORS, POST_CATEGORIES, getCategoryStyle } from "@/src/community/theme";
+import { POST_CATEGORIES, getCategoryStyle } from "@/src/community/theme";
 import type { PostCategory } from "@/src/community/types";
 import { useCommunityProfile } from "@/src/community/useCommunityProfile";
+import { communityCategoryLabel, communityCopy } from "@/src/i18n/copy/communityCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
 import { AppAlert } from "@/src/ui/AppAlert";
+import { AppHeader, EmptyState, KeyboardAwareScroll, TextField } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 
 /** 標題長度上限，與原型一致 */
 const TITLE_MAX_LENGTH = 50;
@@ -50,6 +51,9 @@ type DraftImage = {
   local?: LocalPostImage;
 };
 
+/** 編輯模式讀取失敗的原因（畫面上依語言顯示） */
+type LoadError = "" | "deleted" | "notOwner" | "failed";
+
 let draftKeySeed = 0;
 function nextDraftKey(): string {
   draftKeySeed += 1;
@@ -63,6 +67,8 @@ export default function NewPostScreen() {
 
   const { user } = useAuth();
   const profile = useCommunityProfile();
+  const { language } = useLanguage();
+  const c = communityCopy[language];
 
   const [category, setCategory] = useState<PostCategory | "">("");
   const [title, setTitle] = useState("");
@@ -71,7 +77,7 @@ export default function NewPostScreen() {
   const [originalImageUrls, setOriginalImageUrls] = useState<string[]>([]);
 
   const [loadingPost, setLoadingPost] = useState(isEdit);
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState<LoadError>("");
   const [publishing, setPublishing] = useState(false);
   const [uploadText, setUploadText] = useState("");
 
@@ -86,9 +92,9 @@ export default function NewPostScreen() {
         if (!alive) return;
 
         if (!post) {
-          setLoadError("這篇文章已被刪除");
+          setLoadError("deleted");
         } else if (!user?.uid || post.author.uid !== user.uid) {
-          setLoadError("只能編輯自己的文章");
+          setLoadError("notOwner");
         } else {
           setCategory(post.category);
           setTitle(post.title);
@@ -100,7 +106,7 @@ export default function NewPostScreen() {
         }
       } catch (error) {
         console.log("[community] load post for edit failed:", error);
-        if (alive) setLoadError("讀取文章失敗，請確認網路後再試");
+        if (alive) setLoadError("failed");
       } finally {
         if (alive) setLoadingPost(false);
       }
@@ -124,14 +130,14 @@ export default function NewPostScreen() {
     if (!canPublish) return;
 
     if (!user?.uid) {
-      AppAlert.alert("無法發布", "請先登入後再發文");
+      AppAlert.alert(c.cantPublishTitle, c.loginFirst);
       return;
     }
 
     // 送出前的敏感字詞檢查：只警告、讓使用者自己修改
     const check = checkPostContent(title, content);
     if (!check.passed) {
-      AppAlert.alert("內容需要修改", check.message);
+      AppAlert.alert(c.contentNeedsEditTitle, check.message);
       return;
     }
 
@@ -153,8 +159,8 @@ export default function NewPostScreen() {
         }
 
         uploadIndex += 1;
-        const label = `上傳圖片 ${uploadIndex}/${pendingCount}`;
-        setUploadText(`${label}...`);
+        const label = c.uploadingImage(uploadIndex, pendingCount);
+        setUploadText(`${label}…`);
 
         let url: string;
         try {
@@ -176,7 +182,7 @@ export default function NewPostScreen() {
       }
 
       // 2. 寫入文章
-      setUploadText(isEdit ? "儲存中..." : "發布中...");
+      setUploadText(isEdit ? c.savingProgress : c.publishingProgress);
       if (isEdit) {
         await updatePost(postId, { category, title, content, imageUrls: finalUrls });
 
@@ -205,9 +211,8 @@ export default function NewPostScreen() {
 
       const userMessage = (error as { userMessage?: string })?.userMessage;
       AppAlert.alert(
-        isEdit ? "儲存失敗" : "發布失敗",
-        userMessage ??
-          (isEdit ? "文章沒有更新，請確認網路後再試" : "文章沒有送出，請確認網路後再試")
+        isEdit ? c.saveFailedTitle : c.publishFailedTitle,
+        userMessage ?? (isEdit ? c.saveFailedBody : c.publishFailedBody)
       );
     } finally {
       setPublishing(false);
@@ -220,7 +225,7 @@ export default function NewPostScreen() {
 
     const remaining = MAX_POST_IMAGES - images.length;
     if (remaining <= 0) {
-      AppAlert.alert("圖片已達上限", `每篇文章最多 ${MAX_POST_IMAGES} 張圖片`);
+      AppAlert.alert(c.imageLimitTitle, c.imageLimitBody(MAX_POST_IMAGES));
       return;
     }
 
@@ -230,7 +235,7 @@ export default function NewPostScreen() {
       if (Platform.OS === "ios") {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          AppAlert.alert("需要相簿權限", "請到系統設定允許存取相簿，才能加入圖片");
+          AppAlert.alert(c.photoPermissionTitle, c.photoPermissionBody);
           return;
         }
       }
@@ -264,11 +269,11 @@ export default function NewPostScreen() {
         setImages((current) => [...current, ...accepted].slice(0, MAX_POST_IMAGES));
       }
       if (tooLarge > 0) {
-        AppAlert.alert("部分圖片過大", `有 ${tooLarge} 張圖片超過 10MB，已略過`);
+        AppAlert.alert(c.tooLargeTitle, c.tooLargeBody(tooLarge));
       }
     } catch (error) {
       console.log("[community] pick image failed:", error);
-      AppAlert.alert("無法開啟相簿", "請稍後再試");
+      AppAlert.alert(c.pickFailedTitle, c.pickFailedBody);
     }
   };
 
@@ -277,14 +282,16 @@ export default function NewPostScreen() {
     setImages((current) => current.filter((image) => image.key !== key));
   };
 
-  const headerTitle = isEdit ? "編輯文章" : "發表文章";
-  const submitLabel = isEdit ? "儲存" : "發布";
+  const headerTitle = isEdit ? c.editPostTitle : c.newPostTitle;
+  const submitLabel = isEdit ? c.save : c.publish;
+  const loadErrorText =
+    loadError === "deleted" ? c.editDeleted : loadError === "notOwner" ? c.editNotOwner : c.editLoadFailed;
 
   const renderBody = () => {
     if (loadingPost) {
       return (
         <View style={styles.stateWrap}>
-          <ActivityIndicator size="large" color={COMMUNITY_COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       );
     }
@@ -292,92 +299,88 @@ export default function NewPostScreen() {
     if (loadError !== "") {
       return (
         <View style={styles.stateWrap}>
-          <Ionicons name="alert-circle-outline" size={48} color="#D1D5DB" />
-          <Text style={styles.stateText}>{loadError}</Text>
+          <EmptyState icon="alert-circle-outline" title={loadErrorText} />
         </View>
       );
     }
 
     return (
-      <ScrollView
+      <KeyboardAwareScroll
         style={styles.scrollArea}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
       >
         {/* 分類選擇 */}
-        {category === "" && <Text style={{ color: COMMUNITY_COLORS.textSecondary, marginBottom: 8, paddingHorizontal: 20 }}>請先選擇文章分類，再填寫標題與內容。</Text>}
-        <View style={styles.categoryRow}>
-          {POST_CATEGORIES.map((item) => {
-            const style = getCategoryStyle(item);
-            const isSelected = category === item;
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>
+            {c.categoryLabel}
+            <Text style={{ color: colors.danger }}> *</Text>
+          </Text>
+          {category === "" && <Text style={styles.hint}>{c.chooseCategoryHint}</Text>}
+          <View style={styles.categoryRow} accessibilityRole="radiogroup">
+            {POST_CATEGORIES.map((item) => {
+              const style = getCategoryStyle(item);
+              const isSelected = category === item;
 
-            return (
-              <Pressable
-                key={item}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSelected, disabled: publishing }}
-                onPress={() => setCategory(item)}
-                disabled={publishing}
-                style={[
-                  styles.categoryBtn,
-                  isSelected
-                    ? { backgroundColor: style.main, borderColor: style.main }
-                    : { backgroundColor: style.bg, borderColor: "transparent" },
-                ]}
-              >
-                <Ionicons
-                  name={style.icon}
-                  size={15}
-                  color={isSelected ? COMMUNITY_COLORS.white : style.main}
-                />
-                <Text
-                  style={[
-                    styles.categoryText,
-                    { color: isSelected ? COMMUNITY_COLORS.white : style.main },
+              return (
+                <Pressable
+                  key={item}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: isSelected, disabled: publishing }}
+                  onPress={() => setCategory(item)}
+                  disabled={publishing}
+                  style={({ pressed }) => [
+                    styles.categoryBtn,
+                    isSelected && styles.categoryBtnSelected,
+                    pressed && !isSelected && { backgroundColor: colors.surfaceSunken },
                   ]}
-                  numberOfLines={1}
                 >
-                  {item}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  <Ionicons
+                    name={isSelected ? "checkmark-circle" : style.icon}
+                    size={20}
+                    color={isSelected ? colors.primary : colors.textSecondary}
+                  />
+                  <Text
+                    style={[styles.categoryText, isSelected && styles.categoryTextSelected]}
+                    numberOfLines={2}
+                  >
+                    {communityCategoryLabel(c, item)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         {/* 標題 */}
-        <View style={styles.titleWrap}>
-          <TextInput
-            style={styles.titleInput}
-            placeholder="輸入標題..."
-            placeholderTextColor="#D1D5DB"
-            value={title}
-            onChangeText={setTitle}
-            maxLength={TITLE_MAX_LENGTH}
-            editable={!publishing}
-          />
-          <Text style={styles.counter}>
-            {title.length} / {TITLE_MAX_LENGTH}
-          </Text>
-        </View>
+        <TextField
+          label={c.titleLabel}
+          required
+          placeholder={c.titlePlaceholder}
+          value={title}
+          onChangeText={setTitle}
+          maxLength={TITLE_MAX_LENGTH}
+          editable={!publishing}
+          helper={`${title.length} / ${TITLE_MAX_LENGTH}`}
+          inputStyle={styles.titleInput}
+        />
 
         {/* 內容 */}
-        <View style={styles.contentWrap}>
-          <TextInput
-            style={styles.contentInput}
-            placeholder="分享你的照護經驗、用品推薦或心得..."
-            placeholderTextColor={COMMUNITY_COLORS.textLight}
-            value={content}
-            onChangeText={setContent}
-            multiline
-            maxLength={CONTENT_MAX_LENGTH}
-            textAlignVertical="top"
-            editable={!publishing}
-          />
-        </View>
+        <TextField
+          label={c.contentLabel}
+          required
+          placeholder={c.contentPlaceholder}
+          value={content}
+          onChangeText={setContent}
+          multiline
+          maxLength={CONTENT_MAX_LENGTH}
+          editable={!publishing}
+          inputStyle={styles.contentInput}
+        />
 
         {/* 圖片：已選的縮圖（可移除）+ 加入圖片按鈕 */}
-        <View style={styles.imageWrap}>
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>{c.imagesLabel}</Text>
           {images.length > 0 ? (
             <View style={styles.thumbRow}>
               {images.map((image) => (
@@ -392,10 +395,12 @@ export default function NewPostScreen() {
                     onPress={() => handleRemoveImage(image.key)}
                     disabled={publishing}
                     style={styles.thumbRemove}
-                    hitSlop={6}
-                    accessibilityLabel="移除圖片"
+                    accessibilityRole="button"
+                    accessibilityLabel={c.removeImage}
                   >
-                    <Ionicons name="close" size={14} color={COMMUNITY_COLORS.white} />
+                    <View style={styles.thumbRemoveDot}>
+                      <Ionicons name="close" size={16} color={colors.onPrimary} />
+                    </View>
                   </Pressable>
                 </View>
               ))}
@@ -403,257 +408,232 @@ export default function NewPostScreen() {
           ) : null}
 
           {images.length < MAX_POST_IMAGES ? (
-            <Pressable onPress={handlePickImage} disabled={publishing} style={styles.imageBtn}>
-              <Ionicons name="image-outline" size={20} color={COMMUNITY_COLORS.textSecondary} />
-              <Text style={styles.imageText}>
-                加入圖片（{images.length}/{MAX_POST_IMAGES}）
-              </Text>
+            <Pressable
+              onPress={handlePickImage}
+              disabled={publishing}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.imageBtn, pressed && { backgroundColor: colors.surfaceSunken }]}
+            >
+              <Ionicons name="image-outline" size={22} color={colors.primary} />
+              <Text style={styles.imageText}>{c.addImage(images.length, MAX_POST_IMAGES)}</Text>
             </Pressable>
           ) : null}
         </View>
 
         {/* 底部免責提示 */}
-        <View style={styles.disclaimerWrap}>
-          <Text style={styles.disclaimerText}>
-            本平台內容為使用者經驗分享，不能取代專業醫療建議
-          </Text>
-        </View>
-      </ScrollView>
+        <Text style={styles.disclaimerText}>{c.disclaimer}</Text>
+      </KeyboardAwareScroll>
     );
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          disabled={publishing}
-          style={styles.headerSide}
-          hitSlop={8}
-        >
-          <Text style={styles.cancelText}>取消</Text>
-        </Pressable>
-
-        <Text style={styles.headerTitle}>{headerTitle}</Text>
-
-        <Pressable
-          onPress={handlePublish}
-          accessibilityRole="button"
-          accessibilityLabel={submitLabel}
-          accessibilityState={{ disabled: !canPublish, busy: publishing }}
-          disabled={!canPublish}
-          style={[styles.headerSide, styles.publishBtn]}
-          hitSlop={8}
-        >
-          {publishing ? (
-            <ActivityIndicator size="small" color={COMMUNITY_COLORS.primary} />
-          ) : (
-            <Text style={[styles.publishText, !canPublish && styles.publishTextDisabled]}>
-              {submitLabel}
-            </Text>
-          )}
-        </Pressable>
-      </View>
+    <View style={styles.container}>
+      <AppHeader
+        title={headerTitle}
+        left={
+          <Pressable
+            onPress={() => router.back()}
+            disabled={publishing}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.headerTextBtn, pressed && styles.headerTextBtnPressed]}
+          >
+            <Text style={styles.cancelText}>{c.cancel}</Text>
+          </Pressable>
+        }
+        right={
+          <Pressable
+            onPress={handlePublish}
+            accessibilityRole="button"
+            accessibilityLabel={submitLabel}
+            accessibilityState={{ disabled: !canPublish, busy: publishing }}
+            disabled={!canPublish}
+            style={({ pressed }) => [styles.headerTextBtn, styles.publishBtn, pressed && styles.headerTextBtnPressed]}
+          >
+            {publishing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={[styles.publishText, !canPublish && styles.publishTextDisabled]}>
+                {submitLabel}
+              </Text>
+            )}
+          </Pressable>
+        }
+      />
 
       {/* 上傳／儲存進度 */}
       {publishing && uploadText !== "" ? (
-        <View style={styles.progressBar}>
-          <ActivityIndicator size="small" color={COMMUNITY_COLORS.primary} />
+        <View style={styles.progressBar} accessibilityLiveRegion="polite">
+          <ActivityIndicator size="small" color={colors.primary} />
           <Text style={styles.progressText}>{uploadText}</Text>
         </View>
       ) : null}
 
       {renderBody()}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COMMUNITY_COLORS.background,
+    backgroundColor: colors.surface,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 54,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
-    backgroundColor: COMMUNITY_COLORS.headerBg,
+  headerTextBtn: {
+    minWidth: 64,
+    minHeight: layout.minTouchTarget,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.control,
+    justifyContent: "center",
   },
-  headerSide: {
-    minWidth: 56,
+  headerTextBtnPressed: {
+    backgroundColor: colors.surfaceSunken,
   },
   cancelText: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: COMMUNITY_COLORS.textSecondary,
-  },
-  headerTitle: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: COMMUNITY_COLORS.text,
-    letterSpacing: 0.5,
+    ...typography.body,
+    color: colors.textSecondary,
   },
   publishBtn: {
     alignItems: "flex-end",
   },
   publishText: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: COMMUNITY_COLORS.primary,
+    ...typography.bodyStrong,
+    color: colors.primary,
   },
   publishTextDisabled: {
-    color: "#D1D5DB",
+    color: colors.textDisabled,
   },
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 32,
-    flexGrow: 1,
+    padding: spacing.lg,
+    gap: spacing.xl,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+  },
+  field: {
+    gap: spacing.sm,
+  },
+  fieldLabel: {
+    ...typography.label,
+  },
+  hint: {
+    ...typography.bodySmall,
   },
   categoryRow: {
     flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    flexWrap: "wrap",
+    gap: spacing.sm,
   },
   categoryBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 96,
+    minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    paddingVertical: 11,
-    borderRadius: 10,
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.control,
     borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  categoryBtnSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
   },
   categoryText: {
-    fontSize: 15,
-    fontWeight: "700",
+    ...typography.label,
+    fontSize: 16,
+    color: colors.textSecondary,
+    flexShrink: 1,
+    textAlign: "center",
   },
-  titleWrap: {
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: COMMUNITY_COLORS.borderLight,
-    paddingBottom: 12,
+  categoryTextSelected: {
+    color: colors.primary,
   },
   titleInput: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COMMUNITY_COLORS.text,
-    padding: 0,
-  },
-  counter: {
-    marginTop: 6,
-    fontSize: 12,
-    color: COMMUNITY_COLORS.textLight,
-    textAlign: "right",
-  },
-  contentWrap: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    fontSize: 18,
+    fontWeight: "600",
   },
   contentInput: {
-    minHeight: 220,
-    fontSize: 18,
-    lineHeight: 28,
-    color: COMMUNITY_COLORS.text,
-    padding: 0,
-  },
-  imageWrap: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    minHeight: 200,
+    lineHeight: 27,
   },
   thumbRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 12,
+    gap: spacing.md,
   },
   thumbItem: {
-    width: 76,
-    height: 76,
-    borderRadius: 10,
+    width: 88,
+    height: 88,
+    borderRadius: radii.control,
     overflow: "hidden",
-    backgroundColor: COMMUNITY_COLORS.inputBg,
+    backgroundColor: colors.surfaceSunken,
   },
   thumbImage: {
     width: "100%",
     height: "100%",
   },
+  // 48pt touch target in the corner; the visible dot is smaller.
   thumbRemove: {
     position: "absolute",
-    top: 4,
-    right: 4,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 0,
+    right: 0,
+    width: 48,
+    height: 48,
+    alignItems: "flex-end",
+    justifyContent: "flex-start",
+    padding: 4,
+  },
+  thumbRemoveDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: colors.overlay,
   },
   progressBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: COMMUNITY_COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COMMUNITY_COLORS.borderLight,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.primarySoft,
   },
   progressText: {
-    fontSize: 15,
+    ...typography.bodySmall,
+    color: colors.primary,
     fontWeight: "600",
-    color: COMMUNITY_COLORS.textSecondary,
   },
   stateWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    paddingHorizontal: 40,
-  },
-  stateText: {
-    fontSize: 18,
-    color: COMMUNITY_COLORS.textSecondary,
-    fontWeight: "600",
-    textAlign: "center",
+    paddingHorizontal: spacing.xl,
   },
   imageBtn: {
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12,
+    gap: spacing.sm,
+    borderRadius: radii.control,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#D1D5DB",
+    borderColor: colors.primaryBorder,
   },
   imageText: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: COMMUNITY_COLORS.textSecondary,
-  },
-  disclaimerWrap: {
-    marginTop: "auto",
-    paddingTop: 28,
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    alignItems: "center",
+    ...typography.bodyStrong,
+    color: colors.primary,
   },
   disclaimerText: {
-    fontSize: 13,
-    color: COMMUNITY_COLORS.textLight,
-    fontWeight: "500",
+    ...typography.caption,
     textAlign: "center",
   },
 });

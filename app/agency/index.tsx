@@ -5,9 +5,12 @@ import { useAgencyInvite } from "@/src/agency/useAgencyInvite";
 import { useAgencyReports } from "@/src/agency/useAgencyReports";
 import type { AgencyReport } from "@/src/agency/agencyReportTypes";
 import { useAuth } from "@/src/auth/useAuth";
+import { agencyCopy } from "@/src/i18n/copy/agencyCopy";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
-import { AppHeader } from "@/src/ui/components";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { AppHeader, Card, EmptyState, ListRow } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -15,7 +18,6 @@ import { router } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -46,7 +48,6 @@ function getCaregiverReportBadge(
   if (pendingCount > 0) {
     return {
       count: pendingCount,
-      color: "#DC5A5A",
       type: "pending" as const,
     };
   }
@@ -55,7 +56,6 @@ function getCaregiverReportBadge(
   if (attentionCount > 0) {
     return {
       count: attentionCount,
-      color: "#D39A2C",
       type: "attention" as const,
     };
   }
@@ -68,11 +68,17 @@ function formatBadgeCount(count: number) {
   return count > 99 ? "99+" : String(count);
 }
 
+const BADGE_TONE = {
+  pending: { bg: colors.danger, fg: colors.onPrimary },
+  attention: { bg: colors.warningSoft, fg: colors.warning },
+} as const;
+
 export default function AgencyHomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
+  const c = agencyCopy[language];
 
   const {
     inviteCode,
@@ -97,10 +103,7 @@ export default function AgencyHomeScreen() {
 
     await Clipboard.setStringAsync(inviteCode);
 
-    Alert.alert(
-      "已複製",
-      `仲介邀請碼 ${inviteCode} 已複製`
-    );
+    Alert.alert(c.copiedTitle, c.copiedBody(inviteCode));
   };
 
   return (
@@ -108,178 +111,93 @@ export default function AgencyHomeScreen() {
       <AppHeader title={t.agencyHomeTitle} left="menu" />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, {paddingTop: 24, paddingBottom: insets.bottom + 40}]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xxl }]}
       >
-        {/* 仲介基本資訊 */}
-        <View style={styles.userInfo}>
-          <Text style={styles.pageTitle}>
-            仲介管理
+        {/* 仲介帳號與邀請碼 */}
+        {!!user?.email && (
+          <Text style={styles.emailText} numberOfLines={1}>
+            {user.email}
           </Text>
+        )}
 
-          <Text style={styles.emailText}>
-            {user?.email ?? ""}
-          </Text>
-
-          <Pressable
-            style={styles.inviteBadge}
-            onPress={copyInviteCode}
-            disabled={!inviteCode}
-          >
-            <Ionicons
-              name="key-outline"
-              size={16}
-              color="#4F59D5"
-            />
-
-            <Text style={styles.inviteBadgeText}>
-              {inviteLoading
-                ? "邀請碼載入中..."
-                : inviteError
-                ? "邀請碼建立失敗"
-                : `邀請碼：${inviteCode}`}
-            </Text>
-
-            {!!inviteCode && (
-              <Ionicons
-                name="copy-outline"
-                size={16}
-                color="#6B7280"
-              />
+        <Pressable
+          style={({ pressed }) => [styles.inviteCard, pressed && !!inviteCode && styles.inviteCardPressed]}
+          onPress={copyInviteCode}
+          disabled={!inviteCode}
+          accessibilityRole="button"
+          accessibilityLabel={inviteCode ? `${c.copyInvite} ${inviteCode}` : c.inviteLabel}
+        >
+          <View style={styles.inviteText}>
+            <Text style={styles.inviteLabel}>{c.inviteLabel}</Text>
+            {inviteLoading ? (
+              <Text style={styles.inviteStatus}>{c.inviteLoading}</Text>
+            ) : inviteError ? (
+              <Text style={[styles.inviteStatus, { color: colors.danger }]}>{c.inviteError}</Text>
+            ) : (
+              <Text style={styles.inviteCode} selectable>
+                {inviteCode}
+              </Text>
             )}
-          </Pressable>
-        </View>
+            <Text style={styles.inviteHint}>{c.inviteHint}</Text>
+          </View>
+          {!!inviteCode && (
+            <View style={styles.copyIcon}>
+              <Ionicons name="copy-outline" size={22} color={colors.primary} />
+            </View>
+          )}
+        </Pressable>
 
         {/* 回報統計入口 */}
-        <Pressable
-          style={styles.analyticsCard}
-          onPress={() =>
-            router.push("/agency/analytics" as any)
-          }
-        >
-          <View style={styles.analyticsIcon}>
-            <Ionicons
-              name="bar-chart-outline"
-              size={27}
-              color="#4F59D5"
-            />
-          </View>
-
-          <View style={styles.analyticsContent}>
-            <Text style={styles.analyticsTitle}>
-              回報統計
-            </Text>
-
-            <Text style={styles.analyticsSubtitle}>
-              查看問題類型與每日回報趨勢
-            </Text>
-          </View>
-
-          <Ionicons
-            name="chevron-forward"
-            size={22}
-            color="#A1A1AA"
+        <Card padding={0} style={styles.analyticsCard}>
+          <ListRow
+            icon="bar-chart-outline"
+            title={c.analyticsTitle}
+            subtitle={c.analyticsSubtitle}
+            onPress={() => router.push("/agency/analytics" as any)}
           />
-        </Pressable>
+        </Card>
 
         {/* 旗下看護 */}
         <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>
-              旗下看護
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">
+              {c.caregiversTitle}
             </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              查看旗下看護目前的服務與回報狀態
-            </Text>
+            <Text style={styles.sectionSubtitle}>{c.caregiversSubtitle}</Text>
           </View>
 
           <Text style={styles.caregiverCount}>
-            {caregiverLoading
-              ? "..."
-              : `${caregiverCount} 人`}
+            {caregiverLoading ? "…" : c.caregiverCount(caregiverCount)}
           </Text>
         </View>
 
         {/* 狀態說明 */}
         <View style={styles.legendRow}>
           <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: "#DC5A5A" },
-              ]}
-            />
-
-            <Text style={styles.legendText}>
-              待處理
-            </Text>
+            <View style={[styles.legendDot, { backgroundColor: colors.danger }]} />
+            <Text style={styles.legendText}>{c.pending}</Text>
           </View>
 
           <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: "#D39A2C" },
-              ]}
-            />
-
-            <Text style={styles.legendText}>
-              需關注
-            </Text>
+            <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
+            <Text style={styles.legendText}>{c.attention}</Text>
           </View>
 
-          <Text style={styles.legendNormal}>
-            無標記表示目前正常
-          </Text>
+          <Text style={styles.legendNormal}>{c.legendNormal}</Text>
         </View>
 
         {caregiverLoading || reportLoading ? (
-          <View style={styles.loadingCard}>
-            <ActivityIndicator
-              size="small"
-              color="#4F59D5"
-            />
-
-            <Text style={styles.loadingText}>
-              讀取旗下看護中...
-            </Text>
-          </View>
+          <Card tone="sunken" style={styles.loadingCard}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.loadingText}>{c.loadingCaregivers}</Text>
+          </Card>
         ) : caregiverError ? (
-          <View style={styles.emptyCard}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={34}
-              color="#8B8B93"
-            />
-
-            <Text style={styles.emptyTitle}>
-              無法讀取旗下看護
-            </Text>
-
-            <Text style={styles.emptyText}>
-              請稍後重新整理頁面再試。
-            </Text>
-          </View>
+          <EmptyState icon="alert-circle-outline" title={c.caregiversErrorTitle} body={c.retryLater} />
         ) : caregivers.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Ionicons
-              name="people-outline"
-              size={38}
-              color="#8B8B93"
-            />
-
-            <Text style={styles.emptyTitle}>
-              尚未有旗下看護
-            </Text>
-
-            <Text style={styles.emptyText}>
-              將上方邀請碼提供給看護，
-              綁定後就會顯示在這裡。
-            </Text>
-          </View>
+          <EmptyState icon="people-outline" title={c.noCaregiversTitle} body={c.noCaregiversBody} />
         ) : (
-          <View style={styles.caregiverList}>
-            {caregivers.map((caregiver) => {
+          <Card padding={0}>
+            {caregivers.map((caregiver, index) => {
               const badge = getCaregiverReportBadge(
                 caregiver.caregiverUid,
                 reports
@@ -293,12 +211,21 @@ export default function AgencyHomeScreen() {
                   .trim()
                   .charAt(0)
                   .toUpperCase() ||
-                "看";
+                c.avatarFallback;
+
+              const name = caregiver.displayName || c.unnamedCaregiver;
+              const badgeLabel = badge ? c.openReports(formatBadgeCount(badge.count), c[badge.type]) : "";
 
               return (
                 <Pressable
                   key={caregiver.id}
-                  style={styles.caregiverCard}
+                  style={({ pressed }) => [
+                    styles.caregiverRow,
+                    index > 0 && styles.caregiverRowBorder,
+                    pressed && styles.caregiverRowPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={badgeLabel ? `${name}，${badgeLabel}` : name}
                   onPress={() =>
                     router.push({
                       pathname:
@@ -310,87 +237,48 @@ export default function AgencyHomeScreen() {
                     } as any)
                   }
                 >
-                  <View style={styles.avatarWrap}>
-                    {caregiver.avatarUrl ? (
-                      <Image
-                        source={{
-                          uri: caregiver.avatarUrl,
-                        }}
-                        style={styles.caregiverAvatar}
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          styles.caregiverAvatar,
-                          styles.avatarFallback,
-                        ]}
-                      >
-                        <Text
-                          style={styles.avatarText}
-                        >
-                          {avatarText}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
+                  {caregiver.avatarUrl ? (
+                    <Image
+                      source={{
+                        uri: caregiver.avatarUrl,
+                      }}
+                      style={styles.caregiverAvatar}
+                    />
+                  ) : (
+                    <View style={[styles.caregiverAvatar, styles.avatarFallback]}>
+                      <Text style={styles.avatarText}>{avatarText}</Text>
+                    </View>
+                  )}
 
                   <View style={styles.caregiverInfo}>
-                    <Text
-                      style={styles.caregiverName}
-                      numberOfLines={1}
-                    >
-                      {caregiver.displayName ||
-                        "尚未填寫姓名"}
+                    <Text style={styles.caregiverName} numberOfLines={1}>
+                      {name}
                     </Text>
 
-                    <Text
-                      style={styles.caregiverEmail}
-                      numberOfLines={1}
-                    >
+                    <Text style={styles.caregiverMeta} numberOfLines={1}>
                       {caregiver.caregiverEmail}
                     </Text>
 
                     {!!caregiver.phone && (
-                      <Text
-                        style={styles.caregiverPhone}
-                        numberOfLines={1}
-                      >
+                      <Text style={styles.caregiverMeta} numberOfLines={1}>
                         {caregiver.phone}
                       </Text>
                     )}
                   </View>
 
                   {!!badge && (
-                    <View
-                      style={[
-                        styles.notificationBadge,
-                        {
-                          backgroundColor:
-                            badge.color,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={
-                          styles.notificationBadgeText
-                        }
-                      >
-                        {formatBadgeCount(
-                          badge.count
-                        )}
+                    <View style={[styles.countBadge, { backgroundColor: BADGE_TONE[badge.type].bg }]}>
+                      <Text style={[styles.countBadgeText, { color: BADGE_TONE[badge.type].fg }]}>
+                        {formatBadgeCount(badge.count)}
                       </Text>
                     </View>
                   )}
 
-                  <Ionicons
-                    name="chevron-forward"
-                    size={22}
-                    color="#A1A1AA"
-                  />
+                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
                 </Pressable>
               );
             })}
-          </View>
+          </Card>
         )}
       </ScrollView>
     </View>
@@ -400,204 +288,170 @@ export default function AgencyHomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.canvas,
   },
 
   scrollContent: {
-    paddingTop: 85,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-
-  userInfo: {
-    marginBottom: 28,
-  },
-
-  pageTitle: {
-    fontSize: 34,
-    fontWeight: "bold",
-    color: "#111827",
-    letterSpacing: 1,
+    paddingTop: spacing.lg,
+    paddingHorizontal: layout.screenPaddingX,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
 
   emailText: {
-    marginTop: 6,
-    fontSize: 15,
-    color: "#6B7280",
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
   },
 
-  inviteBadge: {
-    marginTop: 12,
-    alignSelf: "flex-start",
+  inviteCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "#E1E9FF",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-  },
-
-  inviteBadgeText: {
-    color: "#4F59D5",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-
-  analyticsCard: {
-    minHeight: 86,
-    marginBottom: 28,
-    borderRadius: 20,
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radii.card,
     borderWidth: 1,
-    borderColor: "#DDE3FF",
-    backgroundColor: "#F5F7FF",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.03,
-    shadowRadius: 5,
-    elevation: 1,
+    borderColor: colors.primaryBorder,
+    backgroundColor: colors.primarySoft,
   },
 
-  analyticsIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 15,
-    backgroundColor: "#E1E9FF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 13,
+  inviteCardPressed: {
+    backgroundColor: colors.surface,
   },
 
-  analyticsContent: {
+  inviteText: {
     flex: 1,
     minWidth: 0,
   },
 
-  analyticsTitle: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: "#111827",
+  inviteLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
   },
 
-  analyticsSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#6B7280",
+  inviteCode: {
+    ...typography.display,
+    color: colors.primary,
+    letterSpacing: 3,
+    marginTop: spacing.xs,
   },
 
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#111827",
+  inviteStatus: {
+    ...typography.bodyStrong,
+    marginTop: spacing.xs,
+    color: colors.textSecondary,
+  },
+
+  inviteHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+
+  copyIcon: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: layout.minTouchTarget / 2,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  analyticsCard: {
+    marginTop: spacing.lg,
   },
 
   sectionHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 16,
-    marginBottom: 12,
+    gap: spacing.lg,
+    marginTop: spacing.xl,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+
+  sectionTitle: {
+    ...typography.title,
   },
 
   sectionSubtitle: {
-    marginTop: 4,
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#7B7B85",
+    ...typography.bodySmall,
+    marginTop: 2,
   },
 
   caregiverCount: {
-    marginTop: 4,
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#4F59D5",
+    ...typography.bodyStrong,
+    color: colors.primary,
+    marginTop: spacing.xs,
   },
 
   legendRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 18,
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
 
   legendItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
   },
 
   legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
 
   legendText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#6B7280",
+    ...typography.label,
+    color: colors.textSecondary,
   },
 
   legendNormal: {
-    fontSize: 12,
-    color: "#9CA3AF",
+    ...typography.caption,
   },
 
-  caregiverList: {
-    gap: 12,
-  },
-
-  caregiverCard: {
-    minHeight: 96,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#E7E9EF",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+  caregiverRow: {
+    minHeight: 88,
     flexDirection: "row",
     alignItems: "center",
-
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
   },
 
-  avatarWrap: {
-    marginRight: 13,
+  caregiverRowBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+  },
+
+  caregiverRowPressed: {
+    backgroundColor: colors.surfaceSunken,
   },
 
   caregiverAvatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
 
   avatarFallback: {
-    backgroundColor: "#E1E9FF",
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
   },
 
   avatarText: {
-    color: "#4F59D5",
-    fontSize: 22,
-    fontWeight: "900",
+    ...typography.header,
+    color: colors.primary,
   },
 
   caregiverInfo: {
@@ -606,76 +460,40 @@ const styles = StyleSheet.create({
   },
 
   caregiverName: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: "#111827",
+    ...typography.bodyStrong,
   },
 
-  caregiverEmail: {
-    marginTop: 5,
-    fontSize: 13,
-    color: "#6B7280",
+  caregiverMeta: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginTop: 2,
   },
 
-  caregiverPhone: {
-    marginTop: 3,
-    fontSize: 13,
-    color: "#8B8B93",
-  },
-
-  notificationBadge: {
-    minWidth: 25,
-    height: 25,
-    borderRadius: 13,
-    paddingHorizontal: 7,
+  countBadge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    paddingHorizontal: spacing.sm,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 7,
   },
 
-  notificationBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "900",
+  countBadgeText: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "700",
   },
 
   loadingCard: {
-    minHeight: 90,
-    borderRadius: 18,
-    backgroundColor: "#F8F9FC",
+    minHeight: 88,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: spacing.md,
   },
 
   loadingText: {
-    color: "#6B7280",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
-  emptyCard: {
-    minHeight: 150,
-    borderRadius: 20,
-    backgroundColor: "#F8F9FC",
-    padding: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#374151",
-  },
-
-  emptyText: {
-    marginTop: 6,
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: "center",
-    color: "#8B8B93",
+    ...typography.body,
+    color: colors.textSecondary,
   },
 });

@@ -1,30 +1,28 @@
-// 發文者／留言者身分標籤（家屬／仲介），樣式沿用分類標籤的小膠囊
+// 發文者／留言者身分標籤（家屬／仲介）
 // 舊文章、舊留言沒有 authorRole，role 為 undefined 時不顯示
 
 import { StyleSheet, Text, View } from "react-native";
-import { COMMUNITY_COLORS } from "../theme";
+import { communityCopy } from "@/src/i18n/copy/communityCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
+import { colors, radii } from "@/src/ui/theme";
 import type { CommunityAuthorRole } from "../types";
-
-const ROLE_STYLE: Record<CommunityAuthorRole, { label: string; main: string; bg: string }> = {
-  family: { label: "家屬", main: COMMUNITY_COLORS.primary, bg: "#EEF0FC" },
-  agency: { label: "仲介", main: "#0F7C80", bg: "#E3F3F3" },
-};
 
 type Props = {
   role?: CommunityAuthorRole;
 };
 
 export default function AuthorRoleBadge({ role }: Props) {
-  if (!role) return null;
-  const style = ROLE_STYLE[role];
-  if (!style) return null;
+  const { language } = useLanguage();
+  const c = communityCopy[language];
+  if (role !== "family" && role !== "agency") return null;
+  const label = role === "family" ? c.roleFamily : c.roleAgency;
 
   return (
     <View
-      style={[styles.badge, { backgroundColor: style.bg }]}
-      accessibilityLabel={`身分：${style.label}`}
+      style={[styles.badge, role === "agency" && styles.agency]}
+      accessibilityLabel={c.roleA11y(label)}
     >
-      <Text style={[styles.label, { color: style.main }]}>{style.label}</Text>
+      <Text style={[styles.label, role === "agency" && styles.agencyLabel]}>{label}</Text>
     </View>
   );
 }
@@ -32,12 +30,22 @@ export default function AuthorRoleBadge({ role }: Props) {
 const styles = StyleSheet.create({
   badge: {
     flexShrink: 0,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 10,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceSunken,
+  },
+  // 仲介是「專業身分」的提示，用主色淺底與家屬區隔
+  agency: {
+    backgroundColor: colors.primarySoft,
   },
   label: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  agencyLabel: {
+    color: colors.primary,
   },
 });

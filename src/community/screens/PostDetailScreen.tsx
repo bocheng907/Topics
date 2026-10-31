@@ -39,11 +39,18 @@ import Avatar from "@/src/community/components/Avatar";
 import CategoryTag from "@/src/community/components/CategoryTag";
 import ReportModal from "@/src/community/components/ReportModal";
 import { formatRelativeTime } from "@/src/community/format";
-import { COMMUNITY_COLORS } from "@/src/community/theme";
 import type { Comment, Post, ReportReason } from "@/src/community/types";
 import { useCommunityProfile } from "@/src/community/useCommunityProfile";
 import { useCommunityRoutes } from "@/src/community/useCommunityRoutes";
+import { communityCopy, communityReasonLabel } from "@/src/i18n/copy/communityCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
 import { AppAlert } from "@/src/ui/AppAlert";
+import { AppHeader, EmptyState, IconButton } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+/** 讀取失敗的原因（畫面上依語言顯示） */
+type LoadError = "" | "notFound" | "gone" | "failed";
 
 /** 單則留言長度上限 */
 const COMMENT_MAX_LENGTH = 500;
@@ -54,11 +61,14 @@ export default function PostDetailScreen() {
   const postId = typeof params.id === "string" ? params.id : "";
   const { user } = useAuth();
   const profile = useCommunityProfile();
+  const { language } = useLanguage();
+  const c = communityCopy[language];
+  const insets = useSafeAreaInsets();
 
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorText, setErrorText] = useState("");
+  const [loadError, setLoadError] = useState<LoadError>("");
 
   const [commentText, setCommentText] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
@@ -74,12 +84,12 @@ export default function PostDetailScreen() {
   /** 讀文章 + 留言 + 自己的按讚狀態，並計算觀看數（24 小時去重） */
   const load = useCallback(async () => {
     if (!postId) {
-      setErrorText("找不到這篇文章");
+      setLoadError("notFound");
       return;
     }
 
     try {
-      setErrorText("");
+      setLoadError("");
 
       // 先計觀看數再讀文章，這樣畫面上的數字就會包含這一次
       if (user?.uid) {
@@ -97,7 +107,7 @@ export default function PostDetailScreen() {
         setPost(null);
         setComments([]);
         setViewerUrl("");
-        setErrorText("這篇文章已被刪除或隱藏");
+        setLoadError("gone");
         return;
       }
 
@@ -114,7 +124,7 @@ export default function PostDetailScreen() {
       setComments([]);
       setViewerUrl("");
       console.log("[community] load post failed:", error);
-      setErrorText("讀取文章失敗，請確認網路後再試");
+      setLoadError("failed");
     }
   }, [postId, user]);
 
@@ -136,7 +146,7 @@ export default function PostDetailScreen() {
     if (!post || post.status !== "published") return;
     try {
       await Share.share({
-        message: `${post.title}\n\n${post.content}\n\n— 來自 OmniCare 照顧者交流`,
+        message: `${post.title}\n\n${post.content}\n\n${c.shareSuffix}`,
       });
     } catch (error) {
       console.log("分享失敗：", error);
@@ -161,7 +171,7 @@ export default function PostDetailScreen() {
       console.log("[community] toggle like failed:", error);
       setLiked(previousLiked);
       setPost({ ...post, likeCount: post.likeCount });
-      AppAlert.alert("操作失敗", "按讚沒有成功，請確認網路後再試");
+      AppAlert.alert(c.actionFailedTitle, c.likeFailed);
     } finally {
       setLikeBusy(false);
     }
@@ -191,7 +201,7 @@ export default function PostDetailScreen() {
       if (loadedPost) setPost(loadedPost);
     } catch (error) {
       console.log("[community] create comment failed:", error);
-      AppAlert.alert("留言失敗", "留言沒有送出，請確認網路後再試");
+      AppAlert.alert(c.commentFailedTitle, c.commentFailedBody);
     } finally {
       setSendingComment(false);
     }
@@ -207,22 +217,22 @@ export default function PostDetailScreen() {
 
       if (result.alreadyReported) {
         // 規則禁止覆寫既有檢舉，所以重複檢舉不會重複累加次數
-        AppAlert.alert("已經檢舉過", "你先前已檢舉過這篇文章，我們會持續確認。");
+        AppAlert.alert(c.alreadyReportedTitle, c.alreadyReportedBody);
       } else if (result.hidden) {
         AppAlert.alert(
-          "檢舉已送出",
-          `這篇文章已被檢舉 ${AUTO_HIDE_REPORT_COUNT} 次，系統已自動隱藏。`,
-          [{ text: "確定", onPress: () => router.back() }]
+          c.reportSentTitle,
+          c.reportAutoHidden(AUTO_HIDE_REPORT_COUNT),
+          [{ text: c.ok, onPress: () => router.back() }]
         );
       } else {
         AppAlert.alert(
-          "檢舉已送出",
-          `感謝你的回報，我們會盡快確認。\n原因：${reason}${detail ? `（${detail}）` : ""}`
+          c.reportSentTitle,
+          c.reportThanks(`${communityReasonLabel(c, reason)}${detail ? `（${detail}）` : ""}`)
         );
       }
     } catch (error) {
       console.log("[community] report post failed:", error);
-      AppAlert.alert("檢舉失敗", "檢舉沒有送出，請確認網路後再試");
+      AppAlert.alert(c.reportFailedTitle, c.reportFailedBody);
     } finally {
       setReporting(false);
     }
@@ -236,10 +246,10 @@ export default function PostDetailScreen() {
   const handleDeletePost = () => {
     if (!post || deleting) return;
 
-    AppAlert.alert("刪除文章", "確定要刪除這篇文章嗎？刪除後無法復原。", [
-      { text: "取消", style: "cancel" },
+    AppAlert.alert(c.deletePostTitle, c.deletePostConfirm, [
+      { text: c.cancel, style: "cancel" },
       {
-        text: "刪除",
+        text: c.delete,
         style: "destructive",
         onPress: async () => {
           setDeleting(true);
@@ -248,7 +258,7 @@ export default function PostDetailScreen() {
             router.back();
           } catch (error) {
             console.log("[community] delete post failed:", error);
-            AppAlert.alert("刪除失敗", "文章沒有刪除，請確認網路後再試");
+            AppAlert.alert(c.deleteFailedTitle, c.deletePostFailed);
           } finally {
             setDeleting(false);
           }
@@ -260,10 +270,10 @@ export default function PostDetailScreen() {
   const handleDeleteComment = (comment: Comment) => {
     if (!post || post.status !== "published" || deletingCommentId) return;
 
-    AppAlert.alert("刪除留言", "確定要刪除這則留言嗎？", [
-      { text: "取消", style: "cancel" },
+    AppAlert.alert(c.deleteCommentTitle, c.deleteCommentConfirm, [
+      { text: c.cancel, style: "cancel" },
       {
-        text: "刪除",
+        text: c.delete,
         style: "destructive",
         onPress: async () => {
           setDeletingCommentId(comment.id);
@@ -272,7 +282,7 @@ export default function PostDetailScreen() {
             setComments((current) => current.filter((item) => item.id !== comment.id));
           } catch (error) {
             console.log("[community] delete comment failed:", error);
-            AppAlert.alert("刪除失敗", "留言沒有刪除，請確認網路後再試");
+            AppAlert.alert(c.deleteFailedTitle, c.deleteCommentFailed);
           } finally {
             setDeletingCommentId("");
           }
@@ -281,18 +291,16 @@ export default function PostDetailScreen() {
     ]);
   };
 
+  const loadErrorText =
+    loadError === "gone" ? c.postGone : loadError === "failed" ? c.postLoadFailed : c.postNotFound;
+
   // 載入中
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-            <Ionicons name="chevron-back" size={24} color="#111827" />
-            <Text style={styles.backText}>返回</Text>
-          </Pressable>
-        </View>
+        <AppHeader title={c.feedTitle} left="back" fallbackHref={routes.feed as any} />
         <View style={styles.missingWrap}>
-          <ActivityIndicator size="large" color={COMMUNITY_COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       </View>
     );
@@ -302,21 +310,17 @@ export default function PostDetailScreen() {
   if (!post) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-            <Ionicons name="chevron-back" size={24} color="#111827" />
-            <Text style={styles.backText}>返回</Text>
-          </Pressable>
-        </View>
+        <AppHeader title={c.feedTitle} left="back" fallbackHref={routes.feed as any} />
         <View style={styles.missingWrap}>
-          <Ionicons name="alert-circle-outline" size={48} color="#D1D5DB" />
-          <Text style={styles.missingText}>{errorText || "找不到這篇文章"}</Text>
+          <EmptyState icon="alert-circle-outline" title={loadErrorText} />
         </View>
       </View>
     );
   }
 
   const isAuthor = !!user?.uid && user.uid === post.author.uid;
+  const published = post.status === "published";
+  const canSend = published && commentText.trim() !== "" && !sendingComment;
 
   return (
     <KeyboardAvoidingView
@@ -324,74 +328,86 @@ export default function PostDetailScreen() {
       // Android 走 edge-to-edge，adjustResize 不一定會縮畫面，與聊天室相同改用 height
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Ionicons name="chevron-back" size={24} color="#111827" />
-          <Text style={styles.backText}>返回</Text>
-        </Pressable>
-        {/* 自己的文章：編輯／刪除；別人的文章：檢舉 */}
-        {isAuthor ? (
-          <View style={styles.headerActions}>
-            <Pressable
-              onPress={handleEditPost}
-              disabled={deleting}
-              style={styles.iconBtn}
-              hitSlop={8}
-              accessibilityLabel="編輯文章"
-            >
-              <Ionicons name="create-outline" size={23} color="#111827" />
-            </Pressable>
-            <Pressable
-              onPress={handleDeletePost}
-              disabled={deleting}
-              style={styles.iconBtn}
-              hitSlop={8}
-              accessibilityLabel="刪除文章"
-            >
+      {/* 自己的文章：編輯／刪除；別人的文章：檢舉 */}
+      <AppHeader
+        title={c.feedTitle}
+        left="back"
+        fallbackHref={routes.feed as any}
+        right={
+          isAuthor ? (
+            <>
+              <IconButton
+                icon="create-outline"
+                onPress={handleEditPost}
+                disabled={deleting}
+                accessibilityLabel={c.editPost}
+                color={colors.text}
+              />
               {deleting ? (
-                <ActivityIndicator size="small" color={COMMUNITY_COLORS.danger} />
+                <View style={styles.headerSpinner}>
+                  <ActivityIndicator size="small" color={colors.danger} />
+                </View>
               ) : (
-                <Ionicons name="trash-outline" size={22} color={COMMUNITY_COLORS.danger} />
+                <IconButton
+                  icon="trash-outline"
+                  onPress={handleDeletePost}
+                  accessibilityLabel={c.deletePost}
+                  color={colors.danger}
+                />
               )}
-            </Pressable>
-          </View>
-        ) : (
-          <Pressable onPress={() => setReportVisible(true)} style={styles.iconBtn} hitSlop={8}>
-            <Ionicons name="ellipsis-horizontal" size={24} color="#111827" />
-          </Pressable>
-        )}
-      </View>
+            </>
+          ) : (
+            <IconButton
+              icon="flag-outline"
+              onPress={() => setReportVisible(true)}
+              accessibilityLabel={c.reportPost}
+              color={colors.textSecondary}
+            />
+          )
+        }
+      />
 
       <ScrollView
         style={styles.scrollArea}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
       >
         {/* 內文 */}
         <View style={styles.articleWrap}>
           <CategoryTag category={post.category} />
-          <Text style={styles.title}>{post.title}</Text>
+          <Text style={styles.title} accessibilityRole="header">
+            {post.title}
+          </Text>
 
           <View style={styles.authorRow}>
-            <Avatar name={post.author.name} size={40} />
-            <View>
+            <Avatar name={post.author.name} size={44} />
+            <View style={styles.authorText}>
               <View style={styles.authorNameRow}>
-                <Text style={styles.authorName}>{post.author.name}</Text>
+                <Text style={styles.authorName} numberOfLines={1}>
+                  {post.author.name}
+                </Text>
                 <AuthorRoleBadge role={post.author.role} />
               </View>
-              <Text style={styles.postTime}>{formatRelativeTime(post.createdAt)}</Text>
+              <Text style={styles.postTime}>{formatRelativeTime(post.createdAt, language)}</Text>
             </View>
           </View>
 
-          <Text style={styles.content}>{post.content}</Text>
+          <Text style={styles.content} selectable>
+            {post.content}
+          </Text>
 
           {/* 附圖：點擊放大 */}
           {post.imageUrls.length > 0 ? (
             <View style={styles.imageList}>
               {post.imageUrls.map((url) => (
-                <Pressable key={url} onPress={() => setViewerUrl(url)}>
+                <Pressable
+                  key={url}
+                  onPress={() => setViewerUrl(url)}
+                  accessibilityRole="imagebutton"
+                  accessibilityLabel={c.viewImage}
+                >
                   <Image
                     source={{ uri: url }}
                     style={styles.postImage}
@@ -404,97 +420,91 @@ export default function PostDetailScreen() {
           ) : null}
         </View>
 
-        <View style={styles.divider} />
-
         {/* 互動列 */}
         <View style={styles.actionRow}>
           <View style={styles.actionLeft}>
             <Pressable
-              style={styles.actionBtn}
+              style={({ pressed }) => [styles.actionBtn, liked && styles.actionBtnLiked, pressed && styles.actionBtnPressed]}
               onPress={handleToggleLike}
               disabled={likeBusy}
-              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`${liked ? c.unlike : c.like}，${c.likesA11y(post.likeCount)}`}
+              accessibilityState={{ selected: liked, disabled: likeBusy }}
             >
               <Ionicons
                 name={liked ? "heart" : "heart-outline"}
                 size={22}
-                color={liked ? COMMUNITY_COLORS.heart : COMMUNITY_COLORS.textSecondary}
+                color={liked ? colors.primary : colors.textSecondary}
               />
               <Text style={[styles.actionText, liked && styles.actionTextLiked]}>
                 {post.likeCount}
               </Text>
             </Pressable>
 
-            <View style={styles.actionBtn}>
-              <Ionicons
-                name="chatbubble-outline"
-                size={21}
-                color={COMMUNITY_COLORS.textSecondary}
-              />
+            <View style={styles.statItem} accessibilityLabel={c.commentsA11y(comments.length)}>
+              <Ionicons name="chatbubble-outline" size={20} color={colors.textSecondary} />
               <Text style={styles.actionText}>{comments.length}</Text>
             </View>
 
-            <View style={styles.actionBtn}>
-              <Ionicons
-                name="eye-outline"
-                size={21}
-                color={COMMUNITY_COLORS.textSecondary}
-              />
+            <View style={styles.statItem} accessibilityLabel={c.viewsA11y(String(post.viewCount))}>
+              <Ionicons name="eye-outline" size={21} color={colors.textSecondary} />
               <Text style={styles.actionText}>{post.viewCount}</Text>
             </View>
           </View>
 
-          <Pressable onPress={handleShare} style={styles.iconBtn} hitSlop={6}>
-            <Ionicons
-              name="share-social-outline"
-              size={21}
-              color={COMMUNITY_COLORS.textSecondary}
-            />
-          </Pressable>
+          <IconButton
+            icon="share-social-outline"
+            onPress={handleShare}
+            accessibilityLabel={c.share}
+            color={colors.textSecondary}
+            size={22}
+          />
         </View>
-
-        <View style={styles.sectionGap} />
 
         {/* 留言區 */}
         <View style={styles.commentsWrap}>
-          <Text style={styles.commentsTitle}>留言 ({comments.length})</Text>
+          <Text style={styles.commentsTitle} accessibilityRole="header">
+            {c.commentsTitle(comments.length)}
+          </Text>
 
           {comments.length === 0 ? (
-            <Text style={styles.noComment}>還沒有人留言，留個言鼓勵一下吧</Text>
+            <Text style={styles.noComment}>{c.noComments}</Text>
           ) : (
             <View style={styles.commentList}>
               {comments.map((comment) => (
                 <View key={comment.id} style={styles.commentRow}>
-                  <Avatar name={comment.author.name} size={34} />
+                  <Avatar name={comment.author.name} size={36} />
                   <View style={styles.commentBody}>
                     <View style={styles.commentHeader}>
-                      <Text style={styles.commentAuthor}>{comment.author.name}</Text>
+                      <Text style={styles.commentAuthor} numberOfLines={1}>
+                        {comment.author.name}
+                      </Text>
                       <AuthorRoleBadge role={comment.author.role} />
                       <Text style={styles.commentTime}>
-                        {formatRelativeTime(comment.createdAt)}
+                        {formatRelativeTime(comment.createdAt, language)}
                       </Text>
                       {/* 只能刪自己的留言（規則同樣限制） */}
                       {user?.uid && comment.author.uid === user.uid ? (
-                        <Pressable
-                          onPress={() => handleDeleteComment(comment)}
-                          disabled={deletingCommentId !== ""}
-                          style={styles.commentDelete}
-                          hitSlop={8}
-                          accessibilityLabel="刪除留言"
-                        >
-                          {deletingCommentId === comment.id ? (
-                            <ActivityIndicator size="small" color={COMMUNITY_COLORS.textLight} />
-                          ) : (
-                            <Ionicons
-                              name="trash-outline"
-                              size={15}
-                              color={COMMUNITY_COLORS.textLight}
-                            />
-                          )}
-                        </Pressable>
+                        deletingCommentId === comment.id ? (
+                          <View style={styles.commentDelete}>
+                            <ActivityIndicator size="small" color={colors.textMuted} />
+                          </View>
+                        ) : (
+                          <IconButton
+                            icon="trash-outline"
+                            size={18}
+                            onPress={() => handleDeleteComment(comment)}
+                            disabled={deletingCommentId !== ""}
+                            accessibilityLabel={c.deleteComment}
+                            color={colors.textMuted}
+                            style={styles.commentDelete}
+                          />
+                        )
                       ) : null}
                     </View>
-                    <Text style={styles.commentContent}>{comment.content}</Text>
+                    <Text style={styles.commentContent} selectable>
+                      {comment.content}
+                    </Text>
                   </View>
                 </View>
               ))}
@@ -504,31 +514,34 @@ export default function PostDetailScreen() {
       </ScrollView>
 
       {/* 底部留言輸入框 */}
-      <View style={styles.inputBar}>
+      <View style={[styles.inputBar, { paddingBottom: spacing.md + insets.bottom }]}>
         <TextInput
-          style={styles.commentInput}
-          placeholder={post.status === "published" ? "留個言鼓勵一下吧..." : "文章已隱藏，無法新增留言"}
-          placeholderTextColor={COMMUNITY_COLORS.textLight}
+          style={[styles.commentInput, Platform.OS === "web" && ({ outlineStyle: "none" } as object)]}
+          placeholder={published ? c.commentPlaceholder : c.commentDisabledPlaceholder}
+          placeholderTextColor={colors.textMuted}
+          accessibilityLabel={published ? c.commentPlaceholder : c.commentDisabledPlaceholder}
           value={commentText}
           onChangeText={setCommentText}
           multiline
           maxLength={COMMENT_MAX_LENGTH}
-          editable={post.status === "published" && !sendingComment}
+          editable={published && !sendingComment}
         />
         <Pressable
           onPress={handleSubmitComment}
           accessibilityRole="button"
-          accessibilityLabel="傳送留言"
-          disabled={post.status !== "published" || commentText.trim() === "" || sendingComment}
-          style={[
+          accessibilityLabel={c.sendComment}
+          accessibilityState={{ disabled: !canSend, busy: sendingComment }}
+          disabled={!canSend}
+          style={({ pressed }) => [
             styles.sendBtn,
-            (commentText.trim() === "" || sendingComment) && styles.sendBtnDisabled,
+            !canSend && !sendingComment && styles.sendBtnDisabled,
+            pressed && canSend && styles.sendBtnPressed,
           ]}
         >
           {sendingComment ? (
-            <ActivityIndicator size="small" color={COMMUNITY_COLORS.white} />
+            <ActivityIndicator size="small" color={colors.onPrimary} />
           ) : (
-            <Ionicons name="send" size={18} color={COMMUNITY_COLORS.white} />
+            <Ionicons name="send" size={20} color={canSend ? colors.onPrimary : colors.textDisabled} />
           )}
         </Pressable>
       </View>
@@ -547,12 +560,17 @@ export default function PostDetailScreen() {
         animationType="fade"
         onRequestClose={() => setViewerUrl("")}
       >
-        <Pressable style={styles.viewerOverlay} onPress={() => setViewerUrl("")}>
+        <Pressable
+          style={styles.viewerOverlay}
+          onPress={() => setViewerUrl("")}
+          accessibilityRole="button"
+          accessibilityLabel={c.closeImage}
+        >
           {viewerUrl !== "" ? (
             <Image source={{ uri: viewerUrl }} style={styles.viewerImage} contentFit="contain" />
           ) : null}
-          <View style={styles.viewerClose}>
-            <Ionicons name="close" size={26} color={COMMUNITY_COLORS.white} />
+          <View style={[styles.viewerClose, { top: insets.top + spacing.md }]}>
+            <Ionicons name="close" size={28} color={colors.onPrimary} />
           </View>
         </Pressable>
       </Modal>
@@ -563,48 +581,210 @@ export default function PostDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COMMUNITY_COLORS.background,
+    backgroundColor: colors.surface,
   },
-  header: {
+  headerSpinner: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: spacing.xl,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+  },
+  articleWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+    gap: spacing.md,
+  },
+  title: {
+    ...typography.title,
+  },
+  authorRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 54,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
-    backgroundColor: COMMUNITY_COLORS.headerBg,
+    gap: spacing.md,
   },
-  backBtn: {
+  authorText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  authorNameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: spacing.sm,
   },
-  backText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
+  authorName: {
+    ...typography.bodyStrong,
+    flexShrink: 1,
   },
-  iconBtn: {
-    padding: 6,
+  postTime: {
+    ...typography.caption,
+    fontSize: 14,
   },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+  content: {
+    ...typography.body,
+    fontSize: 18,
+    lineHeight: 29,
+    marginTop: spacing.xs,
   },
   imageList: {
-    gap: 10,
-    marginTop: 4,
+    gap: spacing.md,
+    marginTop: spacing.xs,
   },
   postImage: {
     width: "100%",
     aspectRatio: 4 / 3,
-    borderRadius: 12,
-    backgroundColor: COMMUNITY_COLORS.inputBg,
+    borderRadius: radii.card,
+    backgroundColor: colors.surfaceSunken,
+  },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.divider,
+  },
+  actionLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  actionBtn: {
+    minHeight: layout.minTouchTarget,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+  },
+  actionBtnLiked: {
+    backgroundColor: colors.primarySoft,
+  },
+  actionBtnPressed: {
+    backgroundColor: colors.surfaceSunken,
+  },
+  statItem: {
+    minHeight: layout.minTouchTarget,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing.xs,
+  },
+  actionText: {
+    ...typography.label,
+    color: colors.textSecondary,
+  },
+  actionTextLiked: {
+    color: colors.primary,
+  },
+  commentsWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    borderTopWidth: spacing.sm,
+    borderTopColor: colors.canvas,
+  },
+  commentsTitle: {
+    ...typography.header,
+    fontSize: 18,
+    marginBottom: spacing.md,
+  },
+  noComment: {
+    ...typography.body,
+    color: colors.textMuted,
+    paddingVertical: spacing.lg,
+  },
+  commentList: {
+    gap: spacing.lg,
+  },
+  commentRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  commentBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  commentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    minHeight: 32,
+  },
+  commentAuthor: {
+    ...typography.label,
+    flexShrink: 1,
+  },
+  commentTime: {
+    ...typography.caption,
+  },
+  commentDelete: {
+    marginLeft: "auto",
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    marginVertical: -8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  commentContent: {
+    ...typography.body,
+  },
+  inputBar: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  commentInput: {
+    ...typography.body,
+    flex: 1,
+    minHeight: 48,
+    maxHeight: 120,
+    backgroundColor: colors.surfaceSunken,
+    borderRadius: radii.sheet,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  sendBtn: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: layout.minTouchTarget / 2,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendBtnDisabled: {
+    backgroundColor: colors.surfaceSunken,
+  },
+  sendBtnPressed: {
+    backgroundColor: colors.primaryPressed,
+  },
+  missingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
   },
   viewerOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.92)",
+    backgroundColor: "rgba(17, 24, 39, 0.94)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -614,195 +794,12 @@ const styles = StyleSheet.create({
   },
   viewerClose: {
     position: "absolute",
-    top: 54,
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    right: spacing.lg,
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: layout.minTouchTarget / 2,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.15)",
-  },
-  commentDelete: {
-    marginLeft: "auto",
-    padding: 2,
-  },
-  scrollArea: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  articleWrap: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    gap: 12,
-  },
-  title: {
-    fontSize: 24,
-    lineHeight: 33,
-    fontWeight: "800",
-    color: COMMUNITY_COLORS.text,
-    letterSpacing: 0.3,
-  },
-  authorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  authorNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  authorName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COMMUNITY_COLORS.text,
-    marginBottom: 2,
-  },
-  postTime: {
-    fontSize: 13,
-    color: COMMUNITY_COLORS.textLight,
-    fontWeight: "500",
-  },
-  content: {
-    fontSize: 18,
-    lineHeight: 29,
-    color: "#374151",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COMMUNITY_COLORS.borderLight,
-    marginHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 4,
-  },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  actionLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 20,
-  },
-  actionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  actionText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: COMMUNITY_COLORS.textSecondary,
-  },
-  actionTextLiked: {
-    color: COMMUNITY_COLORS.heart,
-  },
-  sectionGap: {
-    height: 8,
-    backgroundColor: COMMUNITY_COLORS.surface,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: COMMUNITY_COLORS.borderLight,
-    marginTop: 8,
-  },
-  commentsWrap: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-  },
-  commentsTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: COMMUNITY_COLORS.text,
-    marginBottom: 18,
-  },
-  noComment: {
-    fontSize: 16,
-    color: COMMUNITY_COLORS.textLight,
-    paddingBottom: 12,
-  },
-  commentList: {
-    gap: 20,
-  },
-  commentRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  commentBody: {
-    flex: 1,
-    gap: 4,
-  },
-  commentHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  commentAuthor: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COMMUNITY_COLORS.text,
-  },
-  commentTime: {
-    fontSize: 12,
-    color: COMMUNITY_COLORS.textLight,
-  },
-  commentContent: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#374151",
-  },
-  inputBar: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 24,
-    borderTopWidth: 1,
-    borderTopColor: COMMUNITY_COLORS.border,
-    backgroundColor: COMMUNITY_COLORS.white,
-  },
-  commentInput: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 110,
-    backgroundColor: COMMUNITY_COLORS.inputBg,
-    borderRadius: 21,
-    paddingHorizontal: 16,
-    paddingTop: 11,
-    paddingBottom: 11,
-    fontSize: 16,
-    color: COMMUNITY_COLORS.text,
-  },
-  sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: COMMUNITY_COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sendBtnDisabled: {
-    backgroundColor: "#B0BAC5",
-  },
-  missingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  missingText: {
-    fontSize: 18,
-    color: COMMUNITY_COLORS.textSecondary,
-    fontWeight: "600",
-    textAlign: "center",
-    paddingHorizontal: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
   },
 });

@@ -3,7 +3,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet } from "react-native";
 
-import { COMMUNITY_COLORS } from "../theme";
+import { communityCopy } from "@/src/i18n/copy/communityCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
+import { colors, layout } from "@/src/ui/theme";
 import { useCommunityProfile } from "../useCommunityProfile";
 import Avatar from "./Avatar";
 
@@ -12,25 +14,21 @@ type Props = {
   size?: number;
 };
 
-export default function ProfileButton({ onPress, size = 36 }: Props) {
+export default function ProfileButton({ onPress, size = 34 }: Props) {
   const profile = useCommunityProfile();
+  const { language } = useLanguage();
 
   return (
     <Pressable
       onPress={onPress}
-      hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel="我的文章"
-      style={({ pressed }) => [
-        styles.button,
-        { width: size + 4, height: size + 4, borderRadius: (size + 4) / 2 },
-        pressed && styles.pressed,
-      ]}
+      accessibilityLabel={communityCopy[language].myPosts}
+      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
     >
       {profile.loaded ? (
         <Avatar name={profile.name} uri={profile.avatarUrl} size={size} />
       ) : (
-        <Ionicons name="person-circle" size={size} color={COMMUNITY_COLORS.primary} />
+        <Ionicons name="person-circle-outline" size={size} color={colors.primary} />
       )}
     </Pressable>
   );
@@ -38,11 +36,13 @@ export default function ProfileButton({ onPress, size = 36 }: Props) {
 
 const styles = StyleSheet.create({
   button: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: layout.minTouchTarget / 2,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COMMUNITY_COLORS.white,
   },
   pressed: {
-    opacity: 0.8,
+    backgroundColor: colors.surfaceSunken,
   },
 });

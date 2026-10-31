@@ -1,4 +1,6 @@
 // 照顧者知識共享 — 顯示格式化工具
+import { communityCopy } from "@/src/i18n/copy/communityCopy";
+import type { Language } from "@/src/i18n/translations";
 
 /**
  * 觀看數顯示規則（依規劃書 3-3）：
@@ -13,22 +15,23 @@ export function formatViewCount(count: number): string {
   return `${(Math.floor(thousands * 10) / 10).toFixed(1)}K`;
 }
 
-/** 相對時間：剛剛 / N 分鐘前 / N 小時前 / N 天前，超過 7 天顯示日期 */
-export function formatRelativeTime(createdAt: number): string {
+/** 相對時間：剛剛 / N 分鐘前 / N 小時前 / N 天前，超過 7 天顯示日期（依介面語言） */
+export function formatRelativeTime(createdAt: number, language: Language = "zh"): string {
   if (!Number.isFinite(createdAt)) return "";
+  const c = communityCopy[language];
 
   const diffMs = Date.now() - createdAt;
-  if (diffMs < 0) return "剛剛";
+  if (diffMs < 0) return c.justNow;
 
   const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "剛剛";
-  if (minutes < 60) return `${minutes} 分鐘前`;
+  if (minutes < 1) return c.justNow;
+  if (minutes < 60) return c.minutesAgo(minutes);
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小時前`;
+  if (hours < 24) return c.hoursAgo(hours);
 
   const days = Math.floor(hours / 24);
-  if (days <= 7) return `${days} 天前`;
+  if (days <= 7) return c.daysAgo(days);
 
   const date = new Date(createdAt);
   return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(

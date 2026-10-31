@@ -1,12 +1,14 @@
 // 文章卡片
 // variant="list"：主頁文章列表用（標題、摘要、作者、觀看/留言數）
-// variant="hot"：主頁「本週熱門」橫向卡片用（分類色底、標題、觀看數）
+// variant="hot"：主頁「本週熱門」橫向卡片用（標題、觀看數）
 
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { communityCopy } from "@/src/i18n/copy/communityCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
+import { colors, radii, spacing, typography } from "@/src/ui/theme";
 import { formatRelativeTime, formatViewCount } from "../format";
-import { COMMUNITY_COLORS, getCategoryStyle } from "../theme";
 import type { Post } from "../types";
 import AuthorRoleBadge from "./AuthorRoleBadge";
 import Avatar from "./Avatar";
@@ -21,17 +23,17 @@ type Props = {
 };
 
 export default function PostCard({ post, variant = "list", onPress, divider = true }: Props) {
-  if (variant === "hot") {
-    const categoryStyle = getCategoryStyle(post.category);
+  const { language } = useLanguage();
+  const c = communityCopy[language];
+  const views = formatViewCount(post.viewCount);
 
+  if (variant === "hot") {
     return (
       <Pressable
         onPress={() => onPress(post)}
-        style={({ pressed }) => [
-          styles.hotCard,
-          { backgroundColor: categoryStyle.bg },
-          pressed && styles.pressed,
-        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`${post.title}，${c.viewsA11y(views)}`}
+        style={({ pressed }) => [styles.hotCard, pressed && styles.pressedCard]}
       >
         <View>
           <CategoryTag category={post.category} />
@@ -40,8 +42,8 @@ export default function PostCard({ post, variant = "list", onPress, divider = tr
           </Text>
         </View>
         <View style={styles.metaRow}>
-          <Ionicons name="eye-outline" size={14} color={COMMUNITY_COLORS.textSecondary} />
-          <Text style={styles.metaText}>{formatViewCount(post.viewCount)} 觀看</Text>
+          <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
+          <Text style={styles.metaText}>{c.views(views)}</Text>
         </View>
       </Pressable>
     );
@@ -50,6 +52,8 @@ export default function PostCard({ post, variant = "list", onPress, divider = tr
   return (
     <Pressable
       onPress={() => onPress(post)}
+      accessibilityRole="button"
+      accessibilityLabel={`${post.title}，${post.author.name}，${c.viewsA11y(views)}，${c.commentsA11y(post.commentCount)}`}
       style={({ pressed }) => [
         styles.listCard,
         !divider && styles.noDivider,
@@ -58,7 +62,7 @@ export default function PostCard({ post, variant = "list", onPress, divider = tr
     >
       <View style={styles.listHeader}>
         <CategoryTag category={post.category} />
-        <Text style={styles.timeText}>{formatRelativeTime(post.createdAt)}</Text>
+        <Text style={styles.timeText}>{formatRelativeTime(post.createdAt, language)}</Text>
       </View>
 
       <View style={styles.listBody}>
@@ -79,10 +83,11 @@ export default function PostCard({ post, variant = "list", onPress, divider = tr
               style={styles.thumb}
               contentFit="cover"
               transition={150}
+              accessibilityLabel={c.imagesCount(post.imageUrls.length)}
             />
             {post.imageUrls.length > 1 ? (
               <View style={styles.thumbBadge}>
-                <Ionicons name="images-outline" size={11} color={COMMUNITY_COLORS.white} />
+                <Ionicons name="images-outline" size={12} color={colors.onPrimary} />
                 <Text style={styles.thumbBadgeText}>{post.imageUrls.length}</Text>
               </View>
             ) : null}
@@ -92,7 +97,7 @@ export default function PostCard({ post, variant = "list", onPress, divider = tr
 
       <View style={styles.listFooter}>
         <View style={styles.authorRow}>
-          <Avatar name={post.author.name} size={26} />
+          <Avatar name={post.author.name} size={28} />
           <Text style={styles.authorName} numberOfLines={1}>
             {post.author.name}
           </Text>
@@ -101,11 +106,11 @@ export default function PostCard({ post, variant = "list", onPress, divider = tr
 
         <View style={styles.statsRow}>
           <View style={styles.metaRow}>
-            <Ionicons name="eye-outline" size={14} color={COMMUNITY_COLORS.textSecondary} />
-            <Text style={styles.metaText}>{formatViewCount(post.viewCount)}</Text>
+            <Ionicons name="eye-outline" size={16} color={colors.textMuted} />
+            <Text style={styles.metaText}>{views}</Text>
           </View>
           <View style={styles.metaRow}>
-            <Ionicons name="chatbubble-outline" size={14} color={COMMUNITY_COLORS.textSecondary} />
+            <Ionicons name="chatbubble-outline" size={15} color={colors.textMuted} />
             <Text style={styles.metaText}>{post.commentCount}</Text>
           </View>
         </View>
@@ -115,36 +120,38 @@ export default function PostCard({ post, variant = "list", onPress, divider = tr
 }
 
 const styles = StyleSheet.create({
-  pressed: {
-    opacity: 0.85,
+  pressedCard: {
+    backgroundColor: colors.surfaceSunken,
   },
   pressedList: {
-    backgroundColor: COMMUNITY_COLORS.surface,
+    backgroundColor: colors.surfaceSunken,
   },
 
   // 本週熱門橫向卡片
   hotCard: {
-    width: 240,
-    padding: 16,
-    borderRadius: 12,
+    width: 248,
+    minHeight: 128,
+    padding: spacing.lg,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     justifyContent: "space-between",
-    gap: 12,
+    gap: spacing.md,
   },
   hotTitle: {
-    marginTop: 10,
-    fontSize: 17,
-    lineHeight: 24,
-    fontWeight: "700",
-    color: COMMUNITY_COLORS.text,
+    ...typography.bodyStrong,
+    marginTop: spacing.sm,
   },
 
   // 列表卡片
   listCard: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: COMMUNITY_COLORS.borderLight,
-    gap: 6,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
+    backgroundColor: colors.surface,
+    gap: spacing.sm,
   },
   noDivider: {
     borderBottomWidth: 0,
@@ -153,27 +160,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: spacing.md,
   },
   timeText: {
+    ...typography.caption,
     fontSize: 14,
-    color: COMMUNITY_COLORS.textLight,
-    fontWeight: "500",
   },
   listBody: {
     flexDirection: "row",
-    gap: 12,
+    gap: spacing.md,
   },
   listTextCol: {
     flex: 1,
-    gap: 6,
+    minWidth: 0,
+    gap: spacing.xs,
   },
   thumbWrap: {
     width: 76,
     height: 76,
-    borderRadius: 10,
+    borderRadius: radii.control,
     overflow: "hidden",
-    backgroundColor: COMMUNITY_COLORS.inputBg,
+    backgroundColor: colors.surfaceSunken,
   },
   thumb: {
     width: "100%",
@@ -186,59 +193,56 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: 8,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: radii.pill,
+    backgroundColor: colors.overlay,
   },
   thumbBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
-    color: COMMUNITY_COLORS.white,
+    color: colors.onPrimary,
   },
   listTitle: {
+    ...typography.header,
     fontSize: 18,
     lineHeight: 25,
-    fontWeight: "700",
-    color: COMMUNITY_COLORS.text,
   },
   listPreview: {
+    ...typography.bodySmall,
     fontSize: 16,
     lineHeight: 23,
-    color: COMMUNITY_COLORS.textSecondary,
   },
   listFooter: {
-    marginTop: 6,
+    marginTop: spacing.xs,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: spacing.md,
   },
   authorRow: {
     flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.sm,
   },
   authorName: {
+    ...typography.bodySmall,
     flexShrink: 1,
-    fontSize: 15,
-    color: COMMUNITY_COLORS.textSecondary,
-    fontWeight: "500",
   },
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: spacing.md,
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
   },
   metaText: {
+    ...typography.caption,
     fontSize: 14,
-    color: COMMUNITY_COLORS.textSecondary,
-    fontWeight: "500",
+    color: colors.textSecondary,
   },
 });

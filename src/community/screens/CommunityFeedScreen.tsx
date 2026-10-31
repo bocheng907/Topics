@@ -7,6 +7,7 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,11 +17,15 @@ import {
   View,
 } from "react-native";
 
+import { communityCopy } from "@/src/i18n/copy/communityCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
+import { AppHeader, EmptyState } from "@/src/ui/components";
+import { colors, radii, shadows, spacing, typography } from "@/src/ui/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PostCard from "@/src/community/components/PostCard";
 import CategoryTabs from "@/src/community/components/CategoryTabs";
 import ProfileButton from "@/src/community/components/ProfileButton";
 import { getHotPosts, getPosts } from "@/src/community/api";
-import { COMMUNITY_COLORS } from "@/src/community/theme";
 import type { CategoryFilter, Post } from "@/src/community/types";
 import { useCommunityRoutes } from "@/src/community/useCommunityRoutes";
 
@@ -29,6 +34,9 @@ const HOT_POST_LIMIT = 5;
 
 export default function CommunityHomeScreen() {
   const routes = useCommunityRoutes();
+  const { language } = useLanguage();
+  const c = communityCopy[language];
+  const insets = useSafeAreaInsets();
   const [category, setCategory] = useState<CategoryFilter>("全部");
   const [keyword, setKeyword] = useState("");
 
@@ -36,18 +44,18 @@ export default function CommunityHomeScreen() {
   const [hotPosts, setHotPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [errorText, setErrorText] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
 
   /** 從 Firestore 讀取文章與本週熱門 */
   const loadPosts = useCallback(async () => {
     try {
-      setErrorText("");
+      setLoadFailed(false);
       const [posts, hot] = await Promise.all([getPosts(), getHotPosts(HOT_POST_LIMIT)]);
       setAllPosts(posts);
       setHotPosts(hot);
     } catch (error) {
       console.log("[community] load posts failed:", error);
-      setErrorText("讀取文章失敗，請確認網路後下拉重新整理");
+      setLoadFailed(true);
     }
   }, []);
 
@@ -90,63 +98,64 @@ export default function CommunityHomeScreen() {
     router.push(routes.post(post.id) as any);
   };
 
+  const searching = keyword.trim() !== "";
+
   return (
     <View style={styles.container}>
-      {/* Header：色底 + 「‹ 返回」文字，與家屬端其他頁面一致 */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Ionicons name="chevron-back" size={24} color="#111827" />
-          <Text style={styles.backText}>返回</Text>
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          照顧者交流
-        </Text>
-        {/* 右上角頭像：進入「我的文章」 */}
-        <View style={styles.headerRight}>
-          <ProfileButton onPress={() => router.push(routes.myPosts as any)} />
-        </View>
-      </View>
+      <AppHeader
+        title={c.feedTitle}
+        left="back"
+        fallbackHref={`/${routes.group}` as any}
+        right={<ProfileButton onPress={() => router.push(routes.myPosts as any)} />}
+      />
 
       <ScrollView
         style={styles.scrollArea}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 112 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={COMMUNITY_COLORS.primary}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
       >
         {/* 搜尋列 */}
         <View style={styles.searchWrap}>
           <View style={styles.searchBox}>
-            <Ionicons name="search-outline" size={20} color={COMMUNITY_COLORS.textLight} />
+            <Ionicons name="search-outline" size={20} color={colors.textMuted} />
             <TextInput
-              style={styles.searchInput}
-              placeholder="搜尋照護資訊、用品推薦..."
-              placeholderTextColor={COMMUNITY_COLORS.textLight}
+              style={[styles.searchInput, Platform.OS === "web" && ({ outlineStyle: "none" } as object)]}
+              placeholder={c.searchPlaceholder}
+              placeholderTextColor={colors.textMuted}
+              accessibilityLabel={c.searchPlaceholder}
               value={keyword}
               onChangeText={setKeyword}
               returnKeyType="search"
             />
             {keyword.length > 0 ? (
-              <Pressable onPress={() => setKeyword("")} hitSlop={8}>
-                <Ionicons name="close-circle" size={18} color={COMMUNITY_COLORS.textLight} />
+              <Pressable
+                onPress={() => setKeyword("")}
+                accessibilityRole="button"
+                accessibilityLabel={c.clearSearch}
+                style={styles.clearBtn}
+              >
+                <Ionicons name="close-circle" size={20} color={colors.textMuted} />
               </Pressable>
             ) : null}
           </View>
         </View>
 
         {/* 本週熱門：搜尋中就不顯示，避免干擾搜尋結果 */}
-        {keyword.trim() === "" && hotPosts.length > 0 ? (
+        {!searching && hotPosts.length > 0 ? (
           <>
-            <View style={styles.sectionTitleRow}>
-              <Ionicons name="flame" size={16} color={COMMUNITY_COLORS.danger} />
-              <Text style={styles.sectionTitle}>本週熱門</Text>
-            </View>
+            <Text style={styles.sectionTitle} accessibilityRole="header">
+              {c.hotTitle}
+            </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -167,28 +176,18 @@ export default function CommunityHomeScreen() {
 
         {/* 文章列表 */}
         {loading ? (
-          <View style={styles.emptyWrap}>
-            <ActivityIndicator size="large" color={COMMUNITY_COLORS.primary} />
-            <Text style={styles.emptyHint}>載入中...</Text>
+          <View style={styles.stateWrap}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.stateHint}>{c.loading}</Text>
           </View>
-        ) : errorText !== "" ? (
-          <View style={styles.emptyWrap}>
-            <Ionicons name="cloud-offline-outline" size={48} color="#D1D5DB" />
-            <Text style={styles.emptyTitle}>讀取失敗</Text>
-            <Text style={styles.emptyHint}>{errorText}</Text>
-          </View>
+        ) : loadFailed ? (
+          <EmptyState icon="cloud-offline-outline" title={c.loadFailedTitle} body={c.feedLoadFailed} />
         ) : listPosts.length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <Ionicons name="document-text-outline" size={48} color="#D1D5DB" />
-            <Text style={styles.emptyTitle}>
-              {keyword.trim() !== "" ? "找不到符合的文章" : "這個分類還沒有文章"}
-            </Text>
-            <Text style={styles.emptyHint}>
-              {keyword.trim() !== ""
-                ? "換個關鍵字再試試看"
-                : "成為第一個分享經驗的人吧"}
-            </Text>
-          </View>
+          <EmptyState
+            icon={searching ? "search-outline" : "document-text-outline"}
+            title={searching ? c.noMatchTitle : c.emptyCategoryTitle}
+            body={searching ? c.noMatchBody : c.emptyCategoryBody}
+          />
         ) : (
           <View style={styles.listWrap}>
             {listPosts.map((post) => (
@@ -201,11 +200,16 @@ export default function CommunityHomeScreen() {
       {/* 發文浮動鍵 */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="發表文章"
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        accessibilityLabel={c.newPost}
+        style={({ pressed }) => [
+          styles.fab,
+          { bottom: spacing.xl + insets.bottom },
+          pressed && styles.fabPressed,
+        ]}
         onPress={() => router.push(routes.newPost() as any)}
       >
-        <Ionicons name="add" size={28} color={COMMUNITY_COLORS.white} />
+        <Ionicons name="create-outline" size={22} color={colors.onPrimary} />
+        <Text style={styles.fabText}>{c.newPost}</Text>
       </Pressable>
     </View>
   );
@@ -214,78 +218,45 @@ export default function CommunityHomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COMMUNITY_COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingTop: 54,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
-    backgroundColor: COMMUNITY_COLORS.headerBg,
-  },
-  backBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  backText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  headerRight: {
-    marginLeft: "auto",
-    // 頭像比返回文字高，抵銷多出的高度，讓 header 與家屬端其他頁面同高
-    marginVertical: -8,
-  },
-  headerTitle: {
-    flexShrink: 1,
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#111827",
-    letterSpacing: 0.5,
+    backgroundColor: colors.surface,
   },
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 120,
     flexGrow: 1,
   },
   searchWrap: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 4,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
   },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    height: 44,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: "#F5F5F5",
+    gap: spacing.sm,
+    minHeight: 48,
+    paddingLeft: spacing.md,
+    borderRadius: radii.control,
+    backgroundColor: colors.surfaceSunken,
   },
   searchInput: {
+    ...typography.body,
     flex: 1,
-    fontSize: 16,
-    color: COMMUNITY_COLORS.text,
-    padding: 0,
+    minHeight: 48,
+    paddingVertical: 0,
   },
-  sectionTitleRow: {
-    flexDirection: "row",
+  clearBtn: {
+    width: 48,
+    height: 48,
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 20,
-    marginTop: 18,
-    marginBottom: 10,
+    justifyContent: "center",
   },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: COMMUNITY_COLORS.text,
+    ...typography.overline,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.xl,
+    marginBottom: spacing.sm,
   },
   hotScroll: {
     flexGrow: 0,
@@ -293,51 +264,46 @@ const styles = StyleSheet.create({
   },
   hotRow: {
     flexGrow: 0,
-    paddingHorizontal: 20,
-    paddingBottom: 18,
-    gap: 14,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    gap: spacing.md,
   },
   tabsWrap: {
-    borderBottomWidth: 1,
-    borderBottomColor: COMMUNITY_COLORS.borderLight,
+    marginTop: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
   },
   listWrap: {
-    paddingBottom: 12,
+    paddingBottom: spacing.md,
   },
-  emptyWrap: {
+  stateWrap: {
     alignItems: "center",
     justifyContent: "center",
-    paddingTop: 70,
-    paddingHorizontal: 40,
-    gap: 10,
+    paddingTop: spacing.xxxl,
+    gap: spacing.md,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COMMUNITY_COLORS.textSecondary,
-  },
-  emptyHint: {
-    fontSize: 16,
-    color: COMMUNITY_COLORS.textLight,
-    textAlign: "center",
+  stateHint: {
+    ...typography.body,
+    color: colors.textSecondary,
   },
   fab: {
     position: "absolute",
-    right: 20,
-    bottom: 32,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: COMMUNITY_COLORS.primary,
+    right: spacing.lg,
+    minHeight: 56,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: COMMUNITY_COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    gap: spacing.sm,
+    ...shadows.fab,
   },
   fabPressed: {
-    opacity: 0.85,
+    backgroundColor: colors.primaryPressed,
+  },
+  fabText: {
+    ...typography.bodyStrong,
+    color: colors.onPrimary,
   },
 });

@@ -1,7 +1,10 @@
-import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import React, { useEffect, useRef, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { careTargetCopy } from "@/src/i18n/copy/careTargetCopy";
+import { AppHeader, Button, Card, SectionHeader, StatusBadge, type StatusTone } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { router } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
 import * as Clipboard from "expo-clipboard";
@@ -13,15 +16,16 @@ import { primaryFamilyUid } from "@/src/care-target/permissions";
 import { invitationCopy } from "@/src/care-target/invitationCopy";
 import { manageInvitation, type InvitationState } from "@/src/care-target/careTargetApi";
 
-function ActionButton({label, onPress, busy}: {label: string; onPress: () => void; busy: boolean}) {
-  return <Pressable disabled={busy} onPress={onPress} style={{padding: 14, backgroundColor: busy ? "#ddd" : "#e8f2ff", borderRadius: 8}}><Text>{label}</Text></Pressable>;
-}
+const STATUS_TONE: Record<string, StatusTone> = { active: "success", pending: "warning", approved: "success", rejected: "danger" };
 
 export default function InvitationsScreen() {
   const { user } = useAuth();
   const uid = user?.uid;
   const { language } = useLanguage();
   const t = invitationCopy[language];
+  const ct = careTargetCopy[language];
+  const insets = useSafeAreaInsets();
+  const [copiedCode, setCopiedCode] = useState("");
   const { activePatientId: patientId, activePatient } = useActiveCareTarget();
   const key = `${uid}:${patientId}`;
   const latestKey = useRef(key);
@@ -103,41 +107,126 @@ export default function InvitationsScreen() {
     return () => clearInterval(timer);
   }, []);
   const expired = data && data.expiresAt <= now;
-  return <ScreenScrollView contentContainerStyle={{padding: 24, paddingTop: 20, gap: 18}}>
-    <ActionButton label={t.back} busy={busy} onPress={() => router.replace(user?.role === "caregiver" ? "/caregiver" : "/family")} />
-    <Text style={{fontSize: 25, fontWeight: "800"}}>{t.title}</Text>
-    <Text>{activePatient?.name}</Text>
-    <Text>{!patientId ? t.noPatient : role?.key !== key ? t.loading : primary ? t.primary : user?.role === "family" ? t.secondary : t.caregiver}</Text>
-    {!primary && <Text>{t.primaryOnly}</Text>}
-    {error && <Text style={{color: "#b00020"}}>{t.error}</Text>}
-    {!!notice && <Text style={{color: "#176B34"}}>{notice}</Text>}
-    {primary && <>
-      <Text>{t.validity}</Text>
-      <ActionButton label={t.refresh} busy={busy} onPress={() => setRefreshVersion(value => value + 1)} />
-      {data && <View style={{gap: 12}}>
-        <Text>{t[data.status as keyof typeof t] || data.status}{data.status === "active" && expired ? ` (${t.expired})` : ""}</Text>
-        {data.status === "active" && !expired && <Pressable onPress={() => { void Clipboard.setStringAsync(data.code); }}><Text selectable style={{fontSize: 30, letterSpacing: 5}}>{data.code}</Text></Pressable>}
-        <Text>{t.expires}: {data.expiresAt ? new Date(data.expiresAt).toLocaleString() : "—"}</Text>
-        {data.status === "pending" && <>
-          <Text selectable>{t.applicant}: {data.applicantUid}</Text>
-          <Text>{t.role}: {data.role === "family" ? t.secondary : t.caregiver}</Text>
-          <ActionButton label={t.approve} busy={busy} onPress={() => confirm("approve")} />
-          <ActionButton label={t.reject} busy={busy} onPress={() => confirm("reject")} />
+  const goHome = () => router.replace(user?.role === "caregiver" ? "/caregiver" : "/family");
+  const roleLabel = !patientId ? t.noPatient : role?.key !== key ? t.loading : primary ? t.primary : user?.role === "family" ? t.secondary : t.caregiver;
+  const showCode = !!data && data.status === "active" && !expired;
+  const secondaryUids = data?.secondaryFamilyUids || [];
+
+  return <View style={styles.container}>
+    <AppHeader
+      title={t.title}
+      left="back"
+      onBack={() => { if (!busy) goHome(); }}
+      right={primary ? <Button label={t.refresh} variant="ghost" icon="refresh" disabled={busy} onPress={() => setRefreshVersion(value => value + 1)} /> : undefined}
+    />
+    <ScrollView contentContainerStyle={[styles.content, {paddingBottom: spacing.xxl + insets.bottom}]}>
+      <Card>
+        <Text style={styles.overline}>{ct.careTarget}</Text>
+        <Text style={styles.patientName}>{activePatient?.name || "—"}</Text>
+        <View style={styles.roleRow}>
+          <Text style={styles.roleLabel}>{ct.yourRole}</Text>
+          <StatusBadge label={roleLabel} tone={primary ? "primary" : "neutral"} />
+        </View>
+      </Card>
+
+      {!primary && <Text style={styles.helper}>{t.primaryOnly}</Text>}
+      {error && <Card style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{t.error}</Text></Card>}
+      {!!notice && <Card style={styles.successCard}><Text accessibilityLiveRegion="polite" style={styles.successText}>{notice}</Text></Card>}
+
+      {primary && <>
+        {data && <>
+          <SectionHeader title={ct.inviteSection} style={styles.sectionHeader} />
+          <Card style={styles.codeCard}>
+            <StatusBadge
+              label={`${t[data.status as keyof typeof t] || data.status}${data.status === "active" && expired ? ` (${t.expired})` : ""}`}
+              tone={data.status === "active" && expired ? "neutral" : STATUS_TONE[data.status] ?? "neutral"}
+            />
+            {showCode && <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${ct.copyCode} ${data.code}`}
+              style={({pressed}) => [styles.codeBox, pressed && styles.codeBoxPressed]}
+              onPress={() => { void Clipboard.setStringAsync(data.code).then(() => setCopiedCode(data.code)); }}
+            >
+              <Text selectable style={styles.code}>{data.code}</Text>
+              <Text style={styles.codeHint}>{copiedCode === data.code ? ct.copied : ct.copyCode}</Text>
+            </Pressable>}
+            <Text style={styles.meta}>{t.expires}: {data.expiresAt ? new Date(data.expiresAt).toLocaleString() : "—"}</Text>
+            <Text style={styles.helper}>{t.validity}</Text>
+          </Card>
+
+          {data.status === "pending" && <>
+            <SectionHeader title={ct.pendingSection} style={styles.sectionHeader} />
+            <Card style={styles.stack}>
+              <Text style={styles.meta}>{t.applicant}</Text>
+              <Text selectable style={styles.uid}>{data.applicantUid}</Text>
+              <Text style={styles.meta}>{t.role}: {data.role === "family" ? t.secondary : t.caregiver}</Text>
+              <View style={styles.buttonRow}>
+                <Button label={t.approve} icon="checkmark" disabled={busy} onPress={() => confirm("approve")} style={styles.flexButton} />
+                <Button label={t.reject} variant="secondary" disabled={busy} onPress={() => confirm("reject")} style={styles.flexButton} />
+              </View>
+            </Card>
+          </>}
+
+          <SectionHeader title={ct.dangerSection} style={styles.sectionHeader} />
+          <Card style={styles.stack}>
+            <Text style={styles.helper}>{t.warning}</Text>
+            <View style={styles.buttonRow}>
+              <Button label={t.regenerate} icon="refresh" variant="secondary" disabled={busy} onPress={() => confirm("regenerate")} style={styles.flexButton} />
+              <Button label={t.revoke} icon="close-circle-outline" variant="secondary" disabled={busy} onPress={() => confirm("revoke")} style={styles.flexButton} />
+            </View>
+          </Card>
+
+          <SectionHeader title={t.transferTitle} style={styles.sectionHeader} />
+          <Card style={styles.stack}>
+            <Text style={styles.helper}>{t.transferWarning}</Text>
+            {!secondaryUids.length && <Text style={styles.meta}>{t.noSecondary}</Text>}
+            {secondaryUids.map(targetUid =>
+              <View key={targetUid} style={styles.memberRow}>
+                <Text selectable style={styles.uid}>{targetUid}</Text>
+                <Button label={t.transfer} variant="danger" disabled={busy} onPress={() => confirmTransfer(targetUid)} />
+              </View>)}
+          </Card>
         </>}
-        <Text>{t.warning}</Text>
-        <ActionButton label={t.regenerate} busy={busy} onPress={() => confirm("regenerate")} />
-        <ActionButton label={t.revoke} busy={busy} onPress={() => confirm("revoke")} />
-        <Text style={{fontSize: 19, fontWeight: "700", marginTop: 12}}>
-          {t.transferTitle}</Text>
-        <Text>{t.transferWarning}</Text>
-        {!(data.secondaryFamilyUids || []).length && <Text>{t.noSecondary}</Text>}
-        {(data.secondaryFamilyUids || []).map(targetUid =>
-          <View key={targetUid} style={{gap: 8, padding: 12,
-            borderWidth: 1, borderColor: "#ddd", borderRadius: 8}}>
-            <Text selectable>{targetUid}</Text>
-            <ActionButton label={t.transfer} busy={busy} onPress={() => confirmTransfer(targetUid)} />
-          </View>)}
-      </View>}
-    </>}
-  </ScreenScrollView>;
+        {!data && busy && <Text style={styles.helper}>{t.loading}</Text>}
+      </>}
+    </ScrollView>
+  </View>;
 }
+
+const styles = StyleSheet.create({
+  container: {flex: 1, backgroundColor: colors.canvas},
+  content: {padding: layout.screenPaddingX, gap: spacing.md, width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center"},
+  overline: {...typography.overline},
+  patientName: {...typography.title, marginTop: spacing.xs},
+  roleRow: {flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md},
+  roleLabel: {...typography.bodySmall},
+  helper: {...typography.bodySmall},
+  meta: {...typography.bodySmall, color: colors.textSecondary},
+  errorCard: {backgroundColor: colors.dangerSoft, borderColor: colors.dangerSoft},
+  errorText: {...typography.body, color: colors.danger},
+  successCard: {backgroundColor: colors.successSoft, borderColor: colors.successSoft},
+  successText: {...typography.body, color: colors.success},
+  sectionHeader: {paddingTop: spacing.md, paddingBottom: 0},
+  codeCard: {gap: spacing.md},
+  codeBox: {
+    alignItems: "center",
+    paddingVertical: spacing.lg,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    backgroundColor: colors.primarySoft,
+  },
+  codeBoxPressed: {backgroundColor: colors.surface},
+  code: {...typography.display, fontSize: 32, lineHeight: 40, letterSpacing: 6, color: colors.primary},
+  codeHint: {...typography.caption, color: colors.primary, marginTop: spacing.xs},
+  stack: {gap: spacing.sm},
+  uid: {...typography.bodySmall, color: colors.text},
+  buttonRow: {flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.xs},
+  flexButton: {flexGrow: 1},
+  memberRow: {
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+  },
+});

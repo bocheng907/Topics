@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Text, View, Pressable } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { collection, getDocs, query, where, limit, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
@@ -7,6 +7,10 @@ import { useLanguage } from "@/src/store/LanguageContext";
 import { invitationCopy } from "./invitationCopy";
 import { useActiveCareTarget } from "./useActiveCareTarget";
 import { router } from "expo-router";
+import { Button, Card, SectionHeader, StatusBadge, type StatusTone } from "@/src/ui/components";
+import { colors, spacing, typography } from "@/src/ui/theme";
+
+const STATUS_TONE: Record<string, StatusTone> = { approved: "success", pending: "warning", rejected: "danger" };
 export default function JoinRequests() {
   const { user } = useAuth();
   const { language } = useLanguage();
@@ -31,14 +35,27 @@ export default function JoinRequests() {
     return () => { disposed = true; unsubscribe?.(); };
   }, [user]);
   const rows = state?.uid === user?.uid ? state?.rows || [] : [];
-  return <View style={{ gap: 12 }}><Text style={{ fontWeight: "700" }}>{t.requests}</Text>
-    {error && <Text>{t.error}</Text>}
-    {!rows.length && <Text>{t.empty}</Text>}
-    {rows.map(row => <View key={row.id} style={{ padding: 12, borderWidth: 1, borderColor: "#ddd", gap: 8 }}>
-      <Text selectable>{row.id}</Text><Text>{t[row.status as keyof typeof t] || row.status}</Text>
-      {row.status === "approved" && <Pressable onPress={async () => {
-        try { await setActivePatientId(row.patientId); router.replace(user?.role === "caregiver" ? "/caregiver" : "/family"); } catch { setError(true); }
-      }}><Text style={{ color: "#007AFF" }}>{t.enter}</Text></Pressable>}
-    </View>)}
+  // Nothing to show yet: keep the join screen focused on entering a code.
+  if (!error && !rows.length) return null;
+  return <View>
+    <SectionHeader title={t.requests} style={styles.header} />
+    {error && <Text style={styles.error} accessibilityRole="alert">{t.error}</Text>}
+    {!!rows.length && <Card padding={0}>
+      {rows.map((row, index) => <View key={row.id} style={[styles.row, index > 0 && styles.rowBorder]}>
+        <StatusBadge label={t[row.status as keyof typeof t] || row.status} tone={STATUS_TONE[row.status] ?? "neutral"} />
+        <Text selectable style={styles.id}>{row.id}</Text>
+        {row.status === "approved" && <Button label={t.enter} variant="secondary" icon="arrow-forward" onPress={async () => {
+          try { await setActivePatientId(row.patientId); router.replace(user?.role === "caregiver" ? "/caregiver" : "/family"); } catch { setError(true); }
+        }} />}
+      </View>)}
+    </Card>}
   </View>;
 }
+
+const styles = StyleSheet.create({
+  header: { paddingTop: 0 },
+  error: { ...typography.bodySmall, color: colors.danger, marginBottom: spacing.sm },
+  row: { padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.surface },
+  rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider },
+  id: { ...typography.caption },
+});
