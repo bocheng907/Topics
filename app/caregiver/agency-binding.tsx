@@ -1,4 +1,8 @@
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { AppHeader, Button, Card, Divider, KeyboardAwareScroll, ListRow, StatusBadge, TextField } from "@/src/ui/components";
+import { colors, spacing, typography } from "@/src/ui/theme";
+import { caregiverCopy } from "@/src/i18n/copy/caregiverCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
 import { httpsCallable } from "firebase/functions";
 // app/caregiver/agency-binding.tsx
 
@@ -13,13 +17,10 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type AgencyMembership = {
   caregiverUid: string;
@@ -30,7 +31,8 @@ type AgencyMembership = {
 
 export default function AgencyBindingScreen() {
   const { user } = useAuth();
-  const insets = useSafeAreaInsets();
+  const { language } = useLanguage();
+  const c = caregiverCopy[language];
 
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
@@ -98,9 +100,9 @@ export default function AgencyBindingScreen() {
 
   async function handleBindAgency() {
     if (!user || user.role !== "caregiver" || submitting) return;
-    if (membership) { Alert.alert("提醒", "目前已經綁定仲介"); return; }
+    if (membership) { Alert.alert(c.agencyNotice, c.agencyAlreadyBound); return; }
     if (!/^[A-Z0-9]{6}$/.test(normalizedCode)) {
-      Alert.alert("提醒", "請輸入 6 碼仲介邀請碼"); return;
+      Alert.alert(c.agencyNotice, c.agencyEnterCode); return;
     }
     setSubmitting(true);
     try {
@@ -108,390 +110,139 @@ export default function AgencyBindingScreen() {
       const result = await bind({code: normalizedCode});
       setMembership(result.data);
       setCode("");
-      Alert.alert("綁定成功", "已成功與仲介建立關係");
+      Alert.alert(c.agencyBindSuccessTitle, c.agencyBindSuccessMessage);
     } catch {
-      Alert.alert("綁定失敗", "請確認邀請碼有效、帳號尚未綁定，或稍後重試。");
+      Alert.alert(c.agencyBindFailedTitle, c.agencyBindFailedMessage);
     } finally { setSubmitting(false); }
   }
 
+  // Same back behaviour as before: once bound, go to the caregiver home.
+  const header = (
+    <AppHeader
+      title={c.agencyTitle}
+      onBack={membership ? () => router.replace("/caregiver" as any) : undefined}
+      fallbackHref={"/caregiver" as any}
+    />
+  );
+
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator
-          size="large"
-          color="#4F59D5"
-        />
+      <View style={styles.container}>
+        {header}
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
       </View>
     );
   }
 
+  const codeInvalid = normalizedCode.length !== 6;
+
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View
-        style={[
-          styles.header,
-          { paddingTop: insets.top + 8 },
-        ]}
-      >
-        <Pressable
-            style={styles.headerSide}
-            onPress={() => {
-                if (membership) {
-                router.replace("/caregiver" as any);
-                } else {
-                router.back();
-                }
-            }}
-        >
-            <Ionicons
-                name="chevron-back"
-                size={30}
-                color="#111827"
-            />
-        </Pressable>
+      {header}
 
-        <Text style={styles.headerTitle}>
-          看護仲介
-        </Text>
-
-        <View style={styles.headerSide} />
-      </View>
-
-      <View style={styles.content}>
+      <KeyboardAwareScroll contentContainerStyle={styles.content}>
         {membership ? (
           <>
-            <View style={styles.statusIcon}>
-              <Ionicons
-                name="checkmark-circle"
-                size={58}
-                color="#16A34A"
+            <View style={styles.hero}>
+              <View style={[styles.heroIcon, styles.heroIconSuccess]}>
+                <Ionicons name="checkmark-circle" size={44} color={colors.success} />
+              </View>
+              <Text style={styles.title}>{c.agencyBoundTitle}</Text>
+              <Text style={styles.subtitle}>{c.agencyBoundSubtitle}</Text>
+            </View>
+
+            <Card padding={0}>
+              <ListRow
+                title={c.agencyInviteCodeLabel}
+                right={<Text style={styles.infoValue}>{membership.agencyInviteCode}</Text>}
               />
-            </View>
+              <Divider inset={spacing.lg} />
+              <ListRow
+                title={c.agencyStatusLabel}
+                right={<StatusBadge label={c.agencyStatusBound} tone="success" />}
+              />
+            </Card>
 
-            <Text style={styles.title}>
-              已綁定仲介
-            </Text>
+            <Text style={styles.note}>{c.agencyChangeNote}</Text>
 
-            <Text style={styles.subtitle}>
-              您目前已與仲介建立管理關係
-            </Text>
-
-            <View style={styles.infoCard}>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>
-                  仲介邀請碼
-                </Text>
-
-                <Text style={styles.infoValue}>
-                  {membership.agencyInviteCode}
-                </Text>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>
-                  綁定狀態
-                </Text>
-
-                <View style={styles.activeBadge}>
-                  <View style={styles.greenDot} />
-
-                  <Text style={styles.activeText}>
-                    已綁定
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <Text style={styles.note}>
-              如需更換或解除仲介，現階段請由管理人員協助處理。
-            </Text>
-
-            <Pressable
-                style={styles.homeButton}
-                onPress={() => router.replace("/caregiver" as any)}
-                >
-                <Ionicons
-                    name="home-outline"
-                    size={20}
-                    color="#FFFFFF"
-                />
-
-                <Text style={styles.homeButtonText}>
-                    返回看護首頁
-                </Text>
-                </Pressable>
+            <Button
+              label={c.agencyBackHome}
+              icon="home-outline"
+              size="lg"
+              fullWidth
+              onPress={() => router.replace("/caregiver" as any)}
+            />
           </>
         ) : (
           <>
-            <View style={styles.bindIcon}>
-              <Ionicons
-                name="business-outline"
-                size={48}
-                color="#4F59D5"
-              />
+            <View style={styles.hero}>
+              <View style={styles.heroIcon}>
+                <Ionicons name="business-outline" size={40} color={colors.primary} />
+              </View>
+              <Text style={styles.title}>{c.agencyBindTitle}</Text>
+              <Text style={styles.subtitle}>{c.agencyBindSubtitle}</Text>
             </View>
 
-            <Text style={styles.title}>
-              綁定仲介
-            </Text>
-
-            <Text style={styles.subtitle}>
-              輸入仲介提供的邀請碼，即可建立綁定關係
-            </Text>
-
-            <TextInput
+            <TextField
+              label={c.agencyCodeLabel}
               value={code}
               onChangeText={setCode}
-              placeholder="請輸入 6 碼邀請碼"
-              placeholderTextColor="#A0A0A0"
+              placeholder={c.agencyCodePlaceholder}
               autoCapitalize="characters"
+              autoCorrect={false}
               maxLength={6}
-              style={styles.codeInput}
+              returnKeyType="done"
+              onSubmitEditing={handleBindAgency}
+              inputStyle={styles.codeInput}
             />
 
-            <Pressable
+            <Button
+              label={c.agencyConfirmBind}
+              size="lg"
+              fullWidth
               onPress={handleBindAgency}
-              disabled={
-                submitting ||
-                normalizedCode.length !== 6
-              }
-              style={[
-                styles.bindButton,
-                (submitting ||
-                  normalizedCode.length !== 6) &&
-                  styles.bindButtonDisabled,
-              ]}
-            >
-              {submitting ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.bindButtonText}>
-                  確認綁定
-                </Text>
-              )}
-            </Pressable>
+              loading={submitting}
+              disabled={submitting || codeInvalid}
+            />
 
-            <View style={styles.helpCard}>
-              <Ionicons
-                name="information-circle-outline"
-                size={22}
-                color="#4F59D5"
-              />
-
-              <Text style={styles.helpText}>
-                完成綁定後，仲介將可以看到您與照護工作相關的必要資訊，以及家屬提出的仲介協助事項。
-              </Text>
-            </View>
+            <Card tone="sunken" style={styles.helpCard}>
+              <Ionicons name="information-circle-outline" size={22} color={colors.textSecondary} />
+              <Text style={styles.helpText}>{c.agencyHelp}</Text>
+            </Card>
           </>
         )}
-      </View>
+      </KeyboardAwareScroll>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-  },
-
-  header: {
-    backgroundColor: "#E1E9FF",
-    paddingBottom: 14,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  headerSide: {
-    width: 48,
-    height: 48,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#111827",
-  },
-
+  container: { flex: 1, backgroundColor: colors.canvas },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   content: {
-    flex: 1,
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 56,
+    width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
+    paddingTop: spacing.xxl,
   },
-
-  bindIcon: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+  hero: { alignItems: "center", marginBottom: spacing.sm },
+  heroIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#E1E9FF",
-    marginBottom: 20,
+    backgroundColor: colors.primarySoft,
+    marginBottom: spacing.lg,
   },
-
-  statusIcon: {
-    marginBottom: 16,
-  },
-
-  title: {
-    fontSize: 26,
-    fontWeight: "bold",
-    color: "#111827",
-  },
-
-  subtitle: {
-    fontSize: 15,
-    color: "#6B7280",
-    marginTop: 8,
-    marginBottom: 28,
-    textAlign: "center",
-  },
-
-  codeInput: {
-    width: "100%",
-    maxWidth: 460,
-    backgroundColor: "#F8F9FC",
-    borderWidth: 2,
-    borderColor: "#D5D9E8",
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    textAlign: "center",
-    fontSize: 26,
-    fontWeight: "800",
-    letterSpacing: 6,
-    color: "#111827",
-  },
-
-  bindButton: {
-    width: "100%",
-    maxWidth: 460,
-    marginTop: 18,
-    backgroundColor: "#4F59D5",
-    borderRadius: 16,
-    paddingVertical: 17,
-    alignItems: "center",
-  },
-
-  bindButtonDisabled: {
-    backgroundColor: "#BFC4E8",
-  },
-
-  bindButtonText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-
-  helpCard: {
-    width: "100%",
-    maxWidth: 460,
-    marginTop: 24,
-    backgroundColor: "#F8F9FC",
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: "row",
-    gap: 10,
-  },
-
-  helpText: {
-    flex: 1,
-    color: "#6B7280",
-    fontSize: 14,
-    lineHeight: 21,
-  },
-
-  infoCard: {
-    width: "100%",
-    maxWidth: 460,
-    backgroundColor: "#F8F9FC",
-    borderRadius: 18,
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-  },
-
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 18,
-  },
-
-  infoLabel: {
-    fontSize: 16,
-    color: "#6B7280",
-    fontWeight: "600",
-  },
-
-  infoValue: {
-    fontSize: 18,
-    color: "#111827",
-    fontWeight: "bold",
-    letterSpacing: 2,
-  },
-
-  divider: {
-    height: 1,
-    backgroundColor: "#E5E7EB",
-  },
-
-  activeBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  greenDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: "#16A34A",
-  },
-
-  activeText: {
-    color: "#16A34A",
-    fontSize: 15,
-    fontWeight: "bold",
-  },
-
-  note: {
-    marginTop: 18,
-    color: "#8B8B93",
-    fontSize: 13,
-    textAlign: "center",
-  },
-  homeButton: {
-    marginTop: 24,
-    width: "100%",
-    maxWidth: 460,
-    backgroundColor: "#4F59D5",
-    borderRadius: 16,
-    paddingVertical: 16,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-    },
-
-    homeButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "bold",
-    },
+  heroIconSuccess: { backgroundColor: colors.successSoft },
+  title: { ...typography.title, textAlign: "center" },
+  subtitle: { ...typography.body, color: colors.textSecondary, marginTop: spacing.sm, textAlign: "center" },
+  codeInput: { textAlign: "center", fontSize: 26, lineHeight: 32, fontWeight: "700", letterSpacing: 6, minHeight: 60 },
+  helpCard: { flexDirection: "row", gap: spacing.md, alignItems: "flex-start" },
+  helpText: { ...typography.bodySmall, flex: 1 },
+  infoValue: { ...typography.bodyStrong, letterSpacing: 2 },
+  note: { ...typography.bodySmall, textAlign: "center" },
 });

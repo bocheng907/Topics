@@ -1,4 +1,6 @@
-import { AppHeader } from "@/src/ui/components";
+import { AppHeader, Card } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
+import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
@@ -61,7 +63,8 @@ export default function CaregiverChatListScreen() {
     <View style={styles.container}>
       <AppHeader title={t.chatRoom} left="menu" />
 
-      <ScrollView>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Card padding={0}>
         <Pressable
           onPress={() =>
             router.push({
@@ -71,9 +74,12 @@ export default function CaregiverChatListScreen() {
           }
           style={({ pressed }) => [
             styles.chatItem,
-            pressed && { backgroundColor: "#F5F5F5" },
+            pressed && styles.chatItemPressed,
+            !activePatientId && styles.chatItemDisabled,
           ]}
           disabled={!activePatientId}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !activePatientId }}
         >
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
@@ -109,7 +115,9 @@ export default function CaregiverChatListScreen() {
                 : t.noChatRecords}
             </Text>
           </View>
+          <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
         </Pressable>
+        </Card>
         <ChatTranslationStatus language={language} {...translated} />
 
       </ScrollView>
@@ -118,40 +126,38 @@ export default function CaregiverChatListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF" },
+  container: { flex: 1, backgroundColor: colors.canvas },
+  scrollContent: {
+    padding: layout.screenPaddingX,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.md,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+  },
   chatItem: {
     flexDirection: "row",
-    padding: 20,
     alignItems: "center",
+    gap: spacing.md,
+    minHeight: 88,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
   },
+  chatItemPressed: { backgroundColor: colors.surfaceSunken },
+  chatItemDisabled: { opacity: 0.5 },
   avatar: {
     flexShrink: 0,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#E0E0E0",
-    marginRight: 15,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primarySoft,
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarText: {
-    color: "#000",
-    fontSize: 24,
-    fontWeight: "bold",
-  },
-  chatInfo: {
-    flex: 1,
-    minWidth: 0,
-    gap: 5,
-  },
+  avatarText: { fontSize: 22, fontWeight: "700", color: colors.primary },
+  chatInfo: { flex: 1, minWidth: 0, gap: spacing.xs },
   chatHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 },
-  caregiverName: { fontSize: 20, fontWeight: "900", color: "#000", flexShrink: 1, minWidth: 0 },
-  timeText: {
-    fontSize: 14,
-    color: "#999",
-  },
-  lastMsgText: {
-    fontSize: 16,
-    color: "#666",
-  },
+  caregiverName: { ...typography.bodyStrong, fontSize: 18, flexShrink: 1, minWidth: 0 },
+  timeText: { ...typography.caption },
+  lastMsgText: { ...typography.bodySmall },
 });

@@ -1,9 +1,11 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { caregiverCopy } from "@/src/i18n/copy/caregiverCopy";
 import { ClientOnly } from "@/src/ui/ClientOnly";
 // app/caregiver/communication-cards.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
-import { router } from 'expo-router'; // 💡 新增：引入 router 來做返回功能
+import type { Href } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppAlert as Alert } from '@/src/ui/AppAlert';
@@ -34,6 +36,7 @@ function CaregiverVoiceContent() {
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
+  const c = caregiverCopy[language];
   const taskTitles: Record<number, string> = {
     1: t.voiceTaskMedication,
     2: t.voiceTaskMeal,
@@ -149,48 +152,42 @@ function CaregiverVoiceContent() {
 
   return (
     <View style={styles.container}>
-      {/* 💡 修改 1：換成家屬端同款的左側返回鍵 Header */}
-      <ScreenHeader style={styles.header}>
-        <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-            <Ionicons name="chevron-back" size={24} color="#111827" />
-            <Text style={styles.backBtnText}>{t.back}</Text>
-          </Pressable>
-        </View>
-      </ScreenHeader>
-
-      <View style={styles.hintContainer}>
-        <View style={styles.hintBadge}>
-          <Ionicons name="volume-medium" size={20} color="#4A8B46" />
-          <Text style={styles.hintText}>{t.communicationCards}</Text>
-        </View>
-      </View>
+      <AppHeader title={t.communicationCards} fallbackHref={"/caregiver" as Href} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.hintRow}>
+          <Ionicons name="volume-medium-outline" size={22} color={colors.textSecondary} />
+          <Text style={styles.hintText}>{c.cardsHint}</Text>
+        </View>
+
         <View style={styles.gridContainer}>
           {tasks.map((task) => {
             const isPlaying = playingTaskId === task.id;
+            const title = taskTitles[task.id] ?? task.title;
 
             return (
               <Pressable
                 key={task.id}
                 onPress={() => handleCardClick(task)}
-                style={[
+                accessibilityRole="button"
+                accessibilityLabel={task.hasRecording ? title : `${title} (${t.notRecorded})`}
+                accessibilityState={{ selected: isPlaying }}
+                style={({ pressed }) => [
                   styles.card,
                   isPlaying && styles.cardPlaying,
-                  !task.hasRecording && styles.cardDisabled
+                  pressed && !isPlaying && styles.cardPressed,
                 ]}
               >
-                <View style={styles.imageBox}>
+                <View style={[styles.imageBox, !task.hasRecording && styles.imageBoxDisabled]}>
                   <Image source={task.image} style={styles.taskImage} resizeMode="contain" />
-                  
+
                   {isPlaying && (
                     <View style={styles.playingOverlay}>
                       <Text style={styles.playingText}>{t.previewing}</Text>
                     </View>
                   )}
 
-                  {task.hasRecording && (
+                  {task.hasRecording ? (
                     <View style={[styles.iconBadge, isPlaying ? styles.iconBadgePlaying : styles.iconBadgeIdle]}>
                       {isPlaying ? (
                         <View style={styles.waveContainer}>
@@ -200,12 +197,12 @@ function CaregiverVoiceContent() {
                           <View style={[styles.waveBar, { height: waveHeights[3] }]} />
                         </View>
                       ) : (
-                        <Ionicons name="play" size={16} color="#4A4A4A" style={{ marginLeft: 2 }} />
+                        <Ionicons name="play" size={18} color={colors.primary} style={{ marginLeft: 2 }} />
                       )}
                     </View>
-                  )}
+                  ) : null}
                 </View>
-                
+
                 <View style={styles.titleContainer}>
                   <Text
                     style={[styles.cardTitle, isPlaying && styles.cardTitlePlaying]}
@@ -213,8 +210,9 @@ function CaregiverVoiceContent() {
                     adjustsFontSizeToFit
                     minimumFontScale={0.7}
                   >
-                    {taskTitles[task.id] ?? task.title}
+                    {title}
                   </Text>
+                  {!task.hasRecording ? <Text style={styles.cardMeta}>{t.notRecorded}</Text> : null}
                 </View>
               </Pressable>
             );
@@ -226,40 +224,66 @@ function CaregiverVoiceContent() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA' },
-  
-  // 💡 Header 樣式修改：讓內容靠左對齊
-  header: { backgroundColor: '#90E389', paddingTop: 12, paddingBottom: 16, elevation: 2, minHeight: 56 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'flex-start' },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
-  
-  hintContainer: { paddingTop: 24, paddingBottom: 8, alignItems: 'center', paddingHorizontal: 16 },
-  hintBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2F9F1', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 30, borderWidth: 1, borderColor: '#D5EED4', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, maxWidth: "100%" },
-  hintText: { color: '#4A8B46', fontWeight: 'bold', fontSize: 16, marginLeft: 8, flexShrink: 1 },
-  
-  // 💡 修改 2：將 paddingBottom 增加到 120，徹底解決底部卡片被遮住的問題
-  scrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 120 },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  
-  card: { width: '47%', backgroundColor: '#FFF', borderRadius: 28, padding: 12, marginBottom: 20, alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12 },
-  cardDisabled: { opacity: 0.7 },
-  cardPlaying: { transform: [{ translateY: -4 }], shadowColor: '#90E389', shadowOpacity: 0.5, shadowRadius: 16, elevation: 8 },
-  
-  imageBox: { width: '100%', aspectRatio: 1, backgroundColor: '#F7F7F7', borderRadius: 20, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  taskImage: { width: "100%", height: "100%" },
-  
-  playingOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  playingText: { color: '#FFF', fontWeight: 'bold', fontSize: 18, letterSpacing: 2, textShadowColor: 'rgba(0, 0, 0, 0.75)', textShadowOffset: {width: -1, height: 1}, textShadowRadius: 10 },
-  
-  iconBadge: { position: 'absolute', bottom: 8, right: 8, width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
-  iconBadgeIdle: { backgroundColor: 'rgba(255,255,255,0.9)' },
-  iconBadgePlaying: { backgroundColor: '#90E389' },
-  
+  container: { flex: 1, backgroundColor: colors.canvas },
+
+  scrollContent: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl,
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+  },
+  hintRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg, paddingHorizontal: spacing.xs },
+  hintText: { ...typography.body, color: colors.textSecondary, flexShrink: 1 },
+
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: spacing.md },
+
+  card: {
+    width: '48%',
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  cardPressed: { backgroundColor: colors.surfaceSunken },
+  cardPlaying: { backgroundColor: colors.primarySoft, borderColor: colors.primary, borderWidth: 2, padding: spacing.md - 1 },
+
+  imageBox: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: colors.surfaceSunken,
+    borderRadius: radii.control,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  imageBoxDisabled: { opacity: 0.55 },
+  taskImage: { width: '100%', height: '100%' },
+
+  playingOverlay: { ...StyleSheet.absoluteFill, backgroundColor: colors.overlay, justifyContent: 'center', alignItems: 'center' },
+  playingText: { ...typography.bodyStrong, color: colors.onPrimary, fontSize: 18 },
+
+  iconBadge: {
+    position: 'absolute',
+    bottom: spacing.sm,
+    right: spacing.sm,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconBadgeIdle: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primaryBorder },
+  iconBadgePlaying: { backgroundColor: colors.primary },
+
   waveContainer: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 3, height: 16 },
-  waveBar: { width: 3, backgroundColor: '#FFF', borderRadius: 2 },
-  
-  titleContainer: { marginTop: 12, marginBottom: 4, width: '100%', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
-  cardTitle: { width: '100%', fontSize: 22, lineHeight: 25, fontWeight: 'bold', color: '#000', letterSpacing: 0.2, textAlign: 'center' },
-  cardTitlePlaying: { color: '#4A8B46' },
+  waveBar: { width: 3, backgroundColor: colors.onPrimary, borderRadius: 2 },
+
+  titleContainer: { marginTop: spacing.md, marginBottom: spacing.xs, width: '100%', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
+  cardTitle: { ...typography.title, fontSize: 21, lineHeight: 26, width: '100%', textAlign: 'center' },
+  cardTitlePlaying: { color: colors.primary },
+  cardMeta: { ...typography.caption, textAlign: 'center', marginTop: 2 },
 });

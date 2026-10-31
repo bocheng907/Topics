@@ -1,8 +1,12 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, Card, Divider, EmptyState, StatusBadge } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { caregiverCopy, sourceLabelText } from "@/src/i18n/copy/caregiverCopy";
+import { SegmentedTabBar, SegmentedTabs } from "@/src/caregiver/SegmentedTabs";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 // app/caregiver/list.tsx
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   Pressable,
@@ -10,7 +14,7 @@ import {
   StyleSheet,
   StatusBar,
 } from "react-native";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import {
   collection,
   onSnapshot,
@@ -182,6 +186,8 @@ export default function CaregiverListScreen() {
   const { user } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
+  const c = caregiverCopy[language];
+  const sep = language === "zh" ? "：" : ": ";
 
   const [tab, setTab] = useState<TabType>("records");
   const [list, setList] = useState<PrescriptionRow[]>([]);
@@ -361,10 +367,16 @@ export default function CaregiverListScreen() {
     });
   };
 
+  const header = <AppHeader title={t.prescriptionBook} fallbackHref={"/caregiver" as Href} />;
+
   if (!ready) {
     return (
-      <View style={styles.center}>
-        <Text>{t.loading}</Text>
+      <View style={styles.container}>
+        {header}
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.centerText}>{t.loading}</Text>
+        </View>
       </View>
     );
   }
@@ -372,181 +384,151 @@ export default function CaregiverListScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      {header}
 
-      <ScreenHeader style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backButton}
-          hitSlop={8}
-        >
-          <Ionicons name="chevron-back" size={24} color="#111827" />
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-
-        <View style={styles.tabContainer}>
-          <Pressable
-            onPress={() => setTab("records")}
-            style={[styles.tab, tab === "records" && styles.activeTab]}
-          >
-            <Text style={styles.tabText} adjustsFontSizeToFit minimumFontScale={0.72}>{t.prescriptionRecords}</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => setTab("meds")}
-            style={[styles.tab, tab === "meds" && styles.activeTab]}
-          >
-            <Text style={styles.tabText} adjustsFontSizeToFit minimumFontScale={0.72}>{t.medicationList}</Text>
-          </Pressable>
-        </View>
-      </ScreenHeader>
+      <SegmentedTabBar>
+        <SegmentedTabs
+          options={[
+            { key: "records", label: t.prescriptionRecords },
+            { key: "meds", label: t.medicationList },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+      </SegmentedTabBar>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {tab === "records" ? (
           <>
-            <Text style={styles.pageTitle}>{t.prescriptionBook}</Text>
-
             {list.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons
-                  name="document-text-outline"
-                  size={60}
-                  color="#CCC"
-                />
-                <Text style={styles.emptyText}>{t.noPrescriptionRecords}</Text>
-                <Text style={styles.emptySubText}>
-                  {t.goHomeScanPrescription}
-                </Text>
-              </View>
+              <EmptyState
+                icon="document-text-outline"
+                title={t.noPrescriptionRecords}
+                body={t.goHomeScanPrescription}
+              />
             ) : (
               list.map((prescription) => (
-                <View
-                  key={prescription.prescriptionId}
-                  style={styles.recordCard}
-                >
-                  <Text style={styles.recordTitle}>
-                    {prescription.title || t.cameraDefaultDraftTitle}
-                  </Text>
+                <Card key={prescription.prescriptionId} padding={0}>
+                  <Pressable
+                    onPress={() =>
+                      router.push({
+                        pathname: "/caregiver/detail",
+                        params: { id: prescription.prescriptionId },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`${prescription.title || t.cameraDefaultDraftTitle}, ${t.viewDetails}`}
+                    style={({ pressed }) => [styles.recordBody, pressed && styles.pressed]}
+                  >
+                    <View style={styles.recordIcon}>
+                      <Ionicons name="document-text-outline" size={24} color={colors.primary} />
+                    </View>
+                    <View style={styles.recordTextBox}>
+                      <Text style={styles.recordTitle}>
+                        {prescription.title || t.cameraDefaultDraftTitle}
+                      </Text>
+                      <Text style={styles.recordDate}>
+                        {t.date}{sep}{formatDate(prescription.createdAt, t.unknown)}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
+                  </Pressable>
 
-                  <Text style={styles.recordDate}>
-                    {t.date}：
-                    {formatDate(prescription.createdAt, t.unknown)}
-                  </Text>
+                  <Divider />
 
                   <View style={styles.recordFooter}>
-                    <Pressable
+                    <Button
+                      label={t.viewDetails}
+                      variant="ghost"
+                      icon="eye-outline"
                       onPress={() =>
                         router.push({
                           pathname: "/caregiver/detail",
                           params: { id: prescription.prescriptionId },
                         })
                       }
-                    >
-                      <Text style={styles.detailText}>{t.viewDetails}</Text>
-                    </Pressable>
-
+                    />
                     <Pressable
-                      onPress={() =>
-                        confirmDelete(prescription.prescriptionId)
-                      }
+                      onPress={() => confirmDelete(prescription.prescriptionId)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t.delete} ${prescription.title || ""}`.trim()}
+                      style={({ pressed }) => [styles.deleteBtn, pressed && { backgroundColor: colors.dangerSoft }]}
                     >
+                      <Ionicons name="trash-outline" size={20} color={colors.danger} />
                       <Text style={styles.deleteText}>{t.delete}</Text>
                     </Pressable>
                   </View>
-                </View>
+                </Card>
               ))
             )}
           </>
         ) : (
           <>
-            <View style={styles.summaryCard}>
-              <View style={styles.summaryTop}>
-                <Ionicons
-                  name="documents-outline"
-                  size={54}
-                  color="#2F80ED"
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.summaryLabel}>{t.currentMedications}</Text>
-                  <Text style={styles.summaryCount}>
-                    {t.medicationCountPrefix} <Text style={styles.summaryNumber}>{medications.length}</Text>{" "}
-                    {t.medicationCountSuffix}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.warningBox}>
-              <Ionicons name="warning" size={40} color="#ebb120" />
-              <Text style={styles.warningText}>
-                {t.medicationDisclaimer}
+            <Card tone="selected" style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>{t.currentMedications}</Text>
+              <Text style={styles.summaryCount}>
+                {t.medicationCountPrefix} <Text style={styles.summaryNumber}>{medications.length}</Text>{" "}
+                {t.medicationCountSuffix}
               </Text>
+            </Card>
+
+            <View style={styles.warningBox} accessibilityRole="alert">
+              <Ionicons name="warning-outline" size={24} color={colors.warning} />
+              <Text style={styles.warningText}>{t.medicationDisclaimer}</Text>
             </View>
 
             {medications.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="medical-outline" size={60} color="#CCC" />
-                <Text style={styles.emptyText}>{t.noMedicationData}</Text>
-              </View>
+              <EmptyState icon="medical-outline" title={t.noMedicationData} />
             ) : (
               medications.map((medication) => (
-                <Pressable
+                <Card
                   key={medication.key}
-                  style={styles.medCard}
+                  padding={0}
                   onPress={() => openMedicationRecords(medication)}
+                  accessibilityLabel={getDisplayDrugName(medication.name)}
                 >
                   <View style={styles.medContent}>
-                    <View style={styles.pillIconWrap}>
-                      <Ionicons name="medkit" size={32} color="#5B8DEF" />
+                    <View style={styles.recordIcon}>
+                      <Ionicons name="medkit-outline" size={24} color={colors.primary} />
                     </View>
 
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={styles.medName}>
-                        {getDisplayDrugName(medication.name)}
+                        {getDisplayDrugName(medication.name) === "未命名藥品"
+                          ? c.unnamedDrug
+                          : getDisplayDrugName(medication.name)}
                       </Text>
 
                       <View style={styles.purposeRow}>
                         <Text style={styles.purposeLabel}>{t.commonUses}</Text>
-
                         {medication.purposes.length > 0 ? (
                           medication.purposes.slice(0, 2).map((purpose) => (
-                            <View key={purpose} style={styles.purposeTag}>
-                              <Text style={styles.purposeTagText}>
-                                {purpose}
-                              </Text>
-                            </View>
+                            <StatusBadge key={purpose} label={purpose} tone="primary" style={styles.purposeTag} />
                           ))
                         ) : (
-                          <View style={styles.noPurposeTag}>
-                            <Text style={styles.noPurposeText}>{t.none}</Text>
-                          </View>
+                          <StatusBadge label={t.none} tone="neutral" style={styles.purposeTag} />
                         )}
                       </View>
 
                       <Text style={styles.sourceText}>
-                        {t.dataSource}：{medication.sourceLabel || t.prescriptionRecognition}
+                        {t.dataSource}{sep}{medication.sourceLabel ? sourceLabelText(medication.sourceLabel, language) : t.prescriptionRecognition}
                       </Text>
 
                       {medication.sourceLabel === "AI 補充" ? (
-                        <Text style={styles.aiHint}>
-                          {t.aiMedicationHint}
-                        </Text>
+                        <Text style={styles.aiHint}>{t.aiMedicationHint}</Text>
                       ) : null}
                     </View>
                   </View>
 
-                  <View style={styles.medDivider} />
+                  <Divider />
 
                   <View style={styles.medFooter}>
                     <Text style={styles.recordCount}>
                       {t.recordsCountPrefix} {medication.count} {t.recordsCountSuffix}
                     </Text>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={32}
-                      color="#111"
-                    />
+                    <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
                   </View>
-                </Pressable>
+                </Card>
               ))
             )}
           </>
@@ -557,223 +539,87 @@ export default function CaregiverListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  header: { backgroundColor: "#F4E770", paddingTop: 12, minHeight: 56 },
-  backButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, minHeight: 44, paddingVertical: 8 },
-  backText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  tabContainer: {
-    flexDirection: "row",
-    backgroundColor: "#F4E770",
-  },
-  tab: { flex: 1, paddingVertical: 15, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, minWidth: 0 },
-  activeTab: {
-    backgroundColor: "#DCCF00",
-  },
-  tabText: { fontSize: 20, fontWeight: "900", color: "#222", width: "100%", textAlign: "center", flexShrink: 1 },
+  container: { flex: 1, backgroundColor: colors.canvas },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.md },
+  centerText: { ...typography.body, color: colors.textSecondary },
+
   scrollContent: {
-    padding: 20,
-    paddingBottom: 140,
+    padding: layout.screenPaddingX,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: "900",
-    marginBottom: 10,
-    color: "#333",
-  },
-  emptyContainer: {
-    marginTop: 80,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#666",
-  },
-  emptySubText: {
-    fontSize: 14,
-    color: "#999",
-  },
-  recordCard: {
-    padding: 18,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    backgroundColor: "#fff",
-    marginBottom: 15,
-  },
-  recordTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 4,
-    flexShrink: 1,
-  },
-  recordDate: {
-    fontSize: 14,
-    color: "#999",
-  },
-  recordFooter: { flexDirection: "row", borderTopWidth: 1, borderTopColor: "#EEE", paddingTop: 10, marginTop: 10, gap: 20, flexWrap: "wrap" },
-  detailText: {
-    color: "#007AFF",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  deleteText: {
-    color: "#FF3B30",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  summaryCard: {
-    borderWidth: 2,
-    borderColor: "#DCCF00",
-    backgroundColor: "#FFFDEB",
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 10,
-  },
-  summaryTop: {
+  pressed: { backgroundColor: colors.surfaceSunken },
+
+  recordBody: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
-    flexWrap: "wrap",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
   },
-  summaryLabel: {
-    fontSize: 18,
-    color: "#777",
-    fontWeight: "900",
-    marginBottom: 4,
-  },
-  summaryCount: {
-    fontSize: 26,
-    color: "#111",
-    fontWeight: "900",
-    lineHeight: 34,
-    flexShrink: 1,
-  },
-  summaryNumber: {
-    color: "#E53935",
-    fontSize: 34,
-    fontWeight: "900",
-  },
-  warningBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    backgroundColor: "#FFF4A8",
-    borderColor: "#DCCF00",
-    borderWidth: 2,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 18,
-  },
-  warningText: {
-    flex: 1,
-    fontSize: 16,
-    color: "#111",
-    fontWeight: "900",
-    lineHeight: 22,
-  },
-  medCard: {
-    borderWidth: 2,
-    borderColor: "#A9A1A1",
-    borderRadius: 14,
-    backgroundColor: "#fff",
-    marginBottom: 14,
-    overflow: "hidden",
-  },
-  medContent: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    padding: 16,
-    gap: 12,
-  },
-  pillIconWrap: {
-    width: 52,
-    height: 52,
+  recordIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
   },
-  medName: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#111",
-    marginBottom: 8,
-    flexShrink: 1,
-  },
-  purposeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 6,
-  },
-  purposeLabel: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: "#777",
-    marginRight: 4,
-  },
-  purposeTag: { backgroundColor: "#FFF3A8", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, maxWidth: "100%" },
-  purposeTagText: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: "#555",
-    flexShrink: 1,
-  },
-  noPurposeTag: {
-    backgroundColor: "#E5E5E5",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  noPurposeText: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#777",
-  },
-  sourceText: {
-    fontSize: 15,
-    color: "#777",
-    fontWeight: "800",
-  },
-  aiHint: {
-    marginTop: 8,
-    fontSize: 13,
-    color: "#777",
-    fontWeight: "700",
-  },
-  medDivider: {
-    height: 1,
-    backgroundColor: "#D8D8D8",
-  },
-  medFooter: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+  recordTextBox: { flex: 1, minWidth: 0 },
+  recordTitle: { ...typography.bodyStrong, fontSize: 18, marginBottom: 2 },
+  recordDate: { ...typography.bodySmall },
+  recordFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 10,
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  recordCount: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#111",
-    flex: 1,
-    flexShrink: 1,
+  deleteBtn: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.control,
   },
+  deleteText: { ...typography.label, fontSize: 17, color: colors.danger },
+
+  summaryCard: { gap: 2 },
+  summaryLabel: { ...typography.label, color: colors.textSecondary },
+  summaryCount: { ...typography.title, flexShrink: 1 },
+  summaryNumber: { color: colors.primary, fontSize: 30 },
+  warningBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+    backgroundColor: colors.warningSoft,
+    borderRadius: radii.card,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  warningText: { ...typography.body, flex: 1, color: colors.text },
+
+  medContent: { flexDirection: "row", alignItems: "flex-start", padding: spacing.lg, gap: spacing.md },
+  medName: { ...typography.header, marginBottom: spacing.sm, flexShrink: 1 },
+  purposeRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.sm },
+  purposeLabel: { ...typography.label, color: colors.textSecondary },
+  purposeTag: { alignSelf: "auto", maxWidth: "100%" },
+  sourceText: { ...typography.bodySmall },
+  aiHint: { ...typography.caption, marginTop: spacing.xs },
+  medFooter: {
+    minHeight: 52,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  recordCount: { ...typography.bodyStrong, flex: 1, flexShrink: 1 },
 });

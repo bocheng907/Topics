@@ -1,13 +1,17 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, Card, EmptyState, IconButton, KeyboardAwareScroll, StatusBadge, TextField } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { caregiverCopy, formatLongDate } from "@/src/i18n/copy/caregiverCopy";
+import { SegmentedTabs } from "@/src/caregiver/SegmentedTabs";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import VideoPlayerView from '@/src/media/VideoPlayerView';
 import { recordCopy } from '@/src/media/recordCopy';
 import * as ImagePicker from 'expo-image-picker';
 import { randomUUID } from 'expo-crypto';
-import { router, useNavigation } from 'expo-router';
+import { router, useNavigation, type Href } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 // Firebase 相關
 import { db, storage } from '@/firebase/firebaseConfig';
@@ -43,6 +47,8 @@ export default function AbnormalRecordScreen() {
   const { language } = useLanguage();
   const t = translations[language];
   const mediaCopy = recordCopy[language];
+  const c = caregiverCopy[language];
+  const insets = useSafeAreaInsets();
   
   const navigation = useNavigation();
   useEffect(() => {
@@ -367,7 +373,7 @@ export default function AbnormalRecordScreen() {
     setCurrentView('editFolderEntry');
   };
 
-  // --- 🌟 共用的媒體渲染元件 ---
+  // --- 共用的媒體渲染元件 ---
   const renderMedia = (uri: string, type: 'image' | 'video' | null | undefined, isUploadBox: boolean = false) => {
     if (type === 'video') {
       return (
@@ -378,13 +384,67 @@ export default function AbnormalRecordScreen() {
       );
     }
     return (
-      <Image 
-        source={{ uri }} 
-        style={isUploadBox ? { width: '100%', height: '100%' } : styles.mediaImage} 
-        resizeMode="contain" 
+      <Image
+        source={{ uri }}
+        style={isUploadBox ? { width: '100%', height: '100%' } : styles.mediaImage}
+        resizeMode="contain"
       />
     );
   };
+
+  const recordDate = (value: any) => formatLongDate(value?.toDate ? value.toDate() : value ? new Date(value) : new Date(), language);
+
+  const renderDoctorToggle = (onLabel: string, offLabel: string) => (
+    <Pressable
+      onPress={() => setIsDoctorMode(!isDoctorMode)}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: isDoctorMode }}
+      style={({ pressed }) => [
+        styles.doctorModeBtn,
+        isDoctorMode ? styles.doctorModeBtnActive : styles.doctorModeBtnIdle,
+        pressed && !isDoctorMode && { backgroundColor: colors.surfaceSunken },
+      ]}
+    >
+      <Ionicons name="language" size={20} color={isDoctorMode ? colors.onPrimary : colors.textSecondary} />
+      <Text style={[styles.doctorModeText, isDoctorMode && { color: colors.onPrimary }]}>
+        {isDoctorMode ? onLabel : offLabel}
+      </Text>
+    </Pressable>
+  );
+
+  const renderMediaPicker = () => (
+    <View style={[styles.uploadBox, mediaUri ? styles.uploadBoxFilled : styles.uploadBoxEmpty]}>
+      {mediaUri ? (
+        <View style={{ width: '100%', height: '100%', position: 'relative' }}>
+          {renderMedia(mediaUri, mediaType, true)}
+          <Pressable
+            onPress={handlePickMedia}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.reselectBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Ionicons name="refresh" size={18} color={colors.onPrimary} />
+            <Text style={styles.reselectBtnText}>{t.cameraPickImage}</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable
+          onPress={handlePickMedia}
+          accessibilityRole="button"
+          accessibilityLabel={t.cameraPickImage}
+          style={({ pressed }) => [styles.uploadPlaceholder, pressed && { backgroundColor: colors.border }]}
+        >
+          <View style={styles.uploadIcon}>
+            <Ionicons name="camera-outline" size={32} color={colors.primary} />
+          </View>
+          <Text style={styles.uploadText}>{t.cameraPickImage}</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+
+  const renderFooter = (node: React.ReactNode) => (
+    <View style={[styles.footer, { paddingBottom: spacing.md }]}>{node}</View>
+  );
 
   // --- UI 渲染區塊 ---
 
@@ -392,69 +452,59 @@ export default function AbnormalRecordScreen() {
     <View style={styles.viewContainer}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.listHint}>{t.conditionHint}</Text>
+        {records.length === 0 ? (
+          <EmptyState icon="videocam-outline" title={c.recordEmpty} />
+        ) : null}
         {records.map(record => (
-          <Pressable key={record.id} onPress={() => goToDetail(record)} style={styles.listItem}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.tagContainer}>
-                {record.type === 'folder' ? (
-                  <Text style={styles.tagFolder}>{t.trackingFolder}</Text>
-                ) : (
-                  <Text style={styles.tagSingle}>{t.singleRecord}</Text>
-                )}
-              </View>
-              <Text style={styles.listTitle} numberOfLines={1}>{record.titleOriginal || t.unnamedRecord}</Text>
-              <Text style={styles.listDate}>{record.displayDate}</Text>
-            </View>
+          <Card
+            key={record.id}
+            onPress={() => goToDetail(record)}
+            accessibilityLabel={record.titleOriginal || t.unnamedRecord}
+            style={styles.listItem}
+          >
             <View style={styles.listIconBox}>
-              {/* 🌟 列表專業圖標化：資料夾、影片、圖片 */}
               {record.type === 'folder' ? (
-                <Ionicons name="folder" size={24} color="white" />
+                <Ionicons name="folder-outline" size={24} color={colors.primary} />
               ) : (
-                <Ionicons name={record.mediaType === 'video' ? "videocam" : "image"} size={24} color="white" />
+                <Ionicons name={record.mediaType === 'video' ? 'videocam-outline' : 'image-outline'} size={24} color={colors.primary} />
               )}
             </View>
-          </Pressable>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <StatusBadge
+                label={record.type === 'folder' ? t.trackingFolder : t.singleRecord}
+                tone={record.type === 'folder' ? 'primary' : 'neutral'}
+                style={styles.tag}
+              />
+              <Text style={styles.listTitle} numberOfLines={1}>{record.titleOriginal || t.unnamedRecord}</Text>
+              <Text style={styles.listDate}>{recordDate(record.createdAt)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
+          </Card>
         ))}
       </ScrollView>
-      <Pressable onPress={goToCreate} style={styles.fabBtn}><Feather name="plus" size={32} color="black" /></Pressable>
+      {renderFooter(<Button label={c.recordAdd} icon="add" size="lg" fullWidth onPress={goToCreate} />)}
     </View>
   );
 
   const renderDetail = () => (
     <View style={styles.viewContainer}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.doctorModeRow}>
-          <Pressable onPress={() => setIsDoctorMode(!isDoctorMode)} style={[styles.doctorModeBtn, isDoctorMode ? styles.doctorModeBtnActive : styles.doctorModeBtnIdle]}>
-            <Ionicons name="language" size={18} color={isDoctorMode ? 'white' : '#666'} />
-            <Text style={[styles.doctorModeText, isDoctorMode && { color: 'white' }]}>
-              {isDoctorMode ? t.doctorModeOn : t.doctorModeSwitch}
-            </Text>
-          </Pressable>
-        </View>
+        <View style={styles.doctorModeRow}>{renderDoctorToggle(t.doctorModeOn, t.doctorModeSwitch)}</View>
 
         <View style={styles.mediaContainer}>
           {selectedRecord.hasMedia && selectedRecord.mediaUrl ? (
             renderMedia(selectedRecord.mediaUrl, selectedRecord.mediaType)
-          ) : (<Text style={{ color: '#999', fontWeight: 'bold' }}>{t.noMedia}</Text>)}
+          ) : (<Text style={styles.mediaEmptyText}>{t.noMedia}</Text>)}
         </View>
 
-        <View style={styles.detailHeaderRow}>
-          <Text style={styles.detailTitle}>{isDoctorMode ? (pickAbnormalTitle(selectedRecord, language) || t.aiTranslating) : selectedRecord.titleOriginal}</Text>
-          
-          <View style={{ position: 'relative', zIndex: 50 }}>
-            <Pressable accessibilityRole="button" accessibilityLabel={mediaCopy.actions} onPress={() => setDropdownOpen(true)} style={styles.actionsTrigger}>
-              <Text style={{ fontSize: 28, color: '#666', marginTop: -8 }}>⋯</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <Text style={styles.detailDate}>{selectedRecord.displayDate}</Text>
-        <View style={styles.noteBox}>
-          <Text style={styles.noteTitle}>{t.note}:</Text>
-          <Text style={[styles.noteText, isDoctorMode && { fontSize: 18 }]}>
+        <Text style={styles.detailTitle}>{isDoctorMode ? (pickAbnormalTitle(selectedRecord, language) || t.aiTranslating) : selectedRecord.titleOriginal}</Text>
+        <Text style={styles.detailDate}>{recordDate(selectedRecord.createdAt)}</Text>
+        <Card tone="sunken">
+          <Text style={styles.noteTitle}>{t.note}</Text>
+          <Text style={[styles.noteText, isDoctorMode && { fontSize: 18, lineHeight: 28 }]}>
             {isDoctorMode ? (pickAbnormalNotes(selectedRecord, language) || t.aiTranslating) : selectedRecord.notesOriginal}
           </Text>
-        </View>
+        </Card>
       </ScrollView>
     </View>
   );
@@ -462,63 +512,49 @@ export default function AbnormalRecordScreen() {
   const renderFolder = () => (
     <View style={styles.viewContainer}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        <View style={[styles.doctorModeRow, { justifyContent: 'space-between' }]}>
-          <View style={{ position: 'relative', zIndex: 50 }}>
-            <Pressable accessibilityRole="button" accessibilityLabel={mediaCopy.actions} onPress={() => setDropdownOpen(true)} style={[styles.actionsTrigger, { backgroundColor: '#EEE', borderRadius: 20 }]}>
-              <Text style={{ fontSize: 20, color: '#666', lineHeight: 20 }}>⋯</Text>
-            </Pressable>
-          </View>
-
-          <Pressable onPress={() => setIsDoctorMode(!isDoctorMode)} style={[styles.doctorModeBtn, isDoctorMode ? styles.doctorModeBtnActive : styles.doctorModeBtnIdle]}>
-            <Ionicons name="language" size={18} color={isDoctorMode ? 'white' : '#666'} />
-            <Text style={[styles.doctorModeText, isDoctorMode && { color: 'white' }]}>{isDoctorMode ? t.chineseModeOn : t.switchChinese}</Text>
-          </Pressable>
-        </View>
+        <View style={styles.doctorModeRow}>{renderDoctorToggle(t.chineseModeOn, t.switchChinese)}</View>
 
         <View style={styles.folderHeader}>
-          <Ionicons name="folder-open" size={36} color="#7BC6F9" style={{ marginRight: 12 }} />
-          <View style={{ flex: 1 }}>
+          <View style={styles.listIconBox}>
+            <Ionicons name="folder-open-outline" size={26} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.detailTitle}>{isDoctorMode ? (pickAbnormalTitle(selectedRecord, language) || t.aiTranslating) : selectedRecord.titleOriginal}</Text>
-            <Text style={styles.detailDate}>建立於: {selectedRecord.displayDate}</Text>
+            <Text style={styles.listDate}>{c.recordCreatedAt}{language === 'zh' ? '：' : ': '}{recordDate(selectedRecord.createdAt)}</Text>
           </View>
         </View>
 
-        <Pressable onPress={goToCreateFolderEntry} style={styles.addEntryBtn}>
-          <Feather name="plus" size={24} color="#D37B2B" />
-          <Text style={styles.addEntryBtnText}>{t.todayRecords}</Text>
-        </Pressable>
+        <Button label={t.todayRecords} icon="add" variant="secondary" size="lg" fullWidth onPress={goToCreateFolderEntry} style={styles.addEntryBtn} />
 
         <View style={styles.timelineContainer}>
           {selectedRecord.entries?.map((entry: any, index: number) => {
              const eDateObj = entry.createdAt?.toDate ? entry.createdAt.toDate() : new Date(entry.createdAt);
              const eDateStr = `${eDateObj.getMonth() + 1}/${eDateObj.getDate()} ${String(eDateObj.getHours()).padStart(2, '0')}:${String(eDateObj.getMinutes()).padStart(2, '0')}`;
              return (
-              <Pressable key={entry.entryId || index} style={styles.timelineItem} onPress={() => goToFolderEntry(entry)}>
+              <View key={entry.entryId || index} style={styles.timelineItem}>
                 <View style={styles.timelineDot} />
                 <Text style={styles.timelineDate}>{eDateStr}</Text>
-                <View style={styles.timelineCard}>
+                <Card onPress={() => goToFolderEntry(entry)} padding={spacing.md} style={styles.timelineCard} accessibilityLabel={`${eDateStr} ${t.viewMore}`}>
                   <View style={styles.timelineThumbnail}>
-                    {/* 🌟 縮圖區塊保護與專業圖示 */}
                     {entry.mediaUrl ? (
                       entry.mediaType === 'video' ? (
-                        <View style={{ width: '100%', height: '100%', borderRadius: 12, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
-                          <Ionicons name="play" size={32} color="white" />
+                        <View style={styles.videoThumb}>
+                          <Ionicons name="play" size={30} color={colors.onPrimary} />
                         </View>
                       ) : (
-                        <Image source={{ uri: entry.mediaUrl }} style={{ width: '100%', height: '100%', borderRadius: 12 }} />
+                        <Image source={{ uri: entry.mediaUrl }} style={styles.thumbImage} />
                       )
-                    ) : <Ionicons name="document-text" size={32} color="#CCC" />}
+                    ) : <Ionicons name="document-text-outline" size={30} color={colors.textMuted} />}
                   </View>
-                  <View style={{ flex: 1, justifyContent: 'center' }}>
+                  <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
                     <Text style={styles.timelineNotes} numberOfLines={2}>{isDoctorMode ? (pickAbnormalEntryNotes(entry, language) || t.aiTranslatingShort) : entry.notesOriginal}</Text>
                     <View style={styles.timelineMoreRow}>
                       <Text style={styles.timelineMore}>{t.viewMore}</Text>
-                      <Ionicons name="chevron-forward" size={12} color="#7BC6F9" />
+                      <Ionicons name="chevron-forward" size={14} color={colors.primary} />
                     </View>
                   </View>
-                </View>
-              </Pressable>
+                </Card>
+              </View>
             )
           })}
         </View>
@@ -528,41 +564,27 @@ export default function AbnormalRecordScreen() {
 
   const renderFolderEntryDetail = () => {
     const eDateObj = selectedFolderEntry?.createdAt?.toDate ? selectedFolderEntry.createdAt.toDate() : new Date(selectedFolderEntry?.createdAt ?? NaN);
-    const eDateStr = Number.isNaN(eDateObj.getTime()) ? '—' : `${eDateObj.getFullYear()}年 ${eDateObj.getMonth() + 1}月 ${eDateObj.getDate()}日`;
+    const eDateStr = Number.isNaN(eDateObj.getTime()) ? '—' : formatLongDate(eDateObj, language);
     return (
       <View style={styles.viewContainer}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.doctorModeRow}>
-            <Pressable onPress={() => setIsDoctorMode(!isDoctorMode)} style={[styles.doctorModeBtn, isDoctorMode ? styles.doctorModeBtnActive : styles.doctorModeBtnIdle]}>
-              <Ionicons name="language" size={18} color={isDoctorMode ? 'white' : '#666'} />
-              <Text style={[styles.doctorModeText, isDoctorMode && { color: 'white' }]}>{isDoctorMode ? t.chineseModeOn : t.switchChinese}</Text>
-            </Pressable>
-          </View>
+          <View style={styles.doctorModeRow}>{renderDoctorToggle(t.chineseModeOn, t.switchChinese)}</View>
 
           <View style={styles.folderBadge}>
-            <Ionicons name="folder" size={16} color="#E59752" style={{ marginRight: 6 }} />
+            <Ionicons name="folder-outline" size={16} color={colors.primary} />
             <Text style={styles.folderBadgeText}>{t.fromFolder}: {isDoctorMode ? (pickAbnormalTitle(selectedRecord, language) || selectedRecord.titleOriginal) : selectedRecord.titleOriginal}</Text>
           </View>
 
           <View style={styles.mediaContainer}>
-             {selectedFolderEntry.mediaUrl ? renderMedia(selectedFolderEntry.mediaUrl, selectedFolderEntry.mediaType) : <Text style={{ color: '#999', fontWeight: 'bold' }}>{t.noPhoto}</Text>}
+             {selectedFolderEntry.mediaUrl ? renderMedia(selectedFolderEntry.mediaUrl, selectedFolderEntry.mediaType) : <Text style={styles.mediaEmptyText}>{t.noPhoto}</Text>}
           </View>
 
-          <View style={styles.detailHeaderRow}>
-            <Text style={styles.detailTitle}>{t.recordTime}:</Text>
-            
-            <View style={{ position: 'relative', zIndex: 50 }}>
-              <Pressable accessibilityRole="button" accessibilityLabel={mediaCopy.actions} onPress={() => setDropdownOpen(true)} style={styles.actionsTrigger}>
-                <Text style={{ fontSize: 28, color: '#666', marginTop: -8 }}>⋯</Text>
-              </Pressable>
-            </View>
-          </View>
-
+          <Text style={styles.noteTitle}>{t.recordTime}</Text>
           <Text style={styles.detailDate}>{eDateStr}</Text>
-          <View style={styles.noteBox}>
-            <Text style={styles.noteTitle}>{t.note}:</Text>
-            <Text style={[styles.noteText, isDoctorMode && { fontSize: 18 }]}>{isDoctorMode ? (pickAbnormalEntryNotes(selectedFolderEntry, language) || t.aiTranslating) : selectedFolderEntry.notesOriginal}</Text>
-          </View>
+          <Card tone="sunken">
+            <Text style={styles.noteTitle}>{t.note}</Text>
+            <Text style={[styles.noteText, isDoctorMode && { fontSize: 18, lineHeight: 28 }]}>{isDoctorMode ? (pickAbnormalEntryNotes(selectedFolderEntry, language) || t.aiTranslating) : selectedFolderEntry.notesOriginal}</Text>
+          </Card>
         </ScrollView>
       </View>
     );
@@ -570,133 +592,90 @@ export default function AbnormalRecordScreen() {
 
   const renderEdit = () => (
     <View style={styles.viewContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.folderIntroBox}>
-          <Ionicons name="pencil" size={24} color="#D37B2B" />
-          <Text style={styles.folderIntroText}>{mediaCopy.edit}</Text>
+      <KeyboardAwareScroll contentContainerStyle={styles.formContent} showsVerticalScrollIndicator={false} safeAreaBottom={false}>
+        <View style={styles.introBox}>
+          <Ionicons name="create-outline" size={22} color={colors.primary} />
+          <Text style={styles.introText}>{mediaCopy.edit}</Text>
         </View>
 
         {currentView === 'edit' && (
-          <View style={{ marginBottom: 20 }}>
-            <Text style={styles.inputLabel}>{t.recordTitle}</Text>
-            <TextInput value={title} onChangeText={setTitle} style={styles.inputTitle} />
-          </View>
+          <TextField label={t.recordTitle} value={title} onChangeText={setTitle} />
         )}
 
-        <View style={{ marginBottom: 20 }}>
-          <Text style={styles.inputLabel}>{t.noteDescription}</Text>
-          <TextInput value={notes} onChangeText={setNotes} multiline numberOfLines={6} style={styles.inputNotes} />
-        </View>
-      </ScrollView>
+        <TextField label={t.noteDescription} value={notes} onChangeText={setNotes} multiline inputStyle={styles.notesInput} />
+      </KeyboardAwareScroll>
 
-      <Pressable onPress={handleUpdateTextOnly} disabled={isUploading} style={styles.fabBtn}>
-        {isUploading ? <ActivityIndicator color="black" /> : <Feather name="check" size={36} color="black" />}
-      </Pressable>
+      {renderFooter(<Button label={t.save} icon="checkmark" size="lg" fullWidth onPress={handleUpdateTextOnly} loading={isUploading} />)}
     </View>
   );
 
   const renderCreate = () => (
     <View style={styles.viewContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.switchTabs}>
-          <Pressable onPress={() => setCreateFormType('single')} style={[styles.tabBtn, createFormType === 'single' && styles.tabBtnActive]}><Text style={[styles.tabText, createFormType === 'single' && styles.tabTextActive]}>{t.singleRecord}</Text></Pressable>
-          <Pressable onPress={() => setCreateFormType('folder')} style={[styles.tabBtn, createFormType === 'folder' && styles.tabBtnActive]}><Text style={[styles.tabText, createFormType === 'folder' && styles.tabTextActive]}>{t.trackingFolder}</Text></Pressable>
-        </View>
+      <KeyboardAwareScroll contentContainerStyle={styles.formContent} showsVerticalScrollIndicator={false} safeAreaBottom={false}>
+        <SegmentedTabs
+          options={[
+            { key: 'single', label: t.singleRecord },
+            { key: 'folder', label: t.trackingFolder },
+          ]}
+          value={createFormType}
+          onChange={setCreateFormType}
+        />
 
         {createFormType === 'single' ? (
           <>
-            {/* 🌟 核心修改 A：媒體上傳與重新選擇按鈕分離 */}
-            <View style={[styles.uploadBox, mediaUri ? styles.uploadBoxFilled : styles.uploadBoxEmpty]}>
-               {mediaUri ? (
-                 <View style={{ width: '100%', height: '100%', position: 'relative' }}>
-                   {renderMedia(mediaUri, mediaType, true)}
-                   {/* 獨立的懸浮重新選擇按鈕 */}
-                   <Pressable onPress={handlePickMedia} style={styles.reselectBtn}>
-                     <Ionicons name="refresh" size={16} color="white" />
-                     <Text style={styles.reselectBtnText}>{t.cameraPickImage}</Text>
-                   </Pressable>
-                 </View>
-               ) : (
-                 <Pressable onPress={handlePickMedia} style={styles.uploadPlaceholder}>
-                   <Ionicons name="camera" size={48} color="#999" style={{ marginBottom: 8 }} />
-                   <Text style={{ color: '#666', fontWeight: 'bold' }}>{t.cameraPickImage}</Text>
-                 </Pressable>
-               )}
-            </View>
-
-            <TextInput value={title} onChangeText={setTitle} placeholder={t.recordTitlePlaceholder} style={styles.inputTitle} placeholderTextColor="#999" />
-            <TextInput value={notes} onChangeText={setNotes} placeholder={t.notePlaceholder} multiline numberOfLines={5} style={styles.inputNotes} placeholderTextColor="#999" />
+            {renderMediaPicker()}
+            <TextField label={t.recordTitle} value={title} onChangeText={setTitle} placeholder={t.recordTitlePlaceholder} />
+            <TextField label={t.noteDescription} value={notes} onChangeText={setNotes} placeholder={t.notePlaceholder} multiline inputStyle={styles.notesInput} />
           </>
         ) : (
           <>
-            <View style={styles.folderIntroBox}>
-              <Ionicons name="folder-open" size={28} color="#D37B2B" />
-              <Text style={styles.folderIntroText}>{t.conditionHint}</Text>
+            <View style={styles.introBox}>
+              <Ionicons name="folder-open-outline" size={22} color={colors.primary} />
+              <Text style={styles.introText}>{t.conditionHint}</Text>
             </View>
-            <Text style={styles.inputLabel}>{t.trackingFolder}</Text>
-            <TextInput value={title} onChangeText={setTitle} placeholder={t.recordTitlePlaceholder} style={styles.inputTitle} placeholderTextColor="#999" />
-            <Text style={styles.inputLabel}>{t.noteDescription}</Text>
-            <TextInput value={notes} onChangeText={setNotes} placeholder={t.notePlaceholder} multiline numberOfLines={4} style={styles.inputNotes} placeholderTextColor="#999" />
+            <TextField label={t.trackingFolder} value={title} onChangeText={setTitle} placeholder={t.recordTitlePlaceholder} />
+            <TextField label={t.noteDescription} value={notes} onChangeText={setNotes} placeholder={t.notePlaceholder} multiline inputStyle={styles.notesInput} />
           </>
         )}
-      </ScrollView>
-      <Pressable onPress={handleSaveRecord} disabled={isUploading} style={styles.fabBtn}>{isUploading ? <ActivityIndicator color="black" /> : <Feather name="check" size={36} color="black" />}</Pressable>
+      </KeyboardAwareScroll>
+      {renderFooter(<Button label={t.save} icon="checkmark" size="lg" fullWidth onPress={handleSaveRecord} loading={isUploading} />)}
     </View>
   );
 
   const renderCreateFolderEntry = () => (
     <View style={styles.viewContainer}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScroll contentContainerStyle={styles.formContent} showsVerticalScrollIndicator={false} safeAreaBottom={false}>
         <View style={styles.folderBadge}>
-          <Ionicons name="folder" size={16} color="#E59752" style={{ marginRight: 6 }} />
+          <Ionicons name="folder-outline" size={16} color={colors.primary} />
           <Text style={styles.folderBadgeText}>{mediaCopy.addEntry}: {selectedRecord.titleOriginal}</Text>
         </View>
 
-        {/* 🌟 核心修改 A：媒體上傳與重新選擇按鈕分離 */}
-        <View style={[styles.uploadBox, mediaUri ? styles.uploadBoxFilled : styles.uploadBoxEmpty]}>
-           {mediaUri ? (
-             <View style={{ width: '100%', height: '100%', position: 'relative' }}>
-               {renderMedia(mediaUri, mediaType, true)}
-               <Pressable onPress={handlePickMedia} style={styles.reselectBtn}>
-                 <Ionicons name="refresh" size={16} color="white" />
-                 <Text style={styles.reselectBtnText}>{t.cameraPickImage}</Text>
-               </Pressable>
-             </View>
-           ) : (
-             <Pressable onPress={handlePickMedia} style={styles.uploadPlaceholder}>
-               <Ionicons name="camera" size={48} color="#999" style={{ marginBottom: 8 }} />
-               <Text style={{ color: '#666', fontWeight: 'bold' }}>{t.cameraPickImage}</Text>
-             </Pressable>
-           )}
-        </View>
+        {renderMediaPicker()}
 
-        <Text style={styles.inputLabel}>{t.noteDescription}</Text>
-        <TextInput value={notes} onChangeText={setNotes} placeholder={t.notePlaceholder} multiline numberOfLines={6} style={styles.inputNotes} placeholderTextColor="#999" />
-      </ScrollView>
-      <Pressable onPress={() => void handleSaveFolderEntry()} disabled={isUploading} style={styles.fabBtn}>{isUploading ? <ActivityIndicator color="black" /> : <Feather name="check" size={36} color="black" />}</Pressable>
+        <TextField label={t.noteDescription} value={notes} onChangeText={setNotes} placeholder={t.notePlaceholder} multiline inputStyle={styles.notesInput} />
+      </KeyboardAwareScroll>
+      {renderFooter(<Button label={t.save} icon="checkmark" size="lg" fullWidth onPress={() => void handleSaveFolderEntry()} loading={isUploading} />)}
     </View>
   );
+
+  const showActions = currentView === 'detail' || currentView === 'folder' || currentView === 'folderEntryDetail';
 
   // --- 主結構回傳 ---
   return (
     <View style={styles.container}>
-      <ScreenHeader style={styles.header}>
-        <View style={styles.headerRow}>
-          <Pressable
-            onPress={() => {
-              if (currentView === 'folderEntryDetail' || currentView === 'editFolderEntry' || currentView === 'createFolderEntry') goBackToFolder();
-              else if (currentView === 'edit') setCurrentView(selectedRecord.type === 'folder' ? 'folder' : 'detail');
-              else if (currentView !== 'list') goToList();
-              else router.back();
-            }}
-            style={styles.backBtn}
-            hitSlop={8}
-          >
-            <Ionicons name="chevron-back" size={24} color="#111827" />
-            <Text style={styles.backBtnText}>{t.back}</Text>
-          </Pressable>
-        </View>
-      </ScreenHeader>
+      <AppHeader
+        title={t.conditionRecording}
+        onBack={() => {
+          if (currentView === 'folderEntryDetail' || currentView === 'editFolderEntry' || currentView === 'createFolderEntry') goBackToFolder();
+          else if (currentView === 'edit') setCurrentView(selectedRecord.type === 'folder' ? 'folder' : 'detail');
+          else if (currentView !== 'list') goToList();
+          else if (router.canGoBack()) router.back();
+          else router.replace('/caregiver' as Href);
+        }}
+        right={showActions ? (
+          <IconButton icon="ellipsis-horizontal" accessibilityLabel={mediaCopy.actions} onPress={() => setDropdownOpen(true)} />
+        ) : undefined}
+      />
 
       <View style={{ flex: 1 }}>
         {currentView === 'list' && renderList()}
@@ -709,19 +688,27 @@ export default function AbnormalRecordScreen() {
       </View>
       {/* A native/web modal keeps actions above ScrollView, media and note layers. */}
       <Modal visible={dropdownOpen} transparent animationType="fade" onRequestClose={() => setDropdownOpen(false)}>
-        <View style={styles.actionsOverlay}>
+        <View style={[styles.actionsOverlay, { paddingBottom: spacing.xl + insets.bottom }]}>
           <Pressable accessibilityRole="button" accessibilityLabel={mediaCopy.close} style={StyleSheet.absoluteFill} onPress={() => setDropdownOpen(false)} />
           <View style={styles.actionsSheet} accessibilityViewIsModal>
             <Text style={styles.actionsTitle}>{mediaCopy.actions}</Text>
-            <Pressable accessibilityRole="button" onPress={currentView === 'folderEntryDetail' ? goToEditFolderEntry : goToEditRecord} style={styles.dropdownItem}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={currentView === 'folderEntryDetail' ? goToEditFolderEntry : goToEditRecord}
+              style={({ pressed }) => [styles.dropdownItem, pressed && { backgroundColor: colors.surfaceSunken }]}
+            >
+              <Ionicons name="create-outline" size={22} color={colors.primary} />
               <Text style={styles.dropdownText}>{t.edit}</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" onPress={currentView === 'folderEntryDetail' ? handleDeleteFolderEntry : handleDeleteRecord} style={styles.dropdownItem}>
-              <Text style={[styles.dropdownText, { color: '#B42318' }]}>{t.delete}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={currentView === 'folderEntryDetail' ? handleDeleteFolderEntry : handleDeleteRecord}
+              style={({ pressed }) => [styles.dropdownItem, pressed && { backgroundColor: colors.dangerSoft }]}
+            >
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+              <Text style={[styles.dropdownText, { color: colors.danger }]}>{t.delete}</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => setDropdownOpen(false)} style={styles.dropdownItem}>
-              <Text style={styles.dropdownText}>{t.cancel}</Text>
-            </Pressable>
+            <Button label={t.cancel} variant="secondary" fullWidth onPress={() => setDropdownOpen(false)} style={styles.actionsCancel} />
           </View>
         </View>
       </Modal>
@@ -730,79 +717,144 @@ export default function AbnormalRecordScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA' },
-  viewContainer: { flex: 1, position: 'relative' },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
-  
-  header: { backgroundColor: '#7BC6F9', paddingTop: 12, paddingBottom: 16, elevation: 2, minHeight: 56 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'flex-start' },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
+  container: { flex: 1, backgroundColor: colors.canvas },
+  viewContainer: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl,
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+  },
+  formContent: { width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center' },
+  footer: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
 
-  actionsTrigger: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  actionsOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.35)' },
-  actionsSheet: { width: '100%', maxWidth: 360, backgroundColor: '#FFF', borderRadius: 16, padding: 12 },
-  actionsTitle: { fontSize: 18, fontWeight: '700', padding: 16 },
-  dropdownItem: { minHeight: 48, justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-  dropdownText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  actionsOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl, backgroundColor: colors.overlay },
+  actionsSheet: { width: '100%', maxWidth: 380, backgroundColor: colors.surface, borderRadius: radii.sheet, padding: spacing.md },
+  actionsTitle: { ...typography.header, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  dropdownItem: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.control,
+  },
+  dropdownText: { ...typography.bodyStrong },
+  actionsCancel: { marginTop: spacing.sm },
 
-  listHint: { color: '#666', fontSize: 14, fontWeight: '600', marginBottom: 16, marginLeft: 4 },
-  listItem: { backgroundColor: '#FFF', borderRadius: 20, padding: 16, marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
-  tagContainer: { flexDirection: 'row', marginBottom: 6 },
-  tagFolder: { backgroundColor: '#FFF4E5', color: '#E59752', fontSize: 12, fontWeight: 'bold', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
-  tagSingle: { backgroundColor: '#E6F4FF', color: '#4A90E2', fontSize: 12, fontWeight: 'bold', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
-  listTitle: { fontSize: 20, fontWeight: 'bold', color: '#000' },
-  listDate: { color: '#888', fontSize: 14, marginTop: 4 },
-  listIconBox: { width: 48, height: 48, backgroundColor: '#7BC6F9', borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
+  listHint: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.lg, marginHorizontal: spacing.xs },
+  listItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
+  tag: { marginBottom: spacing.xs },
+  listTitle: { ...typography.bodyStrong, fontSize: 18 },
+  listDate: { ...typography.bodySmall, marginTop: 2 },
+  listIconBox: { width: 48, height: 48, backgroundColor: colors.primarySoft, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
 
-  doctorModeRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 },
-  doctorModeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, elevation: 1, maxWidth: "100%" },
-  doctorModeBtnIdle: { backgroundColor: '#FFF', borderColor: '#DDD' },
-  doctorModeBtnActive: { backgroundColor: '#4A8B46', borderColor: '#4A8B46' },
-  doctorModeText: { fontWeight: 'bold', fontSize: 14, color: '#555', flexShrink: 1, textAlign: "center" },
-  mediaContainer: { width: '100%', aspectRatio: 4/3, backgroundColor: '#E5E5E5', borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 24, overflow: 'hidden' },
+  doctorModeRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: spacing.lg },
+  doctorModeBtn: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 24,
+    borderWidth: 1,
+    maxWidth: '100%',
+  },
+  doctorModeBtnIdle: { backgroundColor: colors.surface, borderColor: colors.border },
+  doctorModeBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  doctorModeText: { ...typography.label, fontSize: 16, color: colors.textSecondary, flexShrink: 1, textAlign: 'center' },
+  mediaContainer: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: colors.surfaceSunken,
+    borderRadius: radii.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+    overflow: 'hidden',
+  },
+  mediaEmptyText: { ...typography.body, color: colors.textMuted },
   mediaImage: { width: '100%', height: '100%' },
-  detailHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, flexWrap: "wrap", gap: 8 },
-  detailTitle: { fontSize: 26, fontWeight: 'bold', color: '#000', maxWidth: "100%" },
-  detailDate: { color: '#888', fontSize: 15, marginBottom: 24 },
-  noteBox: { backgroundColor: '#F7F7F7', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#EEE' },
-  noteTitle: { color: '#666', fontWeight: 'bold', marginBottom: 8, fontSize: 15 },
-  noteText: { color: '#000', lineHeight: 24, fontSize: 16 },
+  detailTitle: { ...typography.title, maxWidth: '100%' },
+  detailDate: { ...typography.bodySmall, marginTop: spacing.xs, marginBottom: spacing.lg },
+  noteTitle: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.xs },
+  noteText: { ...typography.body },
 
-  folderHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
-  addEntryBtn: { width: '100%', backgroundColor: '#FFF4E5', borderWidth: 2, borderColor: '#E59752', borderStyle: 'dashed', borderRadius: 12, paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 24, paddingHorizontal: 12 },
-  addEntryBtnText: { color: '#D37B2B', fontSize: 16, fontWeight: 'bold', letterSpacing: 1, flexShrink: 1, textAlign: "center" },
-  timelineContainer: { paddingLeft: 16, borderLeftWidth: 2, borderLeftColor: '#7BC6F9', marginLeft: 16, marginTop: 16 },
-  timelineItem: { marginBottom: 32, position: 'relative' },
-  timelineDot: { position: 'absolute', left: -25, top: 2, width: 16, height: 16, backgroundColor: '#7BC6F9', borderRadius: 8, borderWidth: 3, borderColor: '#FFF' },
-  timelineDate: { color: '#666', fontWeight: 'bold', marginBottom: 8 },
-  timelineCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 12, flexDirection: 'row', gap: 12, elevation: 2, shadowOpacity: 0.05, shadowRadius: 8 },
-  timelineThumbnail: { width: 80, height: 80, backgroundColor: '#F0F0F0', borderRadius: 12, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  timelineNotes: { color: '#000', fontSize: 15, lineHeight: 20, marginBottom: 8 },
-  timelineMore: { color: '#7BC6F9', fontSize: 12, fontWeight: 'bold' },
+  folderHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.xl },
+  addEntryBtn: { marginBottom: spacing.xl },
+  timelineContainer: { paddingLeft: spacing.lg, borderLeftWidth: 2, borderLeftColor: colors.primaryBorder, marginLeft: spacing.sm },
+  timelineItem: { marginBottom: spacing.xl, position: 'relative' },
+  timelineDot: {
+    position: 'absolute',
+    left: -spacing.lg - 9,
+    top: 3,
+    width: 16,
+    height: 16,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    borderWidth: 3,
+    borderColor: colors.canvas,
+  },
+  timelineDate: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.sm },
+  timelineCard: { flexDirection: 'row', gap: spacing.md },
+  timelineThumbnail: {
+    width: 80,
+    height: 80,
+    backgroundColor: colors.surfaceSunken,
+    borderRadius: radii.control,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  videoThumb: { width: '100%', height: '100%', backgroundColor: colors.text, justifyContent: 'center', alignItems: 'center' },
+  thumbImage: { width: '100%', height: '100%' },
+  timelineNotes: { ...typography.body, marginBottom: spacing.xs },
+  timelineMore: { ...typography.label, color: colors.primary },
   timelineMoreRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  folderBadge: { alignSelf: 'flex-start', backgroundColor: '#FFF4E5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#FBE0C3', marginBottom: 16, flexDirection: 'row', alignItems: 'center', maxWidth: "100%" },
-  folderBadgeText: { color: '#E59752', fontWeight: 'bold', fontSize: 14, flexShrink: 1 },
+  folderBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    marginBottom: spacing.lg,
+    maxWidth: '100%',
+  },
+  folderBadgeText: { ...typography.label, color: colors.primary, flexShrink: 1 },
 
-  switchTabs: { flexDirection: 'row', backgroundColor: '#EAEAEA', borderRadius: 12, padding: 4, marginBottom: 24 },
-  tabBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', paddingHorizontal: 8, minWidth: 0 },
-  tabBtnActive: { backgroundColor: '#FFF', elevation: 1 },
-  tabText: { fontWeight: 'bold', color: '#888', width: "100%", textAlign: "center" },
-  tabTextActive: { color: '#000' },
-  
-  // 🌟 上傳框的動態樣式
-  uploadBox: { width: '100%', aspectRatio: 4/3, borderRadius: 24, marginBottom: 20, overflow: 'hidden' },
-  uploadBoxEmpty: { backgroundColor: '#E5E5E5', borderWidth: 2, borderColor: '#CCC', borderStyle: 'dashed' },
-  uploadBoxFilled: { backgroundColor: '#000', borderWidth: 0 },
-  uploadPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  reselectBtn: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: "90%" },
-  reselectBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14, flexShrink: 1 },
+  uploadBox: { width: '100%', aspectRatio: 4 / 3, borderRadius: radii.card, overflow: 'hidden' },
+  uploadBoxEmpty: { backgroundColor: colors.surfaceSunken, borderWidth: 2, borderColor: colors.border, borderStyle: 'dashed' },
+  uploadBoxFilled: { backgroundColor: colors.text },
+  uploadPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.sm },
+  uploadIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  uploadText: { ...typography.bodyStrong, color: colors.primary },
+  reselectBtn: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    minHeight: 44,
+    backgroundColor: colors.overlay,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '90%',
+  },
+  reselectBtnText: { ...typography.label, color: colors.onPrimary, flexShrink: 1 },
 
-  inputTitle: { backgroundColor: '#EAEAEA', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, fontSize: 18, fontWeight: 'bold', color: '#000', marginBottom: 20 },
-  inputNotes: { backgroundColor: '#EAEAEA', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, fontSize: 16, color: '#000', marginBottom: 20, textAlignVertical: 'top' },
-  folderIntroBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFF4E5', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#FBE0C3', marginBottom: 24 },
-  folderIntroText: { color: '#D37B2B', fontSize: 14, fontWeight: 'bold', flex: 1 },
-  inputLabel: { color: '#555', fontWeight: 'bold', marginBottom: 8, marginLeft: 4 },
-
-  fabBtn: { position: 'absolute', right: 20, bottom: 30, width: 64, height: 64, backgroundColor: '#7BC6F9', borderRadius: 20, justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#7BC6F9', shadowOpacity: 0.5, shadowRadius: 15, shadowOffset: { width: 0, height: 4 } },
+  notesInput: { minHeight: 140 },
+  introBox: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.primarySoft, padding: spacing.lg, borderRadius: radii.card },
+  introText: { ...typography.body, color: colors.text, flex: 1 },
 });

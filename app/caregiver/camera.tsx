@@ -1,4 +1,6 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, Card } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { userErrorMessage } from "@/src/ui/userErrorMessages";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
@@ -7,9 +9,7 @@ import {
   View,
   Text,
   Image,
-  ActivityIndicator,
   ScrollView,
-  Pressable,
   StyleSheet,
   Linking,
   StatusBar,
@@ -168,24 +168,30 @@ function CameraScreen() {
 
   if (qrMode) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#000" }}>
+      <View style={styles.qrContainer}>
         <StatusBar barStyle="light-content" />
 
-       <CameraView
-        style={{ flex: 1 }}
-        facing="back"
-        onBarcodeScanned={scanned ? undefined : handleQrScanned}
-        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+        <CameraView
+          style={styles.qrCamera}
+          facing="back"
+          onBarcodeScanned={scanned ? undefined : handleQrScanned}
+          barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
         />
 
-        <View style={styles.qrOverlay}>
-          <Text style={styles.qrTitle}>{t.cameraQrTitle}</Text>
-          <Text style={styles.qrHint}>{t.cameraQrHint}</Text>
-        </View>
-
-        <Pressable onPress={() => setQrMode(false)} style={styles.cancelQrBtn}>
-          <Text style={styles.cancelQrText}>{t.cameraCancelScan}</Text>
-        </Pressable>
+        <SafeAreaView style={styles.qrOverlay} edges={["top", "left", "right", "bottom"]} pointerEvents="box-none">
+          <View style={styles.qrTextBox}>
+            <Text style={styles.qrTitle}>{t.cameraQrTitle}</Text>
+            <Text style={styles.qrHint}>{t.cameraQrHint}</Text>
+          </View>
+          <Button
+            label={t.cameraCancelScan}
+            variant="secondary"
+            size="lg"
+            icon="close"
+            fullWidth
+            onPress={() => setQrMode(false)}
+          />
+        </SafeAreaView>
       </View>
     );
   }
@@ -193,160 +199,92 @@ function CameraScreen() {
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="dark-content" />
-      <ScreenHeader style={styles.topBar}>
-        <Pressable onPress={() => router.replace(user?.role === "family" ? "/family" : "/caregiver")} style={styles.topBarBack} hitSlop={8}>
-          <Ionicons name="chevron-back" size={24} color="#111827" />
-          <Text style={styles.topBarBackText}>{t.back}</Text>
-        </Pressable>
-      </ScreenHeader>
+      <AppHeader
+        title={t.cameraTitle}
+        onBack={() => router.replace(user?.role === "family" ? "/family" : "/caregiver")}
+      />
 
       <ScrollView key={refreshKey} contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{t.cameraTitle}</Text>
-        <Text style={styles.subtitle}>
-          {t.cameraSubtitle}
-        </Text>
-      </View>
+        <Text style={styles.subtitle}>{t.cameraSubtitle}</Text>
 
-      <View style={styles.actions}>
-        <Pressable onPress={takePhoto} style={styles.primaryBtn}>
-          <Ionicons name="camera" size={20} color="#fff" />
-          <Text style={styles.primaryBtnText}>{t.cameraTakePhoto}</Text>
-        </Pressable>
+        <View style={styles.actions}>
+          <Button label={t.cameraTakePhoto} icon="camera" size="lg" fullWidth onPress={takePhoto} />
+          <Button label={t.cameraPickImage} icon="image-outline" size="lg" variant="secondary" fullWidth onPress={pickImage} />
+          <Button label={t.cameraScanQr} icon="qr-code-outline" size="lg" variant="secondary" fullWidth onPress={openQrScanner} />
+        </View>
 
-        <Pressable onPress={pickImage} style={styles.outlineBtn}>
-          <Ionicons name="image" size={20} color="#007AFF" />
-          <Text style={styles.outlineBtnText}>{t.cameraPickImage}</Text>
-        </Pressable>
+        {imageUri ? (
+          <View style={styles.previewWrap}>
+            <Card padding={spacing.sm}>
+              <Image source={{ uri: imageUri }} style={styles.previewImg} resizeMode="contain" />
+            </Card>
 
-        <Pressable onPress={openQrScanner} style={styles.qrBtn}>
-          <Ionicons name="qr-code" size={20} color="#fff" />
-          <Text style={styles.qrBtnText}>{t.cameraScanQr}</Text>
-        </Pressable>
-      </View>
-
-      {imageUri ? (
-        <View style={styles.previewWrap}>
-          <View style={styles.previewCard}>
-            <Image
-              source={{ uri: imageUri }}
-              style={styles.previewImg}
-              resizeMode="contain"
+            <Button
+              label={isAnalyzing ? t.cameraAnalyzing : t.cameraStartAnalyze}
+              icon="sparkles-outline"
+              size="lg"
+              fullWidth
+              onPress={goNext}
+              loading={isAnalyzing}
             />
           </View>
-
-          <Pressable
-            onPress={goNext}
-            disabled={isAnalyzing}
-            style={[styles.successBtn, isAnalyzing && styles.successBtnDisabled]}
-          >
-            {isAnalyzing ? (
-              <ActivityIndicator color="#fff" style={styles.successBtnSpinner} />
-            ) : null}
-            <Text style={styles.successBtnText}>
-              {isAnalyzing ? t.cameraAnalyzing : t.cameraStartAnalyze}
-            </Text>
-          </Pressable>
-        </View>
-      ) : (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>{t.cameraNoImage}</Text>
-        </View>
-      )}
-
+        ) : (
+          <View style={styles.emptyBox}>
+            <Ionicons name="image-outline" size={36} color={colors.textMuted} />
+            <Text style={styles.emptyText}>{t.cameraNoImage}</Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#FFFFFF" },
-  topBar: { paddingTop: 12, paddingBottom: 16, paddingHorizontal: 20, minHeight: 56 },
-  topBarBack: { flexDirection: "row", alignItems: "center", gap: 6 },
-  topBarBackText: { fontSize: 17, fontWeight: "700", color: "#111827" },
-
-  container: { padding: 24, paddingBottom: 40 },
-
-  header: { marginBottom: 20 },
-  title: { fontSize: 28, fontWeight: "900", color: "#333" },
-  subtitle: { marginTop: 6, fontSize: 16, color: "#666" },
-
-  actions: { marginBottom: 20 },
-
-  primaryBtn: { flexDirection: "row", gap: 8, paddingVertical: 18, backgroundColor: "#007AFF", borderRadius: 14, alignItems: "center", justifyContent: "center", marginBottom: 12, paddingHorizontal: 14 },
-  primaryBtnText: { fontSize: 18, fontWeight: "900", color: "#fff", flexShrink: 1, textAlign: "center" },
-
-  outlineBtn: { flexDirection: "row", gap: 8, paddingVertical: 18, borderWidth: 2, borderColor: "#007AFF", borderRadius: 14, alignItems: "center", justifyContent: "center", marginBottom: 12, paddingHorizontal: 14 },
-  outlineBtnText: { fontSize: 18, fontWeight: "900", color: "#007AFF", flexShrink: 1, textAlign: "center" },
-
-  qrBtn: { flexDirection: "row", gap: 8, paddingVertical: 18, backgroundColor: "#333", borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 14 },
-  qrBtnText: { fontSize: 18, fontWeight: "900", color: "#fff", flexShrink: 1, textAlign: "center" },
-
-  previewWrap: { marginTop: 10 },
-  previewCard: {
-    padding: 8,
-    backgroundColor: "#F2F2F7",
-    borderRadius: 16,
-    marginBottom: 16,
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  container: {
+    padding: layout.screenPaddingX,
+    paddingBottom: spacing.xxl,
+    gap: spacing.lg,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
-  previewImg: { width: "100%", height: 380, borderRadius: 12 },
+  subtitle: { ...typography.body, color: colors.textSecondary },
+  actions: { gap: spacing.md },
 
-  successBtn: { paddingVertical: 18, backgroundColor: "#34C759", borderRadius: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", paddingHorizontal: 14 },
-  successBtnDisabled: { opacity: 0.7 },
-  successBtnSpinner: { marginRight: 8 },
-  successBtnText: { fontSize: 18, fontWeight: "900", color: "#fff", flexShrink: 1, textAlign: "center" },
+  previewWrap: { gap: spacing.lg },
+  previewImg: { width: "100%", height: 380, borderRadius: radii.control },
 
   emptyBox: {
-    paddingVertical: 60,
-    paddingHorizontal: 20,
+    paddingVertical: spacing.xxxl,
+    paddingHorizontal: spacing.xl,
     borderStyle: "dashed",
     borderWidth: 2,
-    borderColor: "#DDD",
-    borderRadius: 16,
+    borderColor: colors.border,
+    borderRadius: radii.card,
     alignItems: "center",
+    gap: spacing.sm,
   },
-  emptyText: { color: "#AAA", fontWeight: "700" },
+  emptyText: { ...typography.body, color: colors.textMuted, textAlign: "center" },
 
-  qrContainer: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  qrCamera: {
-    flex: 1,
-  },
+  // Camera preview: keep a dark backdrop so the viewfinder reads clearly.
+  qrContainer: { flex: 1, backgroundColor: colors.text },
+  qrCamera: { flex: 1 },
   qrOverlay: {
-    position: "absolute",
-    top: 80,
-    left: 24,
-    right: 24,
+    ...StyleSheet.absoluteFill,
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+  },
+  qrTextBox: {
     alignItems: "center",
+    backgroundColor: colors.overlay,
+    borderRadius: radii.card,
+    padding: spacing.lg,
+    marginTop: spacing.xl,
   },
-  qrTitle: {
-    color: "#fff",
-    fontSize: 26,
-    fontWeight: "900",
-  },
-  qrHint: {
-    color: "#fff",
-    fontSize: 16,
-    marginTop: 8,
-    opacity: 0.8,
-  },
-  cancelQrBtn: {
-    position: "absolute",
-    left: 24,
-    right: 24,
-    bottom: 50,
-    backgroundColor: "#fff",
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  cancelQrText: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#333",
-  },
+  qrTitle: { ...typography.title, color: colors.onPrimary, textAlign: "center" },
+  qrHint: { ...typography.body, color: colors.onPrimary, marginTop: spacing.sm, textAlign: "center" },
 });
 
 export default function GuardedCameraScreen() {

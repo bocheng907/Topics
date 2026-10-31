@@ -1,11 +1,12 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, Card, KeyboardAwareScroll, TextField } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
+import { caregiverCopy } from "@/src/i18n/copy/caregiverCopy";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, StatusBar, KeyboardAvoidingView, Platform, } from "react-native";
+import { ActivityIndicator, View, Text, StyleSheet, StatusBar } from "react-native";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, type Href } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
-import { Ionicons } from "@expo/vector-icons";
 import { doc, collection, getDoc, getDocs, query, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 import { createMedicationReminders, inferScheduleTimesFromText, normalizeExplicitScheduleTimes } from "@/src/reminders/createMedicationReminders";
@@ -78,6 +79,8 @@ function CaregiverEditScreen() {
   const { ready } = useAuthContext();
   const { language } = useLanguage();
   const t = translations[language];
+  const c = caregiverCopy[language];
+  const [saving, setSaving] = useState(false);
   const initialItems = useMemo(() => safeParseItems(itemsJson, language), [itemsJson, language]);
   const [items, setItems] = useState<EditItem[]>(initialItems);
   const [title, setTitle] = useState("");
@@ -165,7 +168,8 @@ function CaregiverEditScreen() {
   };
 
   const handleSave = async () => {
-    if (!id) return;
+    if (!id || saving) return;
+    setSaving(true);
     try {
       const batch = writeBatch(db);
       const presRef = doc(db, "prescriptions", id);
@@ -233,8 +237,8 @@ function CaregiverEditScreen() {
         );
 
         Alert.alert(
-          "藥單已儲存",
-          "藥單資料已成功更新，但用藥提醒更新失敗。",
+          c.editSavedReminderFailedTitle,
+          c.editSavedReminderFailedMessage,
           [
             {
               text: t.confirm,
@@ -246,136 +250,104 @@ function CaregiverEditScreen() {
     } catch (e) {
       console.log("caregiver edit save error:", e);
       Alert.alert(t.resultErrorTitle, t.inputFailedCloud);
+    } finally {
+      setSaving(false);
     }
   };
 
-  if (!ready) return <View style={styles.center}><Text>{t.loading}</Text></View>;
+  const header = (
+    <AppHeader
+      title={t.editPrescriptionInfo}
+      fallbackHref={"/caregiver/list" as Href}
+      right={ready ? <Button label={t.save} variant="ghost" onPress={handleSave} loading={saving} disabled={!id} /> : undefined}
+    />
+  );
+
+  if (!ready) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.centerText}>{t.loading}</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <ScreenHeader style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={28} color="#333" /><Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-      </ScreenHeader>
+      {header}
 
-      <View style={styles.titleRow}>
-        <Text style={styles.pageTitle}>{t.editPrescriptionInfo}</Text>
-        <Pressable onPress={handleSave} style={styles.saveBtn}><Text style={styles.saveBtnText}>{t.save}</Text></Pressable>
-      </View>
-
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={
-            Platform.OS === "ios" ? "interactive" : "on-drag"
-          }
-        >
-        <View style={styles.editCard}>
-          <Text style={styles.itemTag}>藥單基本資訊</Text>
-
-          <View style={styles.inputBox}>
-            <Text style={styles.label}>{t.recordTitle}</Text>
-            <TextInput
-              style={styles.input}
-              value={title}
-              onChangeText={setTitle}
-              placeholder={t.recordTitlePlaceholder}
-            />
-          </View>
-
-          <View style={styles.inputBox}>
-            <Text style={styles.label}>診所／醫療機構</Text>
-            <TextInput
-              style={styles.input}
-              value={clinicName}
-              onChangeText={setClinicName}
-              placeholder="請輸入診所或醫療機構名稱"
-            />
-          </View>
-
-          <View style={styles.inputBox}>
-            <Text style={styles.label}>科別</Text>
-            <TextInput
-              style={styles.input}
-              value={department}
-              onChangeText={setDepartment}
-              placeholder="請輸入科別"
-            />
-          </View>
-        </View>
-
-        <View style={styles.memoCard}>
-          <Text style={styles.label}>{t.prescriptionNote}</Text>
-          <TextInput
-            style={[styles.input, styles.memoInput]}
+      <KeyboardAwareScroll contentContainerStyle={styles.scrollContent}>
+        <Card style={styles.card}>
+          <Text style={styles.cardTitle}>{c.editBasicInfo}</Text>
+          <TextField
+            label={t.recordTitle}
+            value={title}
+            onChangeText={setTitle}
+            placeholder={t.recordTitlePlaceholder}
+          />
+          <TextField
+            label={c.editClinicLabel}
+            value={clinicName}
+            onChangeText={setClinicName}
+            placeholder={c.editClinicPlaceholder}
+          />
+          <TextField
+            label={c.departmentLabel}
+            value={department}
+            onChangeText={setDepartment}
+            placeholder={c.editDepartmentPlaceholder}
+          />
+          <TextField
+            label={t.prescriptionNote}
             value={prescriptionMemo}
             multiline
             placeholder={t.notePlaceholder}
             onChangeText={setPrescriptionMemo}
           />
-        </View>
+        </Card>
+
         {items.map((it, idx) => (
-          <View key={it.itemId ?? idx} style={styles.editCard}>
-            <Text style={styles.itemTag}>{t.medicineItem} {idx + 1}</Text>
-            <View style={styles.inputBox}><Text style={styles.label}>{t.medicineName}</Text><TextInput style={styles.input} value={it.name} onChangeText={(text) => updateItem(idx, "name", text)} /></View>
-            <View style={styles.inputBox}><Text style={styles.label}>{t.dosage}</Text><TextInput style={styles.input} value={it.dosage} onChangeText={(text) => updateItem(idx, "dosage", text)} /></View>
-            <View style={styles.inputBox}><Text style={styles.label}>{t.usageExample}</Text><TextInput style={styles.input} value={it.usage_type} onChangeText={(text) => updateItem(idx, "usage_type", text)} /></View>
-            <View style={styles.inputBox}><Text style={styles.label}>{t.usageTimeExample}</Text><TextInput style={styles.input} value={it.usage_time} onChangeText={(text) => updateItem(idx, "usage_time", text)} /></View>
-            <View style={styles.inputBox}>
-              <Text style={styles.label}>自訂餵藥時間</Text>
-              <TextInput
-                style={styles.input}
-                value={it.feeding_times}
-                onChangeText={(text) => updateItem(idx, "feeding_times", text)}
-                placeholder="例如 08:30, 13:00, 19:30"
-                keyboardType="numbers-and-punctuation"
-              />
-              <Text style={styles.helperText}>可輸入多個時間，以逗號分隔；未設定時沿用藥單自動判斷的時間。</Text>
-            </View>
-            <View style={styles.inputBox}>
-              <Text style={styles.label}>{t.note}</Text>
-              <TextInput
-                style={[styles.input, styles.memoInput]}
-                value={it.memo}
-                multiline
-                onChangeText={(text) => updateItem(idx, "memo", text)}
-                placeholder={t.notePlaceholder}
-              />
-            </View>
-          </View>
+          <Card key={it.itemId ?? idx} style={styles.card}>
+            <Text style={styles.cardTitle}>{t.medicineItem} {idx + 1}</Text>
+            <TextField label={t.medicineName} value={it.name} onChangeText={(text) => updateItem(idx, "name", text)} />
+            <TextField label={t.dosage} value={it.dosage} onChangeText={(text) => updateItem(idx, "dosage", text)} />
+            <TextField label={t.usageExample} value={it.usage_type} onChangeText={(text) => updateItem(idx, "usage_type", text)} />
+            <TextField label={t.usageTimeExample} value={it.usage_time} onChangeText={(text) => updateItem(idx, "usage_time", text)} />
+            <TextField
+              label={c.editFeedingTimesLabel}
+              value={it.feeding_times}
+              onChangeText={(text) => updateItem(idx, "feeding_times", text)}
+              placeholder={c.editFeedingTimesPlaceholder}
+              keyboardType="numbers-and-punctuation"
+              helper={c.editFeedingTimesHelper}
+            />
+            <TextField
+              label={t.note}
+              value={it.memo}
+              multiline
+              onChangeText={(text) => updateItem(idx, "memo", text)}
+              placeholder={t.notePlaceholder}
+            />
+          </Card>
         ))}
-      </ScrollView>
-      </KeyboardAvoidingView>
+
+        <Button label={t.save} size="lg" fullWidth onPress={handleSave} loading={saving} disabled={!id} />
+      </KeyboardAwareScroll>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#F4E770", paddingTop: 12, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", minHeight: 56 },
-  backBtn: { flexDirection: "row", alignItems: "center" },
-  backText: { fontSize: 20, fontWeight: "bold", color: "#000", marginLeft: 2 },
-  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 15, flexWrap: "wrap", gap: 12 },
-  pageTitle: { fontSize: 26, fontWeight: "900", color: "#000", flexShrink: 1 },
-  saveBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
-  saveBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
-  scrollContent: { padding: 20, gap: 20 },
-  memoCard: { padding: 20, borderRadius: 20, backgroundColor: "#F7F7F7", gap: 8 },
-  editCard: { padding: 20, borderRadius: 20, borderWidth: 1, borderColor: "#E0E0E0", backgroundColor: "#fff", gap: 15 },
-  itemTag: { color: "#007AFF", fontWeight: "bold", fontSize: 16 },
-  inputBox: { gap: 8 },
-  label: { fontSize: 15, color: "#666", fontWeight: "600" },
-  input: { backgroundColor: "#F5F5F5", padding: 12, borderRadius: 10, fontSize: 16 },
-  memoInput: { textAlignVertical: "top", minHeight: 100 },
-  helperText: { fontSize: 12, color: "#888", lineHeight: 18 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  container: { flex: 1, backgroundColor: colors.canvas },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.md },
+  centerText: { ...typography.body, color: colors.textSecondary },
+  scrollContent: { width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" },
+  card: { gap: spacing.lg },
+  cardTitle: { ...typography.header, color: colors.primary },
 });
 
 export default function GuardedCaregiverEditScreen() {

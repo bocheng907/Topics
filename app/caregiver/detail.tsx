@@ -1,9 +1,11 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, Card, EmptyState, SectionHeader } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { caregiverCopy } from "@/src/i18n/copy/caregiverCopy";
 import React, { useCallback, useState } from "react";
-import { View, Text, Pressable, ScrollView, Image, Alert, StyleSheet, StatusBar } from "react-native";
-import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
+import { ActivityIndicator, View, Text, ScrollView, Image, StyleSheet, StatusBar } from "react-native";
+import { router, useLocalSearchParams, useFocusEffect, type Href } from "expo-router";
 import { collection, doc, getDoc, getDocs, query } from "firebase/firestore";
-import { Ionicons } from "@expo/vector-icons";
 import { db } from "@/firebase/firebaseConfig";
 import {
   ensureFirestoreTranslations,
@@ -38,6 +40,7 @@ export default function CaregiverDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { language } = useLanguage();
   const t = translations[language];
+  const c = caregiverCopy[language];
   const [p, setP] = useState<any | null>(null);
   const [items, setItems] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -96,139 +99,146 @@ export default function CaregiverDetailScreen() {
     }, [fetchData])
   );
 
-  if (!loaded) return <View style={styles.center}><Text>{t.reading}</Text></View>;
-  if (!id || !p) return <View style={styles.center}><Text>{t.resultNotFound}</Text></View>;
+  const header = <AppHeader title={t.prescriptionDetail} fallbackHref={"/caregiver/list" as Href} />;
+
+  if (!loaded) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.centerText}>{t.reading}</Text>
+        </View>
+      </View>
+    );
+  }
+  if (!id || !p) {
+    return (
+      <View style={styles.container}>
+        {header}
+        <EmptyState icon="document-outline" title={t.resultNotFound} style={styles.center} />
+      </View>
+    );
+  }
 
   const clinicName = String(p.clinic_name ?? p.clinicName ?? "");
   const department = String(p.department ?? "");
   const prescriptionMemo = formatPrescriptionMemo(p.memo);
+  const sep = language === "zh" ? "：" : ": ";
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <ScreenHeader style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={28} color="#333" />
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-      </ScreenHeader>
-
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.titleRow}>
-          <View style={{ flex: 1 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.mainTitle}>
-                {p.title || t.prescriptionDetail}
-              </Text>
-
-              <Text style={[styles.subInfo, { marginTop: 8 }]}>
-                {t.recordDate}：{
-                  typeof p.createdAt === "string"
-                    ? p.createdAt
-                    : (p.createdAt?.seconds
-                        ? new Date(p.createdAt.seconds * 1000).toLocaleDateString()
-                        : t.unknown)
-                }
-              </Text>
-
-              <Text style={styles.subInfo}>
-                診所：{clinicName || t.notSet}
-              </Text>
-
-              <Text style={styles.subInfo}>
-                科別：{department || t.notSet}
-              </Text>
-            </View>
-          </View>
-          <Pressable
+      <AppHeader
+        title={t.prescriptionDetail}
+        fallbackHref={"/caregiver/list" as Href}
+        right={
+          <Button
+            label={t.edit}
+            variant="ghost"
+            icon="create-outline"
             onPress={() => router.push({
               pathname: "/caregiver/edit",
               params: { id: p.prescriptionId, itemsJson: JSON.stringify(items) },
             })}
-            style={styles.editBtn}
-          >
-            <Text style={styles.editBtnText}>{t.edit}</Text>
-          </Pressable>
+          />
+        }
+      />
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.titleBlock}>
+          <Text style={styles.mainTitle}>{p.title || t.prescriptionDetail}</Text>
+          <Text style={styles.subInfo}>
+            {t.recordDate}{sep}{
+              typeof p.createdAt === "string"
+                ? p.createdAt
+                : (p.createdAt?.seconds
+                    ? new Date(p.createdAt.seconds * 1000).toLocaleDateString()
+                    : t.unknown)
+            }
+          </Text>
+          <Text style={styles.subInfo}>{c.clinicLabel}{sep}{clinicName || t.notSet}</Text>
+          <Text style={styles.subInfo}>{c.departmentLabel}{sep}{department || t.notSet}</Text>
         </View>
 
         {p.sourceImageUrl && (
           <Image source={{ uri: p.sourceImageUrl }} style={styles.img} resizeMode="contain" />
         )}
 
-        <View style={styles.prescriptionNoteCard}>
+        <Card tone="sunken">
           <Text style={styles.prescriptionNoteLabel}>{t.prescriptionNote}</Text>
           <Text style={prescriptionMemo ? styles.prescriptionNoteValue : styles.emptyNoteValue}>
             {prescriptionMemo || t.none}
           </Text>
+        </Card>
+
+        <SectionHeader title={t.medicineDetails} />
+        <View style={styles.itemList}>
+          {items.map((it, idx) => {
+            const usageParts = String(it.usage_zh ?? "")
+              .split(/[，,]/)
+              .map((part: string) => part.trim())
+              .filter(Boolean);
+
+            const method = usageParts[0] || t.notSet;
+            const timeDetail = usageParts.slice(1).join("，") || t.asDirectedUsage;
+
+            return (
+              <Card key={it.itemId ?? idx}>
+                <Text style={styles.itemName}>{it.drug_name}</Text>
+                <InfoRow label={t.dosage} value={it.dosage} />
+                <InfoRow label={t.method} value={method} />
+                <InfoRow label={t.usageTime} value={timeDetail} />
+                <Text style={it.memo ? styles.itemNote : styles.emptyItemNote}>
+                  {t.medicineNote}{sep}{it.memo || t.none}
+                </Text>
+              </Card>
+            );
+          })}
         </View>
-
-        <Text style={styles.sectionTitle}>{t.medicineDetails}</Text>
-        {items.map((it, idx) => {
-          const usageParts = String(it.usage_zh ?? "")
-            .split(/[，,]/)
-            .map((part: string) => part.trim())
-            .filter(Boolean);
-
-          const method =
-            usageParts[0] || t.notSet;
-
-          const timeDetail =
-            usageParts.slice(1).join("，") ||
-            t.asDirectedUsage;
-
-          return (
-            <View key={it.itemId ?? idx} style={styles.itemCard}>
-              <Text style={styles.itemName}>{it.drug_name}</Text>
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{t.dosage}：</Text>
-                <Text style={styles.infoValue}>{it.dosage}</Text>
-              </View>
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{t.method}：</Text>
-                <Text style={styles.infoValue}>{method}</Text>
-              </View>
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{t.usageTime}：</Text>
-                <Text style={styles.infoValue}>{timeDetail}</Text>
-              </View>
-
-              <Text style={it.memo ? styles.itemNote : styles.emptyItemNote}>
-                {t.medicineNote}：{it.memo || t.none}
-              </Text>
-            </View>
-          );
-        })}
       </ScrollView>
     </View>
   );
 }
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { backgroundColor: "#F4E770", paddingTop: 12, paddingHorizontal: 15, justifyContent: "center", minHeight: 56 },
-  backButton: { flexDirection: "row", alignItems: "center" },
-  backText: { fontSize: 20, fontWeight: "bold", color: "#333", marginLeft: 2 },
-  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 15, flexWrap: "wrap", gap: 12 },
-  mainTitle: { fontSize: 28, fontWeight: "900", color: "#333" },
-  subInfo: { color: "#999", marginBottom: 10 },
-  editBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
-  editBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
-  scrollContent: { padding: 20, paddingBottom: 48 },
-  img: { width: "100%", height: 300, borderRadius: 12, backgroundColor: "#eee", marginBottom: 20 },
-  prescriptionNoteCard: { padding: 16, borderRadius: 12, backgroundColor: "#F7F7F7", marginBottom: 20 },
-  prescriptionNoteLabel: { fontSize: 16, color: "#555", fontWeight: "700", marginBottom: 6 },
-  prescriptionNoteValue: { fontSize: 15, color: "#333", lineHeight: 22 },
-  emptyNoteValue: { fontSize: 15, color: "#AAA" },
-  sectionTitle: { fontSize: 20, fontWeight: "800", marginBottom: 10 },
-  itemCard: { padding: 16, borderRadius: 12, borderWidth: 1, borderColor: "#eee", backgroundColor: "#fff", marginBottom: 10 },
-  itemName: { fontSize: 18, fontWeight: "800", color: "#007AFF", marginBottom: 8 },
-  infoRow: { flexDirection: "row", marginBottom: 4 },
-  infoLabel: { fontSize: 15, color: "#666", width: 85 },
-  infoValue: { fontSize: 15, color: "#333", fontWeight: "600", flex: 1 },
-  itemNote: { fontSize: 14, color: "#999", marginTop: 8, fontStyle: "italic" },
-  emptyItemNote: { fontSize: 14, color: "#BBB", marginTop: 8, fontStyle: "italic" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  container: { flex: 1, backgroundColor: colors.canvas },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.md },
+  centerText: { ...typography.body, color: colors.textSecondary },
+  scrollContent: {
+    padding: layout.screenPaddingX,
+    paddingBottom: spacing.xxl,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+  },
+  titleBlock: { marginBottom: spacing.lg, gap: 2 },
+  mainTitle: { ...typography.title, marginBottom: spacing.xs },
+  subInfo: { ...typography.bodySmall },
+  img: {
+    width: "100%",
+    height: 300,
+    borderRadius: radii.card,
+    backgroundColor: colors.surfaceSunken,
+    marginBottom: spacing.lg,
+  },
+  prescriptionNoteLabel: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.xs },
+  prescriptionNoteValue: { ...typography.body },
+  emptyNoteValue: { ...typography.body, color: colors.textMuted },
+  itemList: { gap: spacing.md },
+  itemName: { ...typography.header, color: colors.primary, marginBottom: spacing.sm },
+  infoRow: { flexDirection: "row", gap: spacing.md, paddingVertical: 3 },
+  infoLabel: { ...typography.bodySmall, color: colors.textMuted, width: 96 },
+  infoValue: { ...typography.bodyStrong, flex: 1 },
+  itemNote: { ...typography.bodySmall, marginTop: spacing.sm },
+  emptyItemNote: { ...typography.bodySmall, color: colors.textMuted, marginTop: spacing.sm },
 });

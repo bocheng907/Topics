@@ -13,7 +13,8 @@ import { Stack, router, useSegments } from "expo-router";
 import { signOut } from "@/src/auth/auditSession";
 import { doc, getDoc } from "firebase/firestore";
 import React from "react";
-import { Alert, Platform, Linking, Pressable, StyleSheet, View } from "react-native";
+import { Platform, Linking, Pressable, StyleSheet, View } from "react-native";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DrawerProvider, useDrawer } from "@/src/ui/DrawerContext";
 import {
@@ -24,7 +25,7 @@ import {
   type BottomNavItem,
   type SideDrawerSection,
 } from "@/src/ui/components";
-import { colors, shadows } from "@/src/ui/theme";
+import { colors, layout, shadows } from "@/src/ui/theme";
 
 const hideBottomNavRoutes = [
   "chat-room",
@@ -74,6 +75,7 @@ function CaregiverShell() {
     (activeCareTarget as any)?.activePatientId ??
     (activeCareTarget as any)?.activeCareTargetId ??
     "";
+  const showBottomNav = !hideBottomNav && !!activePatientId;
   const activePatientName: string | undefined = (activeCareTarget as any)?.activePatient?.name || undefined;
 
   async function makePhoneCall(phone: string) {
@@ -117,6 +119,16 @@ function CaregiverShell() {
         await makePhoneCall(phones[0]);
         return;
       }
+      if (Platform.OS === "web") {
+        // AppAlert on web supports one action + cancel, so offer the two numbers one after another.
+        const ask = (option: string, phone: string) => window.confirm(`${t.emergencyChooseTitle}\n\n${option}${phone}`);
+        if (ask(t.emergencyPhone1Option, phones[0])) {
+          await makePhoneCall(phones[0]);
+        } else if (ask(t.emergencyPhone2Option, phones[1])) {
+          await makePhoneCall(phones[1]);
+        }
+        return;
+      }
       Alert.alert(t.emergencyChooseTitle, t.emergencyChooseMessage, [
         { text: `${t.emergencyPhone1Option}${phones[0]}`, onPress: () => void makePhoneCall(phones[0]) },
         { text: `${t.emergencyPhone2Option}${phones[1]}`, onPress: () => void makePhoneCall(phones[1]) },
@@ -128,26 +140,7 @@ function CaregiverShell() {
     }
   }
 
-  const handleLogout = async () => {
-    // Web 測試
-    if (Platform.OS === "web") {
-      const confirmed = window.confirm(t.logoutMessage);
-
-      if (!confirmed) return;
-
-      try {
-        await signOut(auth);
-        drawer.close();
-        router.replace("/");
-      } catch (error) {
-        console.log("登出失敗:", error);
-        window.alert(t.logoutFailed);
-      }
-
-      return;
-    }
-
-    //手機版
+  const handleLogout = () => {
     Alert.alert(t.logout, t.logoutMessage, [
       { text: t.cancel, style: "cancel" },
       {
@@ -236,7 +229,14 @@ function CaregiverShell() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.content, hideBottomNav && { paddingBottom: insets.bottom }]}>
+      {/* The bottom bar floats over the content; reserve its height (+ safe area) so screens only need
+          a small bottom padding for the raised emergency button. */}
+      <View
+        style={[
+          styles.content,
+          { paddingBottom: showBottomNav ? layout.bottomNavHeight + insets.bottom : insets.bottom },
+        ]}
+      >
         <Stack
           screenOptions={{
             headerShown: false,
@@ -246,7 +246,7 @@ function CaregiverShell() {
         />
       </View>
 
-      {!hideBottomNav && !!activePatientId && (
+      {showBottomNav && (
         <View style={styles.footerWrapper} pointerEvents="box-none">
           <BottomNav items={navItems} activeKey={currentPage} onSelect={onSelectNav} centerGap={FAB_SIZE + 20} />
           <View style={styles.fabContainer} pointerEvents="box-none">

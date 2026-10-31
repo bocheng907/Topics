@@ -2,7 +2,9 @@
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { getHomeLayout } from "@/src/ui/homeLayout";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AppHeader } from "@/src/ui/components";
+import { AppHeader, Button, Card, SectionHeader, type IconName } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
+import { caregiverCopy } from "@/src/i18n/copy/caregiverCopy";
 import { db } from "@/firebase/firebaseConfig";
 import { router } from "expo-router";
 import {
@@ -119,6 +121,7 @@ export default function CaregiverHomeScreen() {
   const { activePatient, activePatientId, ready } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
+  const c = caregiverCopy[language];
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const target = ready && user && activePatientId ? activePatient as CareTarget | null : null;
@@ -319,7 +322,7 @@ export default function CaregiverHomeScreen() {
     }
 
     if (!currentReminder || !activeSlot) {
-      Alert.alert(t.noReminder, "目前尚未進入餵藥時間，請在預定時間前 30 分鐘至後 60 分鐘內操作。 ");
+      Alert.alert(t.noReminder, c.homeDoneWindowAlert);
       return;
     }
 
@@ -397,7 +400,9 @@ export default function CaregiverHomeScreen() {
     return (
       <View style={styles.container}>
         <AppHeader title={t.navHome} left="menu" />
-        <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
       </View>
     );
   }
@@ -405,197 +410,135 @@ export default function CaregiverHomeScreen() {
   if (!activePatientId || !activePatient) {
     return (
       <View style={styles.container}>
-      <AppHeader title={t.navHome} left="menu" />
-      <View style={styles.noTargetContainer}>
-        <View style={styles.noTargetCard}>
-          <Ionicons
-            name="person-add-outline"
-            size={54}
-            color="#4F59D5"
-          />
-
-          <Text style={styles.noTargetTitle}>
-            尚未綁定照護對象
-          </Text>
-
-          <Text style={styles.noTargetDescription}>
-            你可以先加入照護對象，也可以先綁定所屬仲介
-          </Text>
-
-          <Pressable
-            style={styles.primarySetupButton}
-            onPress={() =>
-              router.push("/care-target/join" as any)
-            }
-          >
-            <Ionicons
-              name="people-outline"
-              size={22}
-              color="#FFF"
+        <AppHeader title={t.navHome} left="menu" />
+        <ScrollView contentContainerStyle={styles.noTargetContainer}>
+          <Card style={styles.noTargetCard}>
+            <View style={styles.noTargetIcon}>
+              <Ionicons name="person-add-outline" size={36} color={colors.primary} />
+            </View>
+            <Text style={styles.noTargetTitle}>{c.homeNoTargetTitle}</Text>
+            <Text style={styles.noTargetDescription}>{c.homeNoTargetBody}</Text>
+            <Button
+              label={c.homeBindTarget}
+              icon="people-outline"
+              size="lg"
+              fullWidth
+              onPress={() => router.push("/care-target/join" as any)}
             />
-            <Text style={styles.primarySetupButtonText}>
-              綁定照護對象
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.secondarySetupButton}
-            onPress={() =>
-              router.push(
-                "/caregiver/agency-binding" as any
-              )
-            }
-          >
-            <Ionicons
-              name="business-outline"
-              size={22}
-              color="#4F59D5"
+            <Button
+              label={c.homeBindAgency}
+              icon="business-outline"
+              size="lg"
+              variant="secondary"
+              fullWidth
+              onPress={() => router.push("/caregiver/agency-binding" as any)}
             />
-            <Text style={styles.secondarySetupButtonText}>
-              綁定仲介
-            </Text>
-          </Pressable>
-        </View>
-      </View>
+          </Card>
+        </ScrollView>
       </View>
     );
   }
+
+  const doneDisabled = !activeSlot || activeSlotDone || doneLoading;
 
   return (
     <View style={styles.container}>
       <AppHeader title={t.navHome} left="menu" />
       <SafeAreaView style={styles.body} edges={["left", "right"]}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* 使用者姓名 (移除了原本的 Header) */}
-        <View style={styles.userInfo}>
-          <Text style={styles.userName}>{target?.name ?? t.noSelectedPatient}</Text>
-        </View>
-
-        {/* 用藥提醒卡片 */}
-        <View style={styles.reminderCard}>
-          <View style={styles.reminderTitleRow}>
-            <Ionicons name="alarm" size={32} color="#4F59D5" />
-            <Text style={styles.reminderTitle}>
-              {currentReminder
-                ? `${currentReminder.scheduleTime} ${t.reminder}`
-                : t.noReminder}
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <View style={styles.userInfo}>
+            <Text style={styles.overline}>{c.homeCaringFor}</Text>
+            <Text style={styles.userName} numberOfLines={2}>
+              {target?.name ?? t.noSelectedPatient}
             </Text>
           </View>
 
-          <View style={styles.reminderSubRow}>
-            <Ionicons name="medkit" size={24} color="#2563EB" />
-            <Text style={styles.reminderSubText}>
-              {currentReminder
-                ? `${currentReminder.medicineName} (${currentReminder.doseText || t.doseAsDirected})`
-                : t.buildReminderByScan}
-            </Text>
+          {/* 用藥提醒卡片 */}
+          <Card style={styles.reminderCard}>
+            <View style={styles.reminderTitleRow}>
+              <Ionicons name="alarm-outline" size={28} color={colors.primary} />
+              <Text style={styles.reminderTitle}>
+                {currentReminder ? `${currentReminder.scheduleTime} ${t.reminder}` : t.noReminder}
+              </Text>
+            </View>
+
+            <View style={styles.reminderSubRow}>
+              <Ionicons name="medkit-outline" size={22} color={colors.textSecondary} />
+              <Text style={styles.reminderSubText}>
+                {currentReminder
+                  ? `${currentReminder.medicineName} (${currentReminder.doseText || t.doseAsDirected})`
+                  : t.buildReminderByScan}
+              </Text>
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.doneBtn,
+                doneLoading || (!activeSlot && !activeSlotDone)
+                  ? styles.doneBtnDisabled
+                  : activeSlotDone
+                  ? styles.doneBtnDone
+                  : pressed
+                  ? styles.doneBtnPressed
+                  : styles.doneBtnActive,
+              ]}
+              onPress={handleDonePress}
+              disabled={doneDisabled}
+              accessibilityRole="button"
+              accessibilityLabel={c.homeDone}
+              accessibilityState={{ disabled: doneDisabled, busy: doneLoading, checked: activeSlotDone }}
+            >
+              {doneLoading ? (
+                <ActivityIndicator size="large" color={colors.textMuted} />
+              ) : activeSlotDone ? (
+                <>
+                  <Ionicons name="checkmark-circle" size={36} color={colors.onPrimary} />
+                  <Text style={styles.doneBtnTextLight}>{c.homeDone}</Text>
+                </>
+              ) : (
+                <Text style={activeSlot ? styles.doneBtnTextLight : styles.doneBtnTextMuted}>{c.homeDone}</Text>
+              )}
+            </Pressable>
+            {!activeSlot && currentReminder ? <Text style={styles.doneHint}>{c.homeDoneWindowHint}</Text> : null}
+          </Card>
+
+          <SectionHeader title={t.functionMenu} style={styles.sectionHeader} />
+
+          {/* 掃描藥單：最主要的操作 */}
+          <Button
+            label={t.scanPrescription}
+            icon="camera"
+            size="lg"
+            fullWidth
+            onPress={() => router.push("/caregiver/camera")}
+            style={styles.mainActionButton}
+          />
+
+          {/* 2x2 功能網格 */}
+          <View style={styles.gridContainer}>
+            <View style={[styles.gridRow, narrowCards && { flexDirection: "column" }]}>
+              <HomeTile icon="clipboard-outline" label={t.viewPrescriptionRecords} onPress={() => router.push("/caregiver/list")} />
+              <HomeTile icon="pulse-outline" label={t.dailyHealthReport} onPress={() => router.push("/caregiver/health-report" as any)} />
+            </View>
+            <View style={[styles.gridRow, narrowCards && { flexDirection: "column" }]}>
+              <HomeTile icon="images-outline" label={t.communicationCards} onPress={() => router.push("/caregiver/communication-cards" as any)} />
+              <HomeTile icon="videocam-outline" label={t.conditionRecording} onPress={() => router.push("/caregiver/video-record" as any)} />
+            </View>
           </View>
-
-          <Pressable
-            style={[
-              styles.doneBtn,
-              doneLoading
-                ? styles.doneBtnLoading
-                : activeSlotDone
-                ? styles.doneBtnDone
-                : activeSlot
-                ? styles.doneBtnActive
-                : styles.doneBtnDisabled,
-            ]}
-            onPress={handleDonePress}
-            disabled={!activeSlot || activeSlotDone || doneLoading}
-          >
-            {doneLoading ? (
-              <Text style={styles.doneBtnTextMuted}>...</Text>
-            ) : activeSlotDone ? (
-              <View style={styles.doneBtnRow}>
-                <Text style={styles.doneBtnTextLight}>DONE</Text>
-                <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-              </View>
-            ) : activeSlot ? (
-              <Text style={styles.doneBtnTextLight}>DONE</Text>
-            ) : (
-              <Text style={styles.doneBtnTextMuted}>DONE</Text>
-            )}
-          </Pressable>
-        </View>
-
-        {/* 功能選單標題 */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t.functionMenu}</Text>
-        </View>
-
-        {/* 掃描藥單 */}
-        <Pressable
-          onPress={() => router.push("/caregiver/camera")}
-          style={styles.mainActionButton}
-        >
-          <Ionicons name="camera" size={24} color="#FFF" />
-          <Text style={styles.mainActionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>{t.scanPrescription}</Text>
-        </Pressable>
-
-        {/* 2x2 功能網格 */}
-        <View style={styles.gridContainer}>
-          <View style={[styles.gridRow, narrowCards && { flexDirection: "column" }]}>
-            <Pressable
-              onPress={() => router.push("/caregiver/list")}
-              style={[styles.gridItem, { backgroundColor: "#FEF9C3" }]}
-            >
-              <View style={styles.gridGroup}>
-                <View style={[styles.gridIconBadge, { backgroundColor: "#CA8A04" }]}>
-                  <Ionicons name="clipboard" size={28} color="#FFFFFF" />
-                </View>
-                <Text style={styles.gridText}>{t.viewPrescriptionRecords}</Text>
-              </View>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push("/caregiver/health-report" as any)}
-              style={[styles.gridItem, { backgroundColor: "#FFEDD5" }]}
-            >
-              <View style={styles.gridGroup}>
-                <View style={[styles.gridIconBadge, { backgroundColor: "#EA580C" }]}>
-                  <Ionicons name="pulse" size={28} color="#FFFFFF" />
-                </View>
-                <Text style={styles.gridText}>{t.dailyHealthReport}</Text>
-              </View>
-            </Pressable>
-          </View>
-
-          <View style={[styles.gridRow, narrowCards && { flexDirection: "column" }]}>
-            <Pressable
-              onPress={() =>
-                router.push("/caregiver/communication-cards" as any)
-              }
-              style={[styles.gridItem, { backgroundColor: "#DCFCE7" }]}
-            >
-              <View style={styles.gridGroup}>
-                <View style={[styles.gridIconBadge, { backgroundColor: "#16A34A" }]}>
-                  <Ionicons name="image" size={28} color="#FFFFFF" />
-                </View>
-                <Text style={styles.gridText}>{t.communicationCards}</Text>
-              </View>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push("/caregiver/video-record" as any)}
-              style={[styles.gridItem, { backgroundColor: "#DBEAFE" }]}
-            >
-              <View style={styles.gridGroup}>
-                <View style={[styles.gridIconBadge, { backgroundColor: "#2563EB" }]}>
-                  <Ionicons name="videocam" size={28} color="#FFFFFF" />
-                </View>
-                <Text style={styles.gridText}>{t.conditionRecording}</Text>
-              </View>
-            </Pressable>
-          </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
       </SafeAreaView>
     </View>
+  );
+}
+
+function HomeTile({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  return (
+    <Card onPress={onPress} accessibilityLabel={label} style={styles.gridItem}>
+      <View style={styles.gridIconBadge}>
+        <Ionicons name={icon} size={28} color={colors.primary} />
+      </View>
+      <Text style={styles.gridText}>{label}</Text>
+    </Card>
   );
 }
 
@@ -603,168 +546,102 @@ export default function CaregiverHomeScreen() {
 // 樣式表
 // ==========================================
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  container: { flex: 1, backgroundColor: colors.canvas },
   body: { flex: 1 },
-  scrollContent: { paddingBottom: 190, paddingTop: 8 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  scrollContent: {
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    paddingHorizontal: layout.screenPaddingX,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+  },
+
   noTargetContainer: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
+    flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-
-  noTargetCard: {
-    backgroundColor: "#F8F9FC",
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 32,
-    alignItems: "center",
-    gap: 14,
-  },
-
-  noTargetTitle: {
-    marginTop: 6,
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#111827",
-    textAlign: "center",
-  },
-
-  noTargetDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#6B7280",
-    textAlign: "center",
-    marginBottom: 12,
-  },
-
-  primarySetupButton: {
+    padding: spacing.xl,
     width: "100%",
-    minHeight: 56,
-    borderRadius: 16,
-    backgroundColor: "#4F59D5",
-    flexDirection: "row",
+    maxWidth: 520,
+    alignSelf: "center",
+  },
+  noTargetCard: { alignItems: "center", gap: spacing.md, paddingVertical: spacing.xxl, paddingHorizontal: spacing.xl },
+  noTargetIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
-    gap: 10,
+    marginBottom: spacing.sm,
   },
+  noTargetTitle: { ...typography.title, textAlign: "center" },
+  noTargetDescription: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginBottom: spacing.md },
 
-  primarySetupButtonText: {
-    color: "#FFF",
-    fontSize: 17,
-    fontWeight: "800",
-  },
+  userInfo: { paddingHorizontal: spacing.xs, marginBottom: spacing.lg },
+  overline: { ...typography.overline },
+  userName: { ...typography.display, fontSize: 32, lineHeight: 40, marginTop: 2 },
 
-  secondarySetupButton: {
-    width: "100%",
-    minHeight: 56,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: "#4F59D5",
-    backgroundColor: "#FFF",
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  secondarySetupButtonText: {
-    color: "#4F59D5",
-    fontSize: 17,
-    fontWeight: "800",
-  },
-  userInfo: {
-    paddingHorizontal: 24,
-    marginBottom: 16,
-  },
-  userName: {
-    fontSize: 38,
-    fontWeight: "bold",
-    letterSpacing: 2,
-    color: "#111827",
-  },
-  reminderCard: {
-    backgroundColor: "#F8F9FC",
-    marginHorizontal: 20,
-    borderRadius: 24,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
-  },
+  reminderCard: { alignItems: "center", paddingVertical: spacing.xl, paddingHorizontal: spacing.xl },
   reminderTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 12,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
     width: "100%",
     justifyContent: "center",
   },
-  emojiLarge: {
-    fontSize: 36,
-  },
-  reminderTitle: { fontSize: 32, fontWeight: "bold", color: "#000", letterSpacing: 1, flexShrink: 1, textAlign: "center" },
+  reminderTitle: { ...typography.display, flexShrink: 1, textAlign: "center" },
   reminderSubRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 24,
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
     width: "100%",
     justifyContent: "center",
   },
-  emojiMedium: {
-    fontSize: 28,
+  reminderSubText: { ...typography.header, color: colors.textSecondary, flexShrink: 1, textAlign: "center" },
+  doneBtn: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: spacing.xs,
+    padding: spacing.md,
   },
-  reminderSubText: { fontSize: 22, fontWeight: "600", color: "#000", flexShrink: 1, textAlign: "center" },
-  doneBtn: { borderRadius: 55, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2, minWidth: 110, minHeight: 110, maxWidth: "100%", padding: 16 },
-  doneBtnActive: { backgroundColor: "#F5A623" },
-  doneBtnDone: { backgroundColor: "#22C55E" },
-  doneBtnDisabled: { backgroundColor: "#E5E7EB" },
-  doneBtnLoading: { backgroundColor: "#E5E7EB" },
-  doneBtnTextLight: { fontSize: 24, fontWeight: "900", letterSpacing: 1, color: "#FFFFFF", flexShrink: 1, textAlign: "center" },
-  doneBtnTextMuted: { fontSize: 24, fontWeight: "900", letterSpacing: 1, color: "#9CA3AF", flexShrink: 1, textAlign: "center" },
-  doneBtnRow: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: "100%" },
-  sectionHeader: {
-    paddingHorizontal: 24,
-    marginTop: 24,
-    marginBottom: 12,
+  doneBtnActive: { backgroundColor: colors.primary },
+  doneBtnPressed: { backgroundColor: colors.primaryPressed },
+  doneBtnDone: { backgroundColor: colors.success },
+  doneBtnDisabled: { backgroundColor: colors.surfaceSunken, borderWidth: 1, borderColor: colors.border },
+  doneBtnTextLight: { fontSize: 22, lineHeight: 28, fontWeight: "700", color: colors.onPrimary, textAlign: "center" },
+  doneBtnTextMuted: { fontSize: 22, lineHeight: 28, fontWeight: "700", color: colors.textDisabled, textAlign: "center" },
+  doneHint: { ...typography.bodySmall, textAlign: "center", marginTop: spacing.md },
+
+  sectionHeader: { paddingTop: spacing.xxl },
+  mainActionButton: { marginBottom: spacing.md },
+  gridContainer: { gap: spacing.md },
+  gridRow: { flexDirection: "row", gap: spacing.md },
+  gridItem: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 128,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#111827",
-  },
-  mainActionButton: { backgroundColor: "#4F59D5", marginHorizontal: 20, borderRadius: 16, paddingVertical: 16, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, marginBottom: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3, paddingHorizontal: 12 },
-  mainActionText: {
-    flexShrink: 1,
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#FFF",
-    letterSpacing: 0.2,
-    textAlign: "center",
-  },
-  gridContainer: {
-    marginHorizontal: 20,
-    gap: 16,
-  },
-  gridRow: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  gridItem: { flex: 1, borderRadius: 20, justifyContent: "flex-start", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2, minHeight: 140, minWidth: 0, paddingHorizontal: 12, paddingVertical: 16 },
-  gridGroup: { alignItems: "center", justifyContent: "flex-start", gap: 8, width: "100%" },
   gridIconBadge: {
     width: 52,
     height: 52,
     borderRadius: 26,
+    backgroundColor: colors.primarySoft,
     justifyContent: "center",
     alignItems: "center",
   },
-  gridText: { width: "100%", fontSize: 17, lineHeight: 20, fontWeight: "bold", color: "#111827", letterSpacing: 0.2, textAlign: "center" },
+  gridText: { ...typography.bodyStrong, textAlign: "center", width: "100%" },
 });

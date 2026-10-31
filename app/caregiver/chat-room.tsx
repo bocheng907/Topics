@@ -1,4 +1,5 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button } from "@/src/ui/components";
+import { colors, radii, spacing, typography } from "@/src/ui/theme";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { chatCopy } from "@/src/chat/chatCopy";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -16,7 +17,7 @@ import {
   Image,
   useWindowDimensions,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { type Href, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { db, storage } from "@/firebase/firebaseConfig";
@@ -215,20 +216,16 @@ export default function CaregiverChatRoomScreen() {
 
   return (
     <View style={styles.mainContainer}>
-      <ScreenHeader style={styles.header}>
-        <View style={styles.headerLeft}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t.back} onPress={() => router.canGoBack() ? router.back() : router.replace('/caregiver/chat-list')} hitSlop={20} style={styles.backBtn}>
-            <Text style={styles.backIcon}>＜</Text>
-          </Pressable>
-          <Text style={styles.headerTitle}>
-            {activePatient?.name
-              ? language === "zh"
-                ? `${activePatient.name}${t.familyLabel}`
-                : `${activePatient.name} ${t.familyLabel}`
-              : t.chatRoom}
-          </Text>
-        </View>
-      </ScreenHeader>
+      <AppHeader
+        title={
+          activePatient?.name
+            ? language === "zh"
+              ? `${activePatient.name}${t.familyLabel}`
+              : `${activePatient.name} ${t.familyLabel}`
+            : t.chatRoom
+        }
+        fallbackHref={"/caregiver/chat-list" as Href}
+      />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -239,18 +236,24 @@ export default function CaregiverChatRoomScreen() {
       {loadError ? (
         <View style={styles.emptyContainer}>
           <Text accessibilityRole="alert" style={styles.emptySubText}>{copy.loadFailed}</Text>
-          <Pressable accessibilityRole="button" onPress={() => { setLoadError(false); setLoading(true); setRetry(value => value + 1); }} style={{padding: 16}}>
-            <Text>{copy.retry}</Text>
-          </Pressable>
+          <Button
+            label={copy.retry}
+            variant="secondary"
+            icon="refresh"
+            onPress={() => { setLoadError(false); setLoading(true); setRetry(value => value + 1); }}
+            style={styles.retryButton}
+          />
         </View>
       ) : loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#9999E5" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>{t.loadingMessages}</Text>
         </View>
       ) : messages.length === 0 ? (
         <ScrollView contentContainerStyle={styles.emptyContainer}>
-          <Ionicons name="chatbubbles-outline" size={80} color="#C4C4C4" style={styles.emptyIcon} />
+          <View style={styles.emptyIcon}>
+            <Ionicons name="chatbubbles-outline" size={36} color={colors.primary} />
+          </View>
           <Text style={styles.emptyText}>{t.noConversation}</Text>
           <Text style={styles.emptySubText}>
             {t.sendFirstMessage}
@@ -295,7 +298,7 @@ export default function CaregiverChatRoomScreen() {
                   {msg.imageUrl ? (
                     <Image source={{ uri: msg.imageUrl }} style={styles.sentImage} resizeMode="cover" />
                   ) : (
-                    <Text style={[styles.mainText, isMe && { color: "#FFF" }]}>{localizedText || originalText}</Text>
+                    <Text style={[styles.mainText, isMe && styles.mainTextMe]}>{localizedText || originalText}</Text>
                   )}
                     </View>
                     <Text style={[styles.timeText, { alignSelf: isMe ? "flex-end" : "flex-start" }]}>
@@ -323,19 +326,19 @@ export default function CaregiverChatRoomScreen() {
 
       <ChatTranslationStatus language={language} {...translated} />
       <View style={styles.inputArea}>
-        <Pressable accessibilityRole="button" accessibilityLabel={copy.photo} onPress={pickImageAndSend} style={styles.photoBtn} disabled={uploading}>
-          <View
-            style={[
-              styles.iconCircle,
-              { backgroundColor: "#EEE", borderColor: "#CCC", borderWidth: 1 },
-            ]}
-          >
-            {uploading ? (
-              <ActivityIndicator size="small" color="#999" />
-            ) : (
-              <Ionicons name="camera" size={22} color="#666" />
-            )}
-          </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={copy.photo}
+          accessibilityState={{ disabled: uploading, busy: uploading }}
+          onPress={pickImageAndSend}
+          style={({ pressed }) => [styles.photoBtn, pressed && styles.photoBtnPressed]}
+          disabled={uploading}
+        >
+          {uploading ? (
+            <ActivityIndicator size="small" color={colors.textMuted} />
+          ) : (
+            <Ionicons name="camera-outline" size={26} color={colors.textSecondary} />
+          )}
         </Pressable>
 
         <TextInput
@@ -343,6 +346,8 @@ export default function CaregiverChatRoomScreen() {
           value={inputText}
           onChangeText={setInputText}
           placeholder={t.inputMessage}
+          placeholderTextColor={colors.textMuted}
+          accessibilityLabel={t.inputMessage}
           editable={!sending && !loading && !loadError && !!user && !!targetId}
           multiline
         />
@@ -351,16 +356,19 @@ export default function CaregiverChatRoomScreen() {
           onPress={sendMessage}
           accessibilityRole="button"
           accessibilityLabel={copy.send}
+          accessibilityState={{ disabled: !inputText.trim() || sending, busy: sending }}
           style={({ pressed }) => [
             styles.sendBtn,
-            !inputText.trim() && { opacity: 0.5 },
-            pressed && { opacity: 0.7 },
+            pressed && styles.sendBtnPressed,
+            !inputText.trim() && styles.sendBtnDisabled,
           ]}
           disabled={!inputText.trim() || sending}
         >
-          <View style={styles.iconCircle}>
-            <Ionicons name="send" size={20} color="#FFF" style={{ marginLeft: 3 }} />
-          </View>
+          {sending ? (
+            <ActivityIndicator size="small" color={colors.onPrimary} />
+          ) : (
+            <Ionicons name="send" size={22} color={colors.onPrimary} style={{ marginLeft: 3 }} />
+          )}
         </Pressable>
       </View>
       </KeyboardAvoidingView>
@@ -369,96 +377,83 @@ export default function CaregiverChatRoomScreen() {
 }
 
 const styles = StyleSheet.create({
-  mainContainer: { flex: 1, backgroundColor: "#FFF" },
-  header: { flexShrink: 0, backgroundColor: "#9999E5", paddingTop: 12, paddingBottom: 15, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.05)", minHeight: 56 },
-  headerLeft: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 },
-  backBtn: { padding: 5, marginRight: 5 },
-  backIcon: { fontSize: 24, color: "#000", fontWeight: "600" },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: "#000", marginLeft: 5, flexShrink: 1 },
+  mainContainer: { flex: 1, backgroundColor: colors.surface },
 
-  chatContainer: { padding: 16, paddingBottom: 24, flexGrow: 1 },
+  chatContainer: { padding: spacing.lg, paddingBottom: spacing.xl, flexGrow: 1 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 10, color: "#666" },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", padding: 40 },
-  emptyIcon: { fontSize: 80, marginBottom: 20 },
-  emptyText: { fontSize: 20, fontWeight: "700", color: "#333" },
-  emptySubText: { fontSize: 16, color: "#999", textAlign: "center", marginTop: 10 },
+  loadingText: { ...typography.bodySmall, marginTop: spacing.md },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.xxl },
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.lg,
+  },
+  emptyText: { ...typography.header, textAlign: "center" },
+  emptySubText: { ...typography.body, color: colors.textSecondary, textAlign: "center", marginTop: spacing.sm },
+  retryButton: { alignSelf: "center", marginTop: spacing.lg },
 
-  bubbleWrapper: { marginBottom: 20, width: "100%", flexShrink: 0 },
+  bubbleWrapper: { marginBottom: spacing.lg, width: "100%", flexShrink: 0 },
   myWrapper: { alignSelf: "flex-end" },
   otherWrapper: { alignSelf: "flex-start" },
-  identityRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+  identityRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
   identityRowMe: { justifyContent: "flex-end" },
   messageColumn: { flexShrink: 1, minWidth: 60 },
-  senderName: { flexShrink: 0, fontSize: 13, lineHeight: 18, fontWeight: "700", color: "#6B7280", marginBottom: 6, marginLeft: 4 },
-  senderNameMe: { textAlign: "right", marginLeft: 0, marginRight: 4 },
-  senderAvatar: { flexShrink: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: "#EDE9FE" },
-  senderAvatarFallback: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#D8D3F2" },
-  senderAvatarInitial: { fontSize: 13, fontWeight: "800", color: "#7164C6" },
-  bubble: {
-    padding: 12,
-    borderRadius: 16,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-  },
-  myBubble: {
-    backgroundColor: "#9999E5",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-  },
-  otherBubble: {
-    backgroundColor: "#F2F2F7",
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-  },
-  mainText: { fontSize: 17, lineHeight: 25, fontWeight: "600" },
-  subText: { fontSize: 14, color: "#666" },
-  sentImage: { width: 200, height: 150, borderRadius: 8, maxWidth: "100%" },
-  divider: { height: 1, backgroundColor: "rgba(0,0,0,0.1)", marginVertical: 6 },
-  timeText: { flexShrink: 0, fontSize: 12, lineHeight: 18, color: "#737373", marginTop: 6 },
+  senderName: { ...typography.caption, flexShrink: 0, fontWeight: "600", marginBottom: spacing.xs, marginLeft: spacing.xs },
+  senderNameMe: { textAlign: "right", marginLeft: 0, marginRight: spacing.xs },
+  senderAvatar: { flexShrink: 0, width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySoft },
+  senderAvatarFallback: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.primaryBorder },
+  senderAvatarInitial: { fontSize: 14, fontWeight: "700", color: colors.primary },
+  bubble: { paddingVertical: spacing.md - 2, paddingHorizontal: spacing.md + 2, borderRadius: radii.card },
+  myBubble: { backgroundColor: colors.primary, borderTopRightRadius: spacing.xs },
+  otherBubble: { backgroundColor: colors.surfaceSunken, borderTopLeftRadius: spacing.xs },
+  mainText: { ...typography.body },
+  mainTextMe: { color: colors.onPrimary },
+  sentImage: { width: 220, height: 165, borderRadius: radii.control, maxWidth: "100%" },
+  timeText: { ...typography.caption, flexShrink: 0, marginTop: spacing.xs },
 
   inputArea: {
     flexShrink: 0,
     flexDirection: "row",
-    paddingHorizontal: 15,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === "ios" ? 25 : 15,
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: "#EEE",
-    backgroundColor: "#FFF",
+    alignItems: "flex-end",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   input: {
+    ...typography.body,
     flex: 1,
     minWidth: 0,
-    backgroundColor: "#F2F2F7",
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: Platform.OS === "ios" ? 10 : 8,
-    minHeight: 40,
-    maxHeight: 100,
-    fontSize: 16,
+    backgroundColor: colors.surfaceSunken,
+    borderRadius: 24,
+    paddingHorizontal: spacing.lg,
+    paddingTop: Platform.OS === "ios" ? 12 : 10,
+    paddingBottom: Platform.OS === "ios" ? 12 : 10,
+    minHeight: 48,
+    maxHeight: 120,
   },
-  photoBtn: { marginRight: 10, padding: 5 },
-  sendBtn: { marginLeft: 10, padding: 5 },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#9999E5",
+  photoBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoBtnPressed: { backgroundColor: colors.surfaceSunken },
+  sendBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
     justifyContent: "center",
     alignItems: "center",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
   },
+  sendBtnPressed: { backgroundColor: colors.primaryPressed },
+  sendBtnDisabled: { opacity: 0.45 },
 });

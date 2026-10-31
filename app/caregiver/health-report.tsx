@@ -1,22 +1,22 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
-﻿// app/caregiver/health-report.tsx
+import { AppHeader, Button, Card, Chip, KeyboardAwareScroll } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { caregiverCopy } from "@/src/i18n/copy/caregiverCopy";
+import { SegmentedTabBar, SegmentedTabs } from "@/src/caregiver/SegmentedTabs";
+// app/caregiver/health-report.tsx
 import { db } from '@/firebase/firebaseConfig';
-import { router } from 'expo-router';
+import type { Href } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import React, { useEffect, useRef, useState } from 'react';
 import { saveHealthOnce, type HealthPayload } from '@/src/care-target/reliableWrites';
 import { reliabilityCopy } from '@/src/care-target/reliabilityCopy';
 import { AppAlert as Alert } from '@/src/ui/AppAlert';
 import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '@/src/auth/useAuth';
 import { useActiveCareTarget } from '@/src/care-target/useActiveCareTarget';
@@ -34,6 +34,7 @@ export default function HealthReportScreen() {
   const { activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
+  const c = caregiverCopy[language];
 
   const [activeTab, setActiveTab] = useState<'today' | 'history'>('today');
 
@@ -72,12 +73,7 @@ export default function HealthReportScreen() {
   const dataTypes: ChartDataType[] = ['體溫', '心跳', '血壓', '血糖'];
   const timeRanges: ChartTimeRange[] = ['1周', '2周', '1個月', '全部'];
   const dataTypeLabels = [t.temperature, t.heartRate, t.bloodPressure, t.bloodSugar];
-  const timeRangeLabels = [
-    language === 'zh' ? '1周' : '1W',
-    language === 'zh' ? '2周' : '2W',
-    language === 'zh' ? '1個月' : '1M',
-    language === 'zh' ? '全部' : 'All',
-  ];
+  const timeRangeLabels = [c.range1W, c.range2W, c.range1M, c.rangeAll];
 
   const { loading, empty, lineData, bpSysData, bpDiaData } = useHealthChartData({
     patientId: activePatientId ?? undefined,
@@ -190,244 +186,114 @@ export default function HealthReportScreen() {
     }
   };
 
+  const inputsLocked = isSaving || retryNeeded;
+
   return (
     <View style={styles.container}>
-      <ScreenHeader style={styles.topContainer}>
-        {/* 🌟 拿掉置中標題，恢復原本的寬鬆返回鍵排版 */}
-        <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
-            <Ionicons name="chevron-back" size={24} color="#111827" />
-            <Text style={styles.backButtonText}>{t.back}</Text>
-          </Pressable>
-        </View>
+      <AppHeader title={t.dailyHealthReport} fallbackHref={"/caregiver" as Href} />
+      <SegmentedTabBar>
+        <SegmentedTabs
+          options={[
+            { key: 'today', label: t.todayRecords },
+            { key: 'history', label: t.historyTrend },
+          ]}
+          value={activeTab}
+          onChange={setActiveTab}
+        />
+      </SegmentedTabBar>
 
-        <View style={styles.tabRow}>
-          <Pressable
-            style={[styles.tabButton, activeTab === 'today' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('today')}
-          >
-            <Text
-              numberOfLines={2}
-              adjustsFontSizeToFit
-              minimumFontScale={0.7}
-              style={[
-                styles.tabText,
-                activeTab === 'today' ? styles.tabTextActive : styles.tabTextInactive,
-              ]}
-            >
-              {t.todayRecords}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.tabButton, activeTab === 'history' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('history')}
-          >
-            <Text
-              numberOfLines={2}
-              adjustsFontSizeToFit
-              minimumFontScale={0.7}
-              style={[
-                styles.tabText,
-                activeTab === 'history' ? styles.tabTextActive : styles.tabTextInactive,
-              ]}
-            >
-              {t.historyTrend}
-            </Text>
-          </Pressable>
-        </View>
-      </ScreenHeader>
+      {activeTab === 'today' ? (
+        <KeyboardAwareScroll contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <Card style={styles.formCard}>
+            <VitalInput
+              label={t.temperature}
+              unit="°C"
+              value={formData.temperature}
+              placeholder="36.5"
+              editable={!inputsLocked}
+              onChangeText={(val) => handleInputChange('temperature', val)}
+            />
+            <VitalInput
+              label={t.heartRate}
+              unit="bpm"
+              value={formData.heartRate}
+              placeholder="80"
+              editable={!inputsLocked}
+              onChangeText={(val) => handleInputChange('heartRate', val)}
+            />
+          </Card>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {activeTab === 'today' ? (
-          <View style={styles.formContainer}>
-            <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>{t.temperature}:</Text>
-              <TextInput
-                style={styles.inputField}
-                keyboardType="numeric"
-                value={formData.temperature}
-                editable={!isSaving && !retryNeeded}
-                onChangeText={(val) => handleInputChange('temperature', val)}
-                placeholder="36.5"
-                placeholderTextColor="#CCC"
+          <Card style={styles.formCard}>
+            <Text style={styles.groupTitle}>{t.bloodPressure}</Text>
+            <VitalInput
+              label={t.systolic}
+              unit="mmHg"
+              value={formData.systolic}
+              placeholder="120"
+              editable={!inputsLocked}
+              onChangeText={(val) => handleInputChange('systolic', val)}
+            />
+            <VitalInput
+              label={t.diastolic}
+              unit="mmHg"
+              value={formData.diastolic}
+              placeholder="80"
+              editable={!inputsLocked}
+              onChangeText={(val) => handleInputChange('diastolic', val)}
+            />
+          </Card>
+
+          <Card style={styles.formCard}>
+            <Text style={styles.groupTitle}>{t.bloodSugar}</Text>
+            <SegmentedTabs
+              options={[
+                { key: 'before', label: t.fasting },
+                { key: 'after', label: t.afterMeal },
+              ]}
+              value={mealTime}
+              onChange={setMealTime}
+              disabled={inputsLocked}
+            />
+            <VitalInput
+              label={t.bloodSugar}
+              unit="mg/dL"
+              value={formData.bloodSugar}
+              placeholder="90"
+              editable={!inputsLocked}
+              onChangeText={(val) => handleInputChange('bloodSugar', val)}
+            />
+          </Card>
+
+          {retryNeeded && <Text accessibilityRole="alert" style={styles.errorText}>{copy.failed}</Text>}
+          <Button label={t.save} size="lg" fullWidth onPress={handleSave} loading={isSaving} disabled={isSaving} />
+        </KeyboardAwareScroll>
+      ) : (
+        <KeyboardAwareScroll contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.filterRow}>
+            {dataTypes.map((type, index) => (
+              <Chip
+                key={type}
+                label={dataTypeLabels[index]}
+                selected={chartDataType === type}
+                onPress={() => setChartDataType(type)}
+                style={styles.filterChip}
               />
-              <Text style={styles.unitText}>°C</Text>
-            </View>
-
-            <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>{t.heartRate}:</Text>
-              <TextInput
-                style={styles.inputField}
-                keyboardType="numeric"
-                value={formData.heartRate}
-                editable={!isSaving && !retryNeeded}
-                onChangeText={(val) => handleInputChange('heartRate', val)}
-                placeholder="80"
-                placeholderTextColor="#CCC"
-              />
-              <Text style={styles.unitText}>bpm</Text>
-            </View>
-
-            <View style={styles.inputRowMulti}>
-              <Text style={[styles.inputLabel, { marginTop: 10 }]}>{t.bloodPressure}:</Text>
-              <View style={styles.multiInputCol}>
-                <View style={styles.subInputRow}>
-                  <TextInput
-                    style={[styles.inputField, { fontSize: 20 }]}
-                    keyboardType="numeric"
-                    placeholder={t.systolic}
-                    placeholderTextColor="#999"
-                    value={formData.systolic}
-                    editable={!isSaving && !retryNeeded}
-                    onChangeText={(val) => handleInputChange('systolic', val)}
-                  />
-                  <Text style={styles.unitText}>mmhg</Text>
-                </View>
-                <View style={styles.subInputRow}>
-                  <TextInput
-                    style={[styles.inputField, { fontSize: 20 }]}
-                    keyboardType="numeric"
-                    placeholder={t.diastolic}
-                    placeholderTextColor="#999"
-                    value={formData.diastolic}
-                    editable={!isSaving && !retryNeeded}
-                    onChangeText={(val) => handleInputChange('diastolic', val)}
-                  />
-                  <Text style={styles.unitText}>mmhg</Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.inputRowMulti}>
-              <Text style={[styles.inputLabel, { marginTop: 10 }]}>{t.bloodSugar}:</Text>
-              <View style={styles.multiInputCol}>
-                <View style={styles.mealTimeRow}>
-                  <Pressable
-                    disabled={isSaving || retryNeeded}
-                    onPress={() => setMealTime('before')}
-                    style={[
-                      styles.mealBtn,
-                      mealTime === 'before' ? styles.mealBtnActive : styles.mealBtnInactive,
-                    ]}
-                  >
-                    <Text
-                      numberOfLines={2}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.65}
-                      style={[
-                        styles.mealBtnText,
-                        mealTime === 'before'
-                          ? styles.mealBtnTextActive
-                          : styles.mealBtnTextInactive,
-                      ]}
-                    >
-                      {t.fasting}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={isSaving || retryNeeded}
-                    onPress={() => setMealTime('after')}
-                    style={[
-                      styles.mealBtn,
-                      mealTime === 'after' ? styles.mealBtnActive : styles.mealBtnInactive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.mealBtnText,
-                        mealTime === 'after'
-                          ? styles.mealBtnTextActive
-                          : styles.mealBtnTextInactive,
-                      ]}
-                    >
-                      {t.afterMeal}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <View style={styles.subInputRow}>
-                  <TextInput
-                    style={styles.inputField}
-                    keyboardType="numeric"
-                    value={formData.bloodSugar}
-                    editable={!isSaving && !retryNeeded}
-                    onChangeText={(val) => handleInputChange('bloodSugar', val)}
-                    placeholder="90"
-                    placeholderTextColor="#CCC"
-                  />
-                  <Text style={styles.unitText}>mg/dL</Text>
-                </View>
-              </View>
-            </View>
-
-            {retryNeeded && <Text accessibilityRole="alert" style={{ color: '#B42318', fontSize: 16 }}>{copy.failed}</Text>}
-            <Pressable
-              onPress={handleSave}
-              disabled={isSaving}
-              style={({ pressed }) => [
-                styles.saveButton,
-                pressed && { opacity: 0.8 },
-                isSaving && { backgroundColor: '#A0A5E8' },
-              ]}
-            >
-              {isSaving ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={styles.saveButtonText}>{t.save}</Text>
-              )}
-            </Pressable>
+            ))}
           </View>
-        ) : (
-          <View style={styles.historyContainer}>
-            <View style={styles.filterRow}>
-              {dataTypes.map((type, index) => (
-                <Pressable
-                  key={type}
-                  onPress={() => setChartDataType(type)}
-                  style={[
-                    styles.filterBtn,
-                    chartDataType === type ? styles.filterBtnActive : styles.filterBtnInactive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterBtnText,
-                      chartDataType === type
-                        ? styles.filterTextActive
-                        : styles.filterTextInactive,
-                    ]}
-                  >
-                    {dataTypeLabels[index]}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
 
-            <View style={styles.filterRow}>
-              {timeRanges.map((range, index) => (
-                <Pressable
-                  key={range}
-                  onPress={() => setChartTimeRange(range)}
-                  style={[
-                    styles.filterBtn,
-                    chartTimeRange === range ? styles.filterBtnActive : styles.filterBtnInactive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterBtnText,
-                      chartTimeRange === range
-                        ? styles.filterTextActive
-                        : styles.filterTextInactive,
-                    ]}
-                  >
-                    {timeRangeLabels[index]}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+          <View style={styles.filterRow}>
+            {timeRanges.map((range, index) => (
+              <Chip
+                key={range}
+                label={timeRangeLabels[index]}
+                selected={chartTimeRange === range}
+                onPress={() => setChartTimeRange(range)}
+                style={styles.filterChip}
+              />
+            ))}
+          </View>
 
-            <HealthTrendChart
+          <HealthTrendChart
               chartDataType={chartDataType}
               loading={loading}
               empty={empty}
@@ -435,164 +301,73 @@ export default function HealthReportScreen() {
               bpSysData={bpSysData}
               bpDiaData={bpDiaData}
             />
-          </View>
-        )}
-      </ScrollView>
+        </KeyboardAwareScroll>
+      )}
     </View>
   );
 }
 
+function VitalInput({
+  label,
+  unit,
+  value,
+  placeholder,
+  editable,
+  onChangeText,
+}: {
+  label: string;
+  unit: string;
+  value: string;
+  placeholder: string;
+  editable: boolean;
+  onChangeText: (value: string) => void;
+}) {
+  return (
+    <View style={styles.inputRow}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <View style={styles.inputWrap}>
+        <TextInput
+          style={[styles.inputField, !editable && styles.inputFieldDisabled, webNoOutline]}
+          keyboardType="numeric"
+          value={value}
+          editable={editable}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textDisabled}
+          accessibilityLabel={`${label} (${unit})`}
+        />
+        <Text style={styles.unitText}>{unit}</Text>
+      </View>
+    </View>
+  );
+}
+
+const webNoOutline = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null;
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FAFAFA',
-  },
-  topContainer: { backgroundColor: '#F3CDAD', paddingTop: 12, zIndex: 10, minHeight: 56 },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-  },
-  backButtonText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  tabRow: {
-    flexDirection: 'row',
-    width: '100%',
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabButtonActive: {
-    backgroundColor: '#E59752',
-  },
-  tabText: {
-    width: '94%',
-    fontSize: 22,
-    lineHeight: 25,
-    fontWeight: 'bold',
-    letterSpacing: 0.3,
+  container: { flex: 1, backgroundColor: colors.canvas },
+  scrollContent: { width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center' },
+  formCard: { gap: spacing.md },
+  groupTitle: { ...typography.header },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flexWrap: 'wrap' },
+  inputLabel: { ...typography.bodyStrong, fontSize: 19, flex: 1, minWidth: 96 },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  inputField: {
+    width: 128,
+    minHeight: 56,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radii.control,
     textAlign: 'center',
-  },
-  tabTextActive: {
-    color: '#000',
-  },
-  tabTextInactive: {
-    color: 'rgba(0,0,0,0.6)',
-  },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 140,
-  },
-  formContainer: {
-    gap: 24,
-  },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: "wrap" },
-  inputRowMulti: { flexDirection: "column", alignItems: "stretch", gap: 12 },
-  inputLabel: {
-    flexShrink: 1,
-    fontSize: 21,
-    fontWeight: 'bold',
-    color: '#000',
-    minWidth: 82,
-    maxWidth: 130,
-    letterSpacing: 0.2,
-  },
-  inputField: { flex: 1, maxWidth: 140, backgroundColor: '#EAEAEA', borderRadius: 16, textAlign: 'center', fontSize: 24, fontWeight: '600', color: '#000', minHeight: 55, paddingVertical: 8, minWidth: 64 },
-  unitText: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
+    paddingVertical: spacing.sm,
   },
-  multiInputCol: {
-    flex: 1,
-    gap: 16,
-  },
-  subInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  mealTimeRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  mealBtn: { flex: 1, paddingHorizontal: 8, paddingVertical: 8, borderRadius: 12, borderWidth: 2, minWidth: 0 },
-  mealBtnActive: {
-    backgroundColor: '#F2A25B',
-    borderColor: '#F2A25B',
-  },
-  mealBtnInactive: {
-    backgroundColor: 'transparent',
-    borderColor: '#9CA3AF',
-  },
-  mealBtnText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  mealBtnTextActive: {
-    color: '#000',
-  },
-  mealBtnTextInactive: {
-    color: '#4B5563',
-  },
-  saveButton: {
-    backgroundColor: '#4F59D5',
-    borderRadius: 18,
-    paddingVertical: 18,
-    alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#4F59D5',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  saveButtonText: { fontSize: 24, fontWeight: 'bold', color: '#FFF', letterSpacing: 0.3, marginLeft: 0, textAlign: "center", width: "100%" },
-  historyContainer: {
-    flex: 1,
-    gap: 20,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  filterBtn: {
-    flex: 1,
-    marginHorizontal: 4,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    alignItems: 'center',
-  },
-  filterBtnActive: {
-    backgroundColor: '#EAA161',
-    borderColor: '#EAA161',
-  },
-  filterBtnInactive: {
-    backgroundColor: '#FFF',
-    borderColor: '#000',
-  },
-  filterBtnText: { fontSize: 18, fontWeight: 'bold', width: "100%", textAlign: "center" },
-  filterTextActive: {
-    color: '#000',
-  },
-  filterTextInactive: {
-    color: '#000',
-  },
+  inputFieldDisabled: { backgroundColor: colors.surfaceSunken, color: colors.textMuted },
+  unitText: { ...typography.body, color: colors.textSecondary, width: 64 },
+  errorText: { ...typography.body, color: colors.danger, fontWeight: '600' },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  filterChip: { minHeight: 48, paddingHorizontal: spacing.lg },
 });
