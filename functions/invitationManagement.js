@@ -3,6 +3,32 @@ const {FieldValue, Timestamp} = require("firebase-admin/firestore");
 const {HttpsError} = require("firebase-functions/v2/https");
 const {primaryUid, secondaryFamilyUids, canTransferPrimary} =
   require("./careRoles");
+// Room-visible identity only (never email/phone) for the primary family view.
+function publicIdentity(data) {
+  const d = data && typeof data === "object" ? data : {};
+  if (d.accountStatus === "pending_deletion") {
+    return {displayName: "", avatarUrl: "", role: ""};
+  }
+  return {
+    displayName: typeof d.displayName === "string" ?
+      d.displayName.trim().slice(0, 120) : "",
+    avatarUrl: typeof d.avatarUrl === "string" ?
+      d.avatarUrl.trim().slice(0, 4096) : "",
+    role: ["family", "caregiver"].includes(d.role) ? d.role : "",
+  };
+}
+async function memberProfiles(tx, db, uids) {
+  const profiles = {};
+  for (const uid of new Set(uids)) {
+    if (typeof uid !== "string" || !uid || uid.length > 128) continue;
+    const records = await tx.get(db.collection("users")
+        .where("uid", "==", uid).limit(2));
+    profiles[uid] = records.size === 1 ?
+      publicIdentity(records.docs[0].data()) :
+      {displayName: "", avatarUrl: "", role: ""};
+  }
+  return profiles;
+}
 function createInvitationManager({db, profile, authorize, clock, randomCode,
   joinDecision}) {
   return async (request) => {
@@ -50,12 +76,20 @@ function createInvitationManager({db, profile, authorize, clock, randomCode,
         issuedAt: patient.data().createdAt,
       };
       if (input.action === "get") {
+        const applicantUid = old.applicantUid || "";
+        const secondary = secondaryFamilyUids(patient.data());
+        const profiles = await memberProfiles(tx, db,
+            [...(applicantUid ? [applicantUid] : []), ...secondary]);
+        const none = {displayName: "", avatarUrl: "", role: ""};
         return {code: old.code || "", status: old.status,
           expiresAt: old.issuedAt instanceof Timestamp ?
             old.issuedAt.toMillis() + 86400000 : 0,
           requestId: old.requestId || "", role: old.role || "",
-          applicantUid: old.applicantUid || "",
-          secondaryFamilyUids: secondaryFamilyUids(patient.data())};
+          applicantUid,
+          secondaryFamilyUids: secondary,
+          applicant: applicantUid ? profiles[applicantUid] : none,
+          secondaryFamilyProfiles: secondary.map((memberUid) =>
+            ({uid: memberUid, ...(profiles[memberUid] || none)}))};
       }
       const requestRef = old.requestId && old.applicantProfileId ?
         db.doc("users/" + old.applicantProfileId +
@@ -120,4 +154,4 @@ function createInvitationManager({db, profile, authorize, clock, randomCode,
     });
   };
 }
-module.exports = {createInvitationManager};
+module.exports = {createInvitationManager, publicIdentity, memberProfiles};

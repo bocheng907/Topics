@@ -16,7 +16,7 @@ export default function JoinRequests() {
   const { language } = useLanguage();
   const t = invitationCopy[language];
   const { setActivePatientId } = useActiveCareTarget();
-  const [state, setState] = useState<{uid: string; rows: {id: string; patientId: string; status: string}[]}>();
+  const [state, setState] = useState<{uid: string; rows: {id: string; patientId: string; status: string; createdAt: string}[]}>();
   const [error, setError] = useState(false);
   const [accountScope, setAccountScope] = useState(user?.uid);
   if (accountScope !== user?.uid) { setAccountScope(user?.uid); setError(false); }
@@ -29,7 +29,8 @@ export default function JoinRequests() {
       if (profiles.size !== 1) throw new Error("Profile unavailable");
       unsubscribe = onSnapshot(query(collection(profiles.docs[0].ref, "join_requests"), orderBy("createdAt", "desc"), limit(50)), snap => {
         setError(false);
-        setState({uid: user.uid, rows: snap.docs.map(d => ({id: d.id, patientId: d.data().patientId, status: d.data().status}))});
+        setState({uid: user.uid, rows: snap.docs.map(d => ({id: d.id, patientId: d.data().patientId, status: d.data().status,
+          createdAt: d.data().createdAt?.toDate?.().toLocaleString() ?? ""}))});
       }, () => setError(true));
     }).catch(() => { if (!disposed) setError(true); });
     return () => { disposed = true; unsubscribe?.(); };
@@ -43,7 +44,7 @@ export default function JoinRequests() {
     {!!rows.length && <Card padding={0}>
       {rows.map((row, index) => <View key={row.id} style={[styles.row, index > 0 && styles.rowBorder]}>
         <StatusBadge label={t[row.status as keyof typeof t] || row.status} tone={STATUS_TONE[row.status] ?? "neutral"} />
-        <Text selectable style={styles.id}>{row.id}</Text>
+        {!!row.createdAt && <Text style={styles.id}>{row.createdAt}</Text>}
         {row.status === "approved" && <Button label={t.enter} variant="secondary" icon="arrow-forward" onPress={async () => {
           try { await setActivePatientId(row.patientId); router.replace(user?.role === "caregiver" ? "/caregiver" : "/family"); } catch { setError(true); }
         }} />}

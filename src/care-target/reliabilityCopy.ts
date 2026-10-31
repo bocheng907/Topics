@@ -7,7 +7,7 @@ export const reliabilityCopy = {
     pending: '此版本尚待照護員閱讀並確認接班。', acknowledge: '已閱讀並接班',
     acknowledged: '已確認此版本', changed: '手冊已更新，請閱讀最新版後重新確認。',
     ackFailed: '確認未完成，請檢查網路或存取權限後重試。',
-    version: '手冊版本', caregiver: '照護員識別碼', loading: '讀取確認狀態中…',
+    version: '手冊版本', caregiver: '照護員', loading: '讀取確認狀態中…',
     saveHint: '儲存會發布新版本，照護員需重新確認接班。',
   },
   en: {
@@ -18,7 +18,7 @@ export const reliabilityCopy = {
     pending: 'This version is awaiting caregiver acknowledgment.', acknowledge: 'Read and accept handover',
     acknowledged: 'This version acknowledged', changed: 'The handbook changed. Read the latest version before acknowledging.',
     ackFailed: 'Acknowledgment failed. Check your connection or access and retry.',
-    version: 'Handbook version', caregiver: 'Caregiver ID', loading: 'Loading acknowledgments…',
+    version: 'Handbook version', caregiver: 'Caregiver', loading: 'Loading acknowledgments…',
     saveHint: 'Saving publishes a new version requiring caregiver acknowledgment.',
   },
   vi: {
@@ -29,7 +29,7 @@ export const reliabilityCopy = {
     pending: 'Đang chờ người chăm sóc đọc và xác nhận phiên bản này.', acknowledge: 'Đã đọc và nhận ca',
     acknowledged: 'Đã xác nhận phiên bản này', changed: 'Sổ tay đã thay đổi. Đọc bản mới trước khi xác nhận.',
     ackFailed: 'Chưa xác nhận được. Kiểm tra mạng hoặc quyền truy cập rồi thử lại.',
-    version: 'Phiên bản sổ tay', caregiver: 'Mã người chăm sóc', loading: 'Đang tải xác nhận…',
+    version: 'Phiên bản sổ tay', caregiver: 'Người chăm sóc', loading: 'Đang tải xác nhận…',
     saveHint: 'Lưu sẽ xuất bản phiên bản mới cần người chăm sóc xác nhận lại.',
   },
   id: {
@@ -40,7 +40,7 @@ export const reliabilityCopy = {
     pending: 'Versi ini menunggu konfirmasi perawat.', acknowledge: 'Sudah dibaca dan menerima giliran',
     acknowledged: 'Versi ini sudah dikonfirmasi', changed: 'Buku panduan berubah. Baca versi terbaru sebelum mengonfirmasi.',
     ackFailed: 'Konfirmasi gagal. Periksa jaringan atau akses lalu coba lagi.',
-    version: 'Versi buku panduan', caregiver: 'ID perawat', loading: 'Memuat konfirmasi…',
+    version: 'Versi buku panduan', caregiver: 'Perawat', loading: 'Memuat konfirmasi…',
     saveHint: 'Menyimpan menerbitkan versi baru yang harus dikonfirmasi kembali oleh perawat.',
   },
 };

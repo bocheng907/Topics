@@ -159,7 +159,6 @@ export default function AuditLogs() {
                   <Ionicons name={open ? "chevron-up" : "chevron-down"} size={20} color={colors.textMuted} />
                 </View>
                 <Text style={styles.hint}>{time(item.data.occurredAt ?? item.data.createdAt, c.notProvided)}</Text>
-                <Text selectable style={styles.body}>{c.actor}: {item.data.actorId ?? c.actorMissing}</Text>
                 <StatusBadge label={fromClient ? c.sourceClient : c.sourceBackend} tone="neutral"
                   icon={fromClient ? "phone-portrait-outline" : "server-outline"} />
               </Pressable>
@@ -167,6 +166,7 @@ export default function AuditLogs() {
                 <>
                   <Divider />
                   <View style={styles.detail}>
+                    <Detail label={c.actor} value={item.data.actorId ?? c.actorMissing} selectable />
                     <Detail label={c.resource} value={item.data.resourcePath ?? c.resourceSession} selectable />
                     <Detail label={c.patientId} value={item.data.patientId ?? c.notProvided} selectable />
                     <Detail label={c.actorType} value={item.data.actorType ?? c.unknown} />

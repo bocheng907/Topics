@@ -77,12 +77,12 @@ export default function InvitationsScreen() {
     finally { lock.current = false; if (latestKey.current === key) setBusy(false); }
   };
   const confirm = (action: "regenerate" | "revoke" | "approve" | "reject") => {
-    Alert.alert(t.confirm, action === "approve" ? t.applicant + "\n" + data?.applicantUid : t.warning, [
+    Alert.alert(t.confirm, action === "approve" ? t.applicant + "\n" + applicantName : t.warning, [
       {text: t.cancel, style: "cancel"}, {text: t[action], onPress: () => { void perform(action); }},
     ]);
   };
-  const confirmTransfer = (targetUid: string) => {
-    Alert.alert(t.transferTitle, t.transferWarning + "\n\n" + targetUid, [
+  const confirmTransfer = (targetUid: string, targetName: string) => {
+    Alert.alert(t.transferTitle, t.transferWarning + "\n\n" + targetName, [
       {text: t.cancel, style: "cancel"},
       {text: t.transfer, style: "destructive", onPress: async () => {
         if (!patientId || !primary || lock.current) return;
@@ -112,6 +112,9 @@ export default function InvitationsScreen() {
   const roleLabel = !patientId ? t.noPatient : role?.key !== key ? t.loading : primary ? t.primary : user?.role === "family" ? t.secondary : t.caregiver;
   const showCode = !!data && data.status === "active" && !expired;
   const secondaryUids = data?.secondaryFamilyUids || [];
+  // 只顯示名稱與頭像；沒有名稱時用角色標籤，絕不顯示 UID
+  const secondaryProfiles = new Map((data?.secondaryFamilyProfiles || []).map(p => [p.uid, p]));
+  const applicantName = data?.applicant?.displayName || (data?.role === "family" ? t.familyMember : t.caregiver);
 
   return <View style={styles.container}>
     <AppHeader
@@ -160,9 +163,8 @@ export default function InvitationsScreen() {
             <Card style={styles.stack}>
               <Text style={styles.meta}>{t.applicant}</Text>
               <View style={styles.identityRow}>
-                {/* 邀請 API 只回傳 UID（無名稱 / 頭像），因此顯示中性人像圖示 */}
-                <UserAvatar uid={data.applicantUid} size={40} />
-                <Text selectable style={[styles.uid, styles.identityText]}>{data.applicantUid}</Text>
+                <UserAvatar uri={data.applicant?.avatarUrl} name={data.applicant?.displayName} uid={data.applicantUid} size={40} />
+                <Text style={[styles.name, styles.identityText]} numberOfLines={1}>{applicantName}</Text>
               </View>
               <Text style={styles.meta}>{t.role}: {data.role === "family" ? t.secondary : t.caregiver}</Text>
               <View style={styles.buttonRow}>
@@ -185,14 +187,17 @@ export default function InvitationsScreen() {
           <Card style={styles.stack}>
             <Text style={styles.helper}>{t.transferWarning}</Text>
             {!secondaryUids.length && <Text style={styles.meta}>{t.noSecondary}</Text>}
-            {secondaryUids.map(targetUid =>
-              <View key={targetUid} style={styles.memberRow}>
+            {secondaryUids.map(targetUid => {
+              const member = secondaryProfiles.get(targetUid);
+              const name = member?.displayName || t.familyMember;
+              return <View key={targetUid} style={styles.memberRow}>
                 <View style={styles.identityRow}>
-                  <UserAvatar uid={targetUid} size={40} />
-                  <Text selectable style={[styles.uid, styles.identityText]}>{targetUid}</Text>
+                  <UserAvatar uri={member?.avatarUrl} name={member?.displayName} uid={targetUid} size={40} />
+                  <Text style={[styles.name, styles.identityText]} numberOfLines={1}>{name}</Text>
                 </View>
-                <Button label={t.transfer} variant="danger" disabled={busy} onPress={() => confirmTransfer(targetUid)} />
-              </View>)}
+                <Button label={t.transfer} variant="danger" disabled={busy} onPress={() => confirmTransfer(targetUid, name)} />
+              </View>;
+            })}
           </Card>
         </>}
         {!data && busy && <Text style={styles.helper}>{t.loading}</Text>}
@@ -228,7 +233,7 @@ const styles = StyleSheet.create({
   code: {...typography.display, fontSize: 32, lineHeight: 40, letterSpacing: 6, color: colors.primary},
   codeHint: {...typography.caption, color: colors.primary, marginTop: spacing.xs},
   stack: {gap: spacing.sm},
-  uid: {...typography.bodySmall, color: colors.text},
+  name: {...typography.body, color: colors.text, fontWeight: "600"},
   identityRow: {flexDirection: "row", alignItems: "center", gap: spacing.md},
   identityText: {flex: 1, minWidth: 0},
   buttonRow: {flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.xs},
