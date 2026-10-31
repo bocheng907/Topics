@@ -382,7 +382,7 @@ export default function PostDetailScreen() {
           </Text>
 
           <View style={styles.authorRow}>
-            <Avatar name={post.author.name} size={44} />
+            <Avatar name={post.author.name} uid={post.author.uid} size={44} />
             <View style={styles.authorText}>
               <View style={styles.authorNameRow}>
                 <Text style={styles.authorName} numberOfLines={1}>
@@ -473,7 +473,7 @@ export default function PostDetailScreen() {
             <View style={styles.commentList}>
               {comments.map((comment) => (
                 <View key={comment.id} style={styles.commentRow}>
-                  <Avatar name={comment.author.name} size={36} />
+                  <Avatar name={comment.author.name} uid={comment.author.uid} size={36} />
                   <View style={styles.commentBody}>
                     <View style={styles.commentHeader}>
                       <Text style={styles.commentAuthor} numberOfLines={1}>

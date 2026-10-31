@@ -1,4 +1,5 @@
 import { AppHeader, Button } from "@/src/ui/components";
+import UserAvatar from "@/src/ui/components/UserAvatar";
 import { colors, radii, spacing, typography } from "@/src/ui/theme";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { chatCopy } from "@/src/chat/chatCopy";
@@ -283,13 +284,11 @@ export default function CaregiverChatRoomScreen() {
                 style={[styles.bubbleWrapper, isMe ? styles.myWrapper : styles.otherWrapper]}
               >
                 <View style={[styles.identityRow, isMe && styles.identityRowMe]}>
-                  {!isMe && (identity.avatarUrl ? (
-                    <Image source={{ uri: identity.avatarUrl }} style={styles.senderAvatar} />
-                  ) : (
-                    <View style={[styles.senderAvatar, styles.senderAvatarFallback]}>
-                      <Text style={styles.senderAvatarInitial}>{identity.displayName.slice(0, 1) || "?"}</Text>
+                  {!isMe && (
+                    <View style={styles.senderAvatar}>
+                      <UserAvatar uri={identity.avatarUrl} name={identity.displayName} uid={msg.senderId} size={32} />
                     </View>
-                  ))}
+                  )}
                   <View style={[styles.messageColumn, { maxWidth: messageMaxWidth }]}>
                     <Text style={[styles.senderName, isMe && styles.senderNameMe]}>
                       {identity.displayName || t.caregiver}{isMe ? ` · ${t.chatYouLabel}` : ""}
@@ -310,13 +309,11 @@ export default function CaregiverChatRoomScreen() {
                         : ""}
                     </Text>
                   </View>
-                  {isMe && (identity.avatarUrl ? (
-                    <Image source={{ uri: identity.avatarUrl }} style={styles.senderAvatar} />
-                  ) : (
-                    <View style={[styles.senderAvatar, styles.senderAvatarFallback]}>
-                      <Text style={styles.senderAvatarInitial}>{identity.displayName.slice(0, 1) || "?"}</Text>
+                  {isMe && (
+                    <View style={styles.senderAvatar}>
+                      <UserAvatar uri={identity.avatarUrl} name={identity.displayName} uid={msg.senderId} size={32} />
                     </View>
-                  ))}
+                  )}
                 </View>
               </View>
             );
@@ -404,9 +401,7 @@ const styles = StyleSheet.create({
   messageColumn: { flexShrink: 1, minWidth: 60 },
   senderName: { ...typography.caption, flexShrink: 0, fontWeight: "600", marginBottom: spacing.xs, marginLeft: spacing.xs },
   senderNameMe: { textAlign: "right", marginLeft: 0, marginRight: spacing.xs },
-  senderAvatar: { flexShrink: 0, width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySoft },
-  senderAvatarFallback: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.primaryBorder },
-  senderAvatarInitial: { fontSize: 14, fontWeight: "700", color: colors.primary },
+  senderAvatar: { flexShrink: 0, width: 32, height: 32 },
   bubble: { paddingVertical: spacing.md - 2, paddingHorizontal: spacing.md + 2, borderRadius: radii.card },
   myBubble: { backgroundColor: colors.primary, borderTopRightRadius: spacing.xs },
   otherBubble: { backgroundColor: colors.surfaceSunken, borderTopLeftRadius: spacing.xs },

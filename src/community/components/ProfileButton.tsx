@@ -3,6 +3,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet } from "react-native";
 
+import { useAuth } from "@/src/auth/useAuth";
 import { communityCopy } from "@/src/i18n/copy/communityCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { colors, layout } from "@/src/ui/theme";
@@ -16,6 +17,7 @@ type Props = {
 
 export default function ProfileButton({ onPress, size = 34 }: Props) {
   const profile = useCommunityProfile();
+  const { user } = useAuth();
   const { language } = useLanguage();
 
   return (
@@ -26,7 +28,7 @@ export default function ProfileButton({ onPress, size = 34 }: Props) {
       style={({ pressed }) => [styles.button, pressed && styles.pressed]}
     >
       {profile.loaded ? (
-        <Avatar name={profile.name} uri={profile.avatarUrl} size={size} />
+        <Avatar name={profile.name} uri={profile.avatarUrl} uid={user?.uid} size={size} />
       ) : (
         <Ionicons name="person-circle-outline" size={size} color={colors.primary} />
       )}

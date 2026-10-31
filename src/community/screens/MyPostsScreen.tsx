@@ -133,7 +133,7 @@ export default function MyPostsScreen() {
         {/* 個人資料 */}
         <View style={styles.profileCard}>
           <View style={styles.profileRow}>
-            <Avatar name={profile.name} uri={profile.avatarUrl} size={64} />
+            <Avatar name={profile.name} uri={profile.avatarUrl} uid={uid} size={64} />
             <View style={styles.profileText}>
               <Text style={styles.profileName} numberOfLines={1}>
                 {profile.name}
