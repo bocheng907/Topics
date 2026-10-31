@@ -1,5 +1,5 @@
-import { AppHeader } from "@/src/ui/components";
-import { colors } from "@/src/ui/theme";
+import { AppHeader, Chip, EmptyState } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
@@ -167,20 +167,14 @@ export function NotificationListView({ detailRoute }: Props) {
         contentContainerStyle={styles.chipsRow}
         style={styles.chipsWrap}
       >
-        {NOTIFICATION_CATEGORY_IDS.map((id) => {
-          const active = id === category;
-          return (
-            <Pressable
-              key={id}
-              style={[styles.chip, active ? styles.chipActive : styles.chipInactive]}
-              onPress={() => setCategory(id)}
-            >
-              <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextInactive]}>
-                {t[CATEGORY_LABEL_KEY[id]]}
-              </Text>
-            </Pressable>
-          );
-        })}
+        {NOTIFICATION_CATEGORY_IDS.map((id) => (
+          <Chip
+            key={id}
+            label={t[CATEGORY_LABEL_KEY[id]]}
+            selected={id === category}
+            onPress={() => setCategory(id)}
+          />
+        ))}
       </ScrollView>
 
       {linkedCareTargets.length > 1 && (
@@ -188,35 +182,22 @@ export function NotificationListView({ detailRoute }: Props) {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipsRow}
-          style={styles.patientChipsWrap}
+          style={styles.chipsWrap}
         >
-          <Pressable
-            style={[styles.chip, patientFilter === "all" ? styles.chipActive : styles.chipInactive]}
+          <Chip
+            label={t.notificationFilterAllPatients}
+            selected={patientFilter === "all"}
             onPress={() => setPatientFilter("all")}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                patientFilter === "all" ? styles.chipTextActive : styles.chipTextInactive,
-              ]}
-            >
-              {t.notificationFilterAllPatients}
-            </Text>
-          </Pressable>
-          {linkedCareTargets.map((patient) => {
-            const active = patient.id === patientFilter;
-            return (
-              <Pressable
-                key={patient.id}
-                style={[styles.chip, active ? styles.chipActive : styles.chipInactive]}
-                onPress={() => setPatientFilter(patient.id)}
-              >
-                <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextInactive]}>
-                  {patient.name || t.unknown}
-                </Text>
-              </Pressable>
-            );
-          })}
+          />
+          {linkedCareTargets.map((patient) => (
+            <Chip
+              key={patient.id}
+              icon="person-outline"
+              label={patient.name || t.unknown}
+              selected={patient.id === patientFilter}
+              onPress={() => setPatientFilter(patient.id)}
+            />
+          ))}
         </ScrollView>
       )}
 
@@ -228,13 +209,10 @@ export function NotificationListView({ detailRoute }: Props) {
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
         renderSectionHeader={({ section }) => (
-          <Text style={styles.sectionHeader}>{section.title}</Text>
+          <Text style={styles.sectionHeader} accessibilityRole="header">{section.title}</Text>
         )}
         ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <Ionicons name="document-text-outline" size={40} color="#C4C4C4" />
-            <Text style={styles.emptyText}>{t[CATEGORY_EMPTY_KEY[category]]}</Text>
-          </View>
+          <EmptyState icon="notifications-off-outline" title={t[CATEGORY_EMPTY_KEY[category]]} />
         }
         renderItem={({ item }) => {
           const isUnread = item.isRead !== true;
@@ -246,11 +224,11 @@ export function NotificationListView({ detailRoute }: Props) {
 
           return (
             <Pressable
-              style={[styles.card, isUnread ? styles.cardUnread : styles.cardRead]}
+              style={({ pressed }) => [styles.card, isUnread && styles.cardUnread, pressed && styles.cardPressed]}
               onPress={() => handlePress(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`${title}. ${body}. ${timeText}`}
             >
-              {isUnread ? <View style={styles.unreadDot} /> : null}
-
               <View style={[styles.avatar, { backgroundColor: visual.tintSoft }]}>
                 <Ionicons name={visual.icon} size={20} color={visual.tint} />
               </View>
@@ -259,11 +237,14 @@ export function NotificationListView({ detailRoute }: Props) {
                 <View style={styles.topLine}>
                   <Text
                     style={[styles.title, isUnread ? styles.unreadTitle : styles.readTitle]}
-                    numberOfLines={1}
+                    numberOfLines={2}
                   >
                     {title}
                   </Text>
-                  <Text style={styles.time}>{timeText}</Text>
+                  <View style={styles.timeCol}>
+                    <Text style={styles.time}>{timeText}</Text>
+                    {isUnread ? <View style={styles.unreadDot} /> : null}
+                  </View>
                 </View>
 
                 <Text style={styles.content} numberOfLines={2}>
@@ -301,171 +282,84 @@ export function NotificationListView({ detailRoute }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FAFAFA",
+  container: { flex: 1, backgroundColor: colors.canvas },
+  unreadBadge: {
+    minWidth: 26,
+    minHeight: 26,
+    paddingHorizontal: 8,
+    borderRadius: radii.pill,
+    backgroundColor: colors.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.md,
   },
-  unreadBadge: { minWidth: 24, paddingHorizontal: 7, borderRadius: 12, backgroundColor: colors.danger, alignItems: "center", justifyContent: "center", minHeight: 24, marginRight: 12 },
-  unreadBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
+  unreadBadgeText: { fontSize: 13, lineHeight: 18, fontWeight: "700", color: colors.onPrimary },
   chipsWrap: {
     flexGrow: 0,
     flexShrink: 0,
-    backgroundColor: "#FAFAFA",
-    borderBottomWidth: 1,
-    borderBottomColor: "#EEEAFB",
-  },
-  patientChipsWrap: {
-    flexGrow: 0,
-    flexShrink: 0,
-    backgroundColor: "#FAFAFA",
-    borderBottomWidth: 1,
-    borderBottomColor: "#EEEAFB",
+    backgroundColor: colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   chipsRow: {
     flexGrow: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
+    paddingHorizontal: layout.screenPaddingX,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
-  listFlex: {
-    flex: 1,
-  },
-  chip: {
-    flexShrink: 0,
-    flexGrow: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 18,
-    borderWidth: 1,
-  },
-  chipActive: {
-    backgroundColor: "#4F59D5",
-    borderColor: "#4F59D5",
-  },
-  chipInactive: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
-  },
-  chipText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  chipTextActive: {
-    color: "#FFFFFF",
-  },
-  chipTextInactive: {
-    color: "#4B5563",
-  },
+  listFlex: { flex: 1 },
   list: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 24,
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xl,
     flexGrow: 1,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
   sectionHeader: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#9CA3AF",
-    marginTop: 14,
-    marginBottom: 8,
-    paddingHorizontal: 4,
+    ...typography.overline,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
   },
   card: {
     flexDirection: "row",
     alignItems: "flex-start",
-    position: "relative",
-    padding: 14,
-    borderRadius: 16,
-    marginBottom: 10,
-    backgroundColor: "#FFFFFF",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-  },
-  cardUnread: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radii.card,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#E4DEFB",
+    borderColor: colors.border,
   },
-  cardRead: {
-    borderWidth: 1,
-    borderColor: "#F3F4F6",
-  },
-  unreadDot: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#EF4444",
-  },
+  cardUnread: { borderColor: colors.primaryBorder },
+  cardPressed: { backgroundColor: colors.surfaceSunken },
   avatar: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
   },
-  body: {
-    flex: 1,
-    gap: 4,
-  },
+  body: { flex: 1, minWidth: 0, gap: spacing.xs },
   topLine: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 10,
+    gap: spacing.sm,
   },
-  title: {
-    flex: 1,
-    fontSize: 16,
-    lineHeight: 21,
-  },
-  unreadTitle: {
-    fontWeight: "700",
-    color: "#111827",
-  },
-  readTitle: {
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  time: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    marginTop: 2,
-  },
-  content: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#4B5563",
-  },
-  tagRow: { flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" },
-  tag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, maxWidth: "100%" },
-  tagText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  patientTag: {
-    backgroundColor: "#F3F4F6",
-  },
-  patientTagText: {
-    color: "#6B7280",
-  },
-  emptyWrap: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 80,
-    gap: 10,
-  },
-  emptyText: {
-    fontSize: 15,
-    color: "#9CA3AF",
-  },
+  title: { ...typography.body, flex: 1 },
+  unreadTitle: { fontWeight: "700", color: colors.text },
+  readTitle: { fontWeight: "500", color: colors.textSecondary },
+  timeCol: { alignItems: "flex-end", gap: 6, paddingTop: 2 },
+  time: { ...typography.caption },
+  unreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
+  content: { ...typography.bodySmall },
+  tagRow: { flexDirection: "row", gap: 6, marginTop: 2, flexWrap: "wrap" },
+  tag: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: radii.pill, maxWidth: "100%" },
+  tagText: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  patientTag: { backgroundColor: colors.surfaceSunken },
+  patientTagText: { color: colors.textSecondary },
 });

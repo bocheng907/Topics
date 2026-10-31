@@ -1,4 +1,5 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, EmptyState } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { chatCopy } from "@/src/chat/chatCopy";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -16,7 +17,7 @@ import {
   Image,
   useWindowDimensions,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { db, storage } from "@/firebase/firebaseConfig";
@@ -215,20 +216,17 @@ export default function FamilyChatRoomScreen() {
 
   return (
     <View style={styles.mainContainer}>
-      <ScreenHeader style={styles.header}>
-        <View style={styles.headerLeft}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t.back} onPress={() => router.canGoBack() ? router.back() : router.replace('/family/chat-list')} hitSlop={20} style={styles.backBtn}>
-            <Text style={styles.backIcon}>＜</Text>
-          </Pressable>
-          <Text style={styles.headerTitle}>
-            {roomType === "family"
-              ? `${activePatient?.name ? `${activePatient.name} · ` : ""}${t.familyGroupTitle}`
-              : activePatient?.name
-                ? language === "zh" ? `${activePatient.name}${t.caregiverLabel}` : `${activePatient.name} ${t.caregiverLabel}`
-                : t.chatRoom}
-          </Text>
-        </View>
-      </ScreenHeader>
+      <AppHeader
+        left="back"
+        fallbackHref="/family/chat-list"
+        title={
+          roomType === "family"
+            ? `${activePatient?.name ? `${activePatient.name} · ` : ""}${t.familyGroupTitle}`
+            : activePatient?.name
+              ? language === "zh" ? `${activePatient.name}${t.caregiverLabel}` : `${activePatient.name} ${t.caregiverLabel}`
+              : t.chatRoom
+        }
+      />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -238,21 +236,27 @@ export default function FamilyChatRoomScreen() {
 
       {loadError ? (
         <View style={styles.emptyContainer}>
-          <Text accessibilityRole="alert" style={styles.emptySubText}>{copy.loadFailed}</Text>
-          <Pressable accessibilityRole="button" onPress={() => { setLoadError(false); setLoading(true); setRetry(value => value + 1); }} style={{padding: 16}}>
-            <Text>{copy.retry}</Text>
-          </Pressable>
+          <Text accessibilityRole="alert" style={styles.errorText}>{copy.loadFailed}</Text>
+          <Button
+            label={copy.retry}
+            variant="secondary"
+            icon="refresh"
+            onPress={() => { setLoadError(false); setLoading(true); setRetry(value => value + 1); }}
+            style={styles.retryBtn}
+          />
         </View>
       ) : loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#9999E5" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>{t.loadingMessages}</Text>
         </View>
       ) : messages.length === 0 ? (
         <ScrollView contentContainerStyle={styles.emptyContainer}>
-          <Ionicons name="chatbubbles-outline" size={80} color="#C4C4C4" style={styles.emptyIcon} />
-          <Text style={styles.emptyText}>{t.noConversation}</Text>
-          <Text style={styles.emptySubText}>{roomType === "family" ? t.familyGroupFirstMessage : t.sendFirstMessage}</Text>
+          <EmptyState
+            icon="chatbubbles-outline"
+            title={t.noConversation}
+            body={roomType === "family" ? t.familyGroupFirstMessage : t.sendFirstMessage}
+          />
         </ScrollView>
       ) : (
         <ScrollView
@@ -293,7 +297,7 @@ export default function FamilyChatRoomScreen() {
                   {msg.imageUrl ? (
                     <Image source={{ uri: msg.imageUrl }} style={styles.sentImage} resizeMode="cover" />
                   ) : (
-                    <Text style={[styles.mainText, isMe && { color: "#FFF" }]}>{localizedText || originalText}</Text>
+                    <Text style={[styles.mainText, isMe && styles.mainTextMe]}>{localizedText || originalText}</Text>
                   )}
                     </View>
                     <Text style={[styles.timeText, { alignSelf: isMe ? "flex-end" : "flex-start" }]}>
@@ -321,19 +325,18 @@ export default function FamilyChatRoomScreen() {
 
       <ChatTranslationStatus language={language} {...translated} />
       <View style={styles.inputArea}>
-        <Pressable accessibilityRole="button" accessibilityLabel={copy.photo} onPress={pickImageAndSend} style={styles.photoBtn} disabled={uploading}>
-          <View
-            style={[
-              styles.iconCircle,
-              { backgroundColor: "#EEE", borderColor: "#CCC", borderWidth: 1 },
-            ]}
-          >
-            {uploading ? (
-              <ActivityIndicator size="small" color="#999" />
-            ) : (
-              <Ionicons name="camera" size={22} color="#666" />
-            )}
-          </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={copy.photo}
+          onPress={pickImageAndSend}
+          disabled={uploading}
+          style={({ pressed }) => [styles.toolBtn, pressed && styles.toolBtnPressed]}
+        >
+          {uploading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="camera-outline" size={24} color={colors.primary} />
+          )}
         </Pressable>
 
         <TextInput
@@ -341,6 +344,7 @@ export default function FamilyChatRoomScreen() {
           value={inputText}
           onChangeText={setInputText}
           placeholder={t.inputMessage}
+          placeholderTextColor={colors.textMuted}
           editable={!sending && !loading && !loadError && !!user && !!targetId}
           multiline
         />
@@ -351,14 +355,16 @@ export default function FamilyChatRoomScreen() {
           accessibilityLabel={copy.send}
           style={({ pressed }) => [
             styles.sendBtn,
-            !inputText.trim() && { opacity: 0.5 },
-            pressed && { opacity: 0.7 },
+            !inputText.trim() && styles.sendBtnDisabled,
+            pressed && { backgroundColor: colors.primaryPressed },
           ]}
           disabled={!inputText.trim() || sending}
         >
-          <View style={styles.iconCircle}>
-            <Ionicons name="send" size={20} color="#FFF" style={{ marginLeft: 3 }} />
-          </View>
+          {sending ? (
+            <ActivityIndicator size="small" color={colors.onPrimary} />
+          ) : (
+            <Ionicons name="send" size={20} color={colors.onPrimary} style={{ marginLeft: 3 }} />
+          )}
         </Pressable>
       </View>
       </KeyboardAvoidingView>
@@ -367,96 +373,72 @@ export default function FamilyChatRoomScreen() {
 }
 
 const styles = StyleSheet.create({
-  mainContainer: { flex: 1, backgroundColor: "#FFF" },
-  header: { flexShrink: 0, backgroundColor: "#9999E5", paddingTop: 12, paddingBottom: 15, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.05)", minHeight: 56 },
-  headerLeft: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 },
-  backBtn: { padding: 5, marginRight: 5 },
-  backIcon: { fontSize: 24, color: "#000", fontWeight: "600" },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: "#000", marginLeft: 5, flexShrink: 1 },
+  mainContainer: { flex: 1, backgroundColor: colors.canvas },
 
-  chatContainer: { padding: 16, paddingBottom: 24, flexGrow: 1 },
+  chatContainer: { padding: spacing.lg, paddingBottom: spacing.xl, flexGrow: 1 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 10, color: "#666" },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", padding: 40 },
-  emptyIcon: { fontSize: 80, marginBottom: 20 },
-  emptyText: { fontSize: 20, fontWeight: "700", color: "#333" },
-  emptySubText: { fontSize: 16, color: "#999", textAlign: "center", marginTop: 10 },
+  loadingText: { ...typography.bodySmall, marginTop: spacing.md },
+  emptyContainer: { flexGrow: 1, justifyContent: "center", alignItems: "center", padding: spacing.xl },
+  errorText: { ...typography.body, color: colors.danger, textAlign: "center" },
+  retryBtn: { alignSelf: "center", marginTop: spacing.lg },
 
-  bubbleWrapper: { marginBottom: 20, width: "100%", flexShrink: 0 },
+  bubbleWrapper: { marginBottom: spacing.lg, width: "100%", flexShrink: 0 },
   myWrapper: { alignSelf: "flex-end" },
   otherWrapper: { alignSelf: "flex-start" },
-  identityRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+  identityRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
   identityRowMe: { justifyContent: "flex-end" },
   messageColumn: { flexShrink: 1, minWidth: 60 },
-  senderName: { flexShrink: 0, fontSize: 13, lineHeight: 18, fontWeight: "700", color: "#6B7280", marginBottom: 6, marginLeft: 4 },
-  senderNameMe: { textAlign: "right", marginLeft: 0, marginRight: 4 },
-  senderAvatar: { flexShrink: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: "#EDE9FE" },
-  senderAvatarFallback: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#D8D3F2" },
-  senderAvatarInitial: { fontSize: 13, fontWeight: "800", color: "#7164C6" },
-  bubble: {
-    padding: 12,
-    borderRadius: 16,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-  },
-  myBubble: {
-    backgroundColor: "#9999E5",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-  },
-  otherBubble: {
-    backgroundColor: "#F2F2F7",
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-  },
-  mainText: { fontSize: 17, lineHeight: 25, fontWeight: "600" },
-  subText: { fontSize: 14, color: "#666" },
-  sentImage: { width: 200, height: 150, borderRadius: 8, maxWidth: "100%" },
-  divider: { height: 1, backgroundColor: "rgba(0,0,0,0.1)", marginVertical: 6 },
-  timeText: { flexShrink: 0, fontSize: 12, lineHeight: 18, color: "#737373", marginTop: 6 },
+  senderName: { ...typography.caption, flexShrink: 0, fontWeight: "600", color: colors.textSecondary, marginBottom: spacing.xs, marginLeft: spacing.xs },
+  senderNameMe: { textAlign: "right", marginLeft: 0, marginRight: spacing.xs },
+  senderAvatar: { flexShrink: 0, width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySoft },
+  senderAvatarFallback: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.primaryBorder },
+  senderAvatarInitial: { fontSize: 14, fontWeight: "700", color: colors.primary },
+  bubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 },
+  myBubble: { backgroundColor: colors.primary, borderTopRightRadius: 4 },
+  otherBubble: { backgroundColor: colors.surface, borderTopLeftRadius: 4, borderWidth: 1, borderColor: colors.border },
+  mainText: { ...typography.body, color: colors.text },
+  mainTextMe: { color: colors.onPrimary },
+  sentImage: { width: 200, height: 150, borderRadius: radii.control - 2, maxWidth: "100%" },
+  timeText: { ...typography.caption, flexShrink: 0, marginTop: spacing.xs },
 
   inputArea: {
     flexShrink: 0,
     flexDirection: "row",
-    paddingHorizontal: 15,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === "ios" ? 25 : 15,
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: "#EEE",
-    backgroundColor: "#FFF",
+    alignItems: "flex-end",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   input: {
+    ...typography.body,
     flex: 1,
     minWidth: 0,
-    backgroundColor: "#F2F2F7",
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: Platform.OS === "ios" ? 10 : 8,
-    minHeight: 40,
-    maxHeight: 100,
-    fontSize: 16,
+    backgroundColor: colors.surfaceSunken,
+    borderRadius: 24,
+    paddingHorizontal: spacing.lg,
+    paddingTop: Platform.OS === "ios" ? 12 : 10,
+    paddingBottom: Platform.OS === "ios" ? 12 : 10,
+    minHeight: layout.minTouchTarget,
+    maxHeight: 120,
   },
-  photoBtn: { marginRight: 10, padding: 5 },
-  sendBtn: { marginLeft: 10, padding: 5 },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#9999E5",
+  toolBtn: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: layout.minTouchTarget / 2,
     justifyContent: "center",
     alignItems: "center",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
   },
+  toolBtnPressed: { backgroundColor: colors.primarySoft },
+  sendBtn: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: layout.minTouchTarget / 2,
+    backgroundColor: colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sendBtnDisabled: { backgroundColor: colors.textDisabled },
 });

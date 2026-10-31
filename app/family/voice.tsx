@@ -1,8 +1,9 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, Card, Divider, IconButton } from "@/src/ui/components";
+import { colors, layout, radii, shadows, spacing, typography } from "@/src/ui/theme";
 import { ClientOnly } from "@/src/ui/ClientOnly";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 // app/family/voice.tsx
-import { Feather, Ionicons } from '@expo/vector-icons'; // 💡 引入專業圖示庫
+import { Ionicons } from '@expo/vector-icons';
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -11,7 +12,7 @@ import {
   useAudioPlayerStatus,
   useAudioRecorder,
 } from 'expo-audio';
-import { router } from 'expo-router';
+
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -329,108 +330,110 @@ function FamilyVoiceContent() {
     setAudioUri(null);
   };
 
+  const closeModal = () => {
+    if (isRecording) stopRecording();
+    setRecordingTask(null);
+    setIsRecording(false);
+    setIsPlayingModal(false);
+  };
+
   return (
     <View style={styles.container}>
-      {/* 💡 延伸的綠色 Header (拿掉電池 UI，加深 PaddingBottom) */}
-      <ScreenHeader style={styles.header}>
-        <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-            <Ionicons name="chevron-back" size={24} color="#111827" />
-            <Text style={styles.backBtnText}>{t.back}</Text>
-          </Pressable>
-        </View>
-      </ScreenHeader>
+      <AppHeader title={t.recordVoice} fallbackHref="/family" />
 
       {/* 列表區域 */}
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {tasks.map((task) => (
-          <View key={task.id} style={styles.taskCard}>
-            
-            {/* 左側：圖片與標題 */}
-            <View style={styles.taskLeft}>
-              <View style={styles.imageBox}>
-                <Image source={task.image} style={styles.taskImage} resizeMode="contain" />
-              </View>
-              
-              <View style={styles.taskInfo}>
-                <Text style={styles.taskTitle}>{taskTitles[task.id] ?? task.title}</Text>
-                <View style={styles.statusArea}>
-                  {task.hasRecording ? (
-                    // 💡 有錄音時，顯示播放鍵與音波
-                    <Pressable 
-                      style={styles.playBadge}
-                      onPress={() => playTaskAudio(task)}
-                    >
-                      <Ionicons name={playingTaskId === task.id ? "pause" : "play"} size={16} color="black" style={styles.playIcon} />
-                      <View style={styles.waveContainer}>
-                        {[...Array(7)].map((_, i) => (
-                          <View 
-                            key={i} 
-                            style={[
-                              styles.waveBar, 
-                              { 
-                                height: playingTaskId === task.id ? Math.random() * 12 + 4 : 6,
-                                opacity: playingTaskId === task.id ? 0.8 : 0.4
-                              }
-                            ]} 
-                          />
-                        ))}
+        <Card padding={0}>
+          {tasks.map((task, index) => {
+            const title = taskTitles[task.id] ?? task.title;
+            return (
+              <View key={task.id}>
+                {index > 0 ? <Divider /> : null}
+                <View style={styles.taskCard}>
+                  {/* 左側：圖片與標題 */}
+                  <View style={styles.taskLeft}>
+                    <View style={styles.imageBox}>
+                      <Image source={task.image} style={styles.taskImage} resizeMode="contain" />
+                    </View>
+
+                    <View style={styles.taskInfo}>
+                      <Text style={styles.taskTitle}>{title}</Text>
+                      <View style={styles.statusArea}>
+                        {task.hasRecording ? (
+                          <Pressable
+                            style={({ pressed }) => [styles.playBadge, pressed && { backgroundColor: colors.primaryBorder }]}
+                            onPress={() => playTaskAudio(task)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${title}, ${playingTaskId === task.id ? t.stopPreview : t.preview}`}
+                          >
+                            <Ionicons name={playingTaskId === task.id ? "pause" : "play"} size={16} color={colors.primary} style={styles.playIcon} />
+                            <View style={styles.waveContainer}>
+                              {[...Array(7)].map((_, i) => (
+                                <View
+                                  key={i}
+                                  style={[
+                                    styles.waveBar,
+                                    {
+                                      height: playingTaskId === task.id ? Math.random() * 12 + 4 : 6,
+                                      opacity: playingTaskId === task.id ? 0.9 : 0.45
+                                    }
+                                  ]}
+                                />
+                              ))}
+                            </View>
+                          </Pressable>
+                        ) : (
+                          <Text style={styles.statusEmpty}>{t.notRecorded}</Text>
+                        )}
                       </View>
-                    </Pressable>
-                  ) : (
-                    <Text style={styles.statusEmpty}>{t.notRecorded}</Text>
-                  )}
+                    </View>
+                  </View>
+
+                  {/* 右側：錄音／刪除 */}
+                  <View style={styles.taskRight}>
+                    <IconButton
+                      icon="mic-outline"
+                      color={colors.primary}
+                      accessibilityLabel={`${t.recordVoiceFor}: ${title}`}
+                      onPress={() => handleOpenRecord(task)}
+                      style={styles.iconBtn}
+                    />
+                    <IconButton
+                      icon="trash-outline"
+                      color={colors.danger}
+                      accessibilityLabel={`${t.delete}: ${title}`}
+                      onPress={() => handleDeleteRecord(task)}
+                      disabled={!task.hasRecording}
+                    />
+                  </View>
                 </View>
               </View>
-            </View>
-
-            {/* 💡 右側：替換成原汁原味的 Feather Icons */}
-            <View style={styles.taskRight}>
-              <Pressable style={styles.iconBtn} onPress={() => handleOpenRecord(task)}>
-                <Feather name="mic" size={26} color="black" />
-              </Pressable>
-              <Pressable 
-                style={[styles.iconBtn, !task.hasRecording && { opacity: 0.3 }]} 
-                onPress={() => handleDeleteRecord(task)}
-                disabled={!task.hasRecording}
-              >
-                <Feather name="trash-2" size={26} color="black" />
-              </Pressable>
-            </View>
-          </View>
-        ))}
+            );
+          })}
+        </Card>
       </ScrollView>
 
       {/* ================= 錄音彈出視窗 (Modal) ================= */}
       {recordingTask && (
         <View style={styles.modalOverlay}>
-          <ScrollView style={{ maxHeight: "90%", width: "90%", flexGrow: 0, borderRadius: 32 }} contentContainerStyle={styles.modalContent}>
-            <Pressable 
-              style={styles.closeBtn} 
-              onPress={() => {
-                if (isRecording) stopRecording();
-                setRecordingTask(null);
-                setIsRecording(false);
-                setIsPlayingModal(false);
-              }}
-            >
-              <Ionicons name="close" size={28} color="#666" />
-            </Pressable>
+          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
+            <IconButton icon="close" color={colors.textSecondary} accessibilityLabel={t.cancel} onPress={closeModal} style={styles.closeBtn} />
 
             <Text style={styles.modalTitle}>{t.recordVoiceFor}: {taskTitles[recordingTask.id] ?? recordingTask.title}</Text>
             <Text style={styles.modalSubtitle}>
               {isPlayingModal ? t.previewing : isRecording ? t.recordingHint : t.tapMicToRecord}
             </Text>
 
-            <Pressable 
+            <Pressable
               style={[styles.micWrap, isPlayingModal && { opacity: 0.5 }]}
               onPress={toggleRecord}
               disabled={isPlayingModal}
+              accessibilityRole="button"
+              accessibilityLabel={isRecording ? t.recordingHint : t.tapMicToRecord}
             >
               {isRecording && <View style={styles.micPulse} />}
-              <View style={[styles.micInner, isRecording ? { backgroundColor: '#ffcccc' } : { backgroundColor: '#D4D7DC' }]}>
-                {/* 💡 Modal 內的麥克風也換成真正的 Icon */}
-                <Ionicons name="mic" size={50} color={isRecording ? "#EF3E3E" : "#2C3E50"} />
+              <View style={[styles.micInner, isRecording ? styles.micInnerRecording : styles.micInnerIdle]}>
+                <Ionicons name={isRecording ? "stop" : "mic"} size={46} color={isRecording ? colors.onPrimary : colors.primary} />
               </View>
             </Pressable>
 
@@ -439,25 +442,24 @@ function FamilyVoiceContent() {
             </Text>
 
             <View style={styles.btnRow}>
-              <Pressable 
-                style={[styles.actionBtn, (recordTime === 0 || isRecording) ? styles.btnDisabled : styles.btnPreview]}
+              <Button
+                label={isPlayingModal ? t.stopPreview : t.preview}
+                icon={isPlayingModal ? "stop-outline" : "play-outline"}
+                variant="secondary"
+                size="lg"
                 onPress={togglePreview}
                 disabled={recordTime === 0 || isRecording}
-              >
-                <Text style={styles.actionBtnText}>{isPlayingModal ? t.stopPreview : t.preview}</Text>
-              </Pressable>
-
-              <Pressable 
-                style={[styles.actionBtn, styles.btnSave, isUploading && { opacity: 0.7 }]}
+                style={styles.actionBtn}
+              />
+              <Button
+                label={t.save}
+                icon="cloud-upload-outline"
+                size="lg"
                 onPress={handleSaveRecord}
-                disabled={isUploading || isRecording || recordTime === 0}
-              >
-                {isUploading ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <Text style={styles.actionBtnText}>{t.save}</Text>
-                )}
-              </Pressable>
+                loading={isUploading}
+                disabled={isRecording || recordTime === 0}
+                style={styles.actionBtn}
+              />
             </View>
           </ScrollView>
         </View>
@@ -467,47 +469,41 @@ function FamilyVoiceContent() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA' },
-  // 💡 修改了 Header，增加了 paddingBottom 讓綠色延伸
-  header: { backgroundColor: '#90E389', paddingTop: 12, paddingBottom: 16, elevation: 2, minHeight: 56 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
-  
-  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
-  taskCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', paddingVertical: 14, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexWrap: "wrap", gap: 12 },
-  taskLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 200 },
-  imageBox: { width: 90, height: 90, backgroundColor: '#F0F0F0', borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden' },
-  taskImage: { width: 100, height: 100 },
+  container: { flex: 1, backgroundColor: colors.canvas },
+
+  scrollContent: { padding: layout.screenPaddingX, paddingBottom: spacing.xxxl, width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center' },
+  taskCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md, paddingHorizontal: spacing.md, flexWrap: 'wrap', gap: spacing.sm },
+  taskLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 200 },
+  imageBox: { width: 80, height: 80, backgroundColor: colors.surfaceSunken, borderRadius: radii.card, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  taskImage: { width: 88, height: 88 },
   taskInfo: { justifyContent: 'center', flex: 1, minWidth: 0 },
-  taskTitle: { fontSize: 20, fontWeight: 'bold', color: '#000', marginBottom: 6, letterSpacing: 1 },
-  
-  statusArea: { justifyContent: 'center', minHeight: 28 },
-  statusEmpty: { fontSize: 16, color: '#9CA3AF', fontWeight: '600', letterSpacing: 1 },
-  playBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
-  playIcon: { marginRight: 8 },
+  taskTitle: { ...typography.bodyStrong, fontSize: 18, marginBottom: spacing.xs },
+
+  statusArea: { justifyContent: 'center', minHeight: 36 },
+  statusEmpty: { ...typography.bodySmall, color: colors.textMuted },
+  playBadge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: colors.primarySoft, paddingHorizontal: 14, minHeight: 40, borderRadius: radii.pill },
+  playIcon: { marginRight: spacing.sm },
   waveContainer: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 16 },
-  waveBar: { width: 3, backgroundColor: '#000', borderRadius: 2 },
-  
-  taskRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 'auto' },
-  iconBtn: { padding: 10 },
-  
-  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', zIndex: 50 },
-  modalContent: { backgroundColor: '#E2E5EA', borderRadius: 32, padding: 24, alignItems: 'center', elevation: 10, paddingTop: 56 },
-  closeBtn: { position: 'absolute', top: 16, right: 20, padding: 8 },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#374151', marginBottom: 8, marginTop: 0, letterSpacing: 1, textAlign: "center", width: "100%", paddingHorizontal: 0 },
-  modalSubtitle: { fontSize: 14, color: '#6B7280', fontWeight: '600', marginBottom: 24, textAlign: "center" },
-  
-  micWrap: { width: 120, height: 120, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
-  micPulse: { position: 'absolute', width: '100%', height: '100%', backgroundColor: '#EF3E3E', borderRadius: 60, opacity: 0.3 },
+  waveBar: { width: 3, backgroundColor: colors.primary, borderRadius: 2 },
+
+  taskRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 0, marginLeft: 'auto' },
+  iconBtn: { backgroundColor: colors.primarySoft },
+
+  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.overlay, justifyContent: 'center', alignItems: 'center', zIndex: 50 },
+  modalScroll: { maxHeight: '90%', width: '90%', maxWidth: 480, flexGrow: 0, borderRadius: radii.sheet },
+  modalContent: { backgroundColor: colors.surface, borderRadius: radii.sheet, padding: spacing.xl, paddingTop: 56, alignItems: 'center', ...shadows.sheet },
+  closeBtn: { position: 'absolute', top: spacing.sm, right: spacing.sm },
+  modalTitle: { ...typography.header, textAlign: 'center', width: '100%', marginBottom: spacing.sm },
+  modalSubtitle: { ...typography.bodySmall, textAlign: 'center', marginBottom: spacing.xl },
+
+  micWrap: { width: 120, height: 120, justifyContent: 'center', alignItems: 'center', marginBottom: spacing.xl },
+  micPulse: { position: 'absolute', width: '100%', height: '100%', backgroundColor: colors.danger, borderRadius: 60, opacity: 0.2 },
   micInner: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
-  
-  timeText: { fontSize: 26, fontWeight: '600', letterSpacing: 2, marginBottom: 32, color: '#000' },
-  
-  btnRow: { flexDirection: 'row', width: '100%', gap: 16 },
-  actionBtn: { flex: 1, paddingVertical: 14, borderRadius: 16, alignItems: 'center', paddingHorizontal: 8 },
-  btnPreview: { backgroundColor: '#85C6F9' },
-  btnSave: { backgroundColor: '#4651DB' },
-  btnDisabled: { backgroundColor: '#D1D5DB' },
-  actionBtnText: { color: '#FFF', fontSize: 20, fontWeight: 'bold', width: "100%", textAlign: "center" },
+  micInnerIdle: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primaryBorder },
+  micInnerRecording: { backgroundColor: colors.danger },
+
+  timeText: { fontSize: 26, lineHeight: 34, fontWeight: '600', letterSpacing: 1, marginBottom: spacing.xl, color: colors.text },
+
+  btnRow: { flexDirection: 'row', width: '100%', gap: spacing.md },
+  actionBtn: { flex: 1 },
 });

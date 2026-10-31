@@ -1,6 +1,8 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, Card, Divider } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { familyCopy } from "@/src/i18n/copy/familyCopy";
 import React, { useState, useCallback } from "react";
-import { View, Text, Pressable, ScrollView, Image, StyleSheet, StatusBar } from "react-native";
+import { View, Text, ScrollView, Image, StyleSheet, StatusBar, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { doc, getDoc, collection, getDocs, query } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
@@ -99,7 +101,20 @@ export default function FamilyDetailScreen() {
     }, [fetchData])
   );
 
-  if (!ready || !p) return <View style={styles.center}><Text>{t.loading}</Text></View>;
+  const fc = familyCopy[language];
+  const sep = language === "zh" ? "：" : ": ";
+
+  if (!ready || !p) {
+    return (
+      <View style={styles.container}>
+        <AppHeader title={t.prescriptionDetail} fallbackHref="/family/list" />
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.loadingText}>{t.loading}</Text>
+        </View>
+      </View>
+    );
+  }
 
   const clinicName = String(
     p.clinic_name ?? p.clinicName ?? ""
@@ -112,41 +127,33 @@ export default function FamilyDetailScreen() {
   const prescriptionMemo =
     formatPrescriptionMemo(p.memo);
 
+  const openEdit = () => router.push({
+    pathname: "/family/edit",
+    params: { id: p.prescriptionId, itemsJson: JSON.stringify(p.items) }
+  });
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
-      <ScreenHeader style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={28} color="#333" />
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-      </ScreenHeader>
+
+      <AppHeader
+        title={t.prescriptionDetail}
+        fallbackHref="/family/list"
+        right={<Button label={t.edit} icon="create-outline" variant="ghost" onPress={openEdit} />}
+      />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.titleRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.mainTitle}>{p.title || t.prescriptionDetail}</Text>
-            <Text style={[styles.subInfo, { marginTop: 8 }]}>
-              {t.recordDate}：{p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() : t.unknown}
-            </Text>
-            <Text style={styles.subInfo}>
-              診所：{clinicName || t.notSet}
-            </Text>
-
-            <Text style={styles.subInfo}>
-              科別：{department || t.notSet}
-            </Text>
-          </View>
-          <Pressable 
-            onPress={() => router.push({
-              pathname: "/family/edit",
-              params: { id: p.prescriptionId, itemsJson: JSON.stringify(p.items) }
-            })} 
-            style={styles.editBtn}
-          >
-            <Text style={styles.editBtnText}>{t.edit}</Text>
-          </Pressable>
+        <View style={styles.titleBlock}>
+          <Text style={styles.mainTitle}>{p.title || t.prescriptionDetail}</Text>
+          <Text style={styles.subInfo}>
+            {t.recordDate}{sep}{p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() : t.unknown}
+          </Text>
+          <Text style={styles.subInfo}>
+            {fc.clinicLabel}{sep}{clinicName || t.notSet}
+          </Text>
+          <Text style={styles.subInfo}>
+            {fc.departmentLabel}{sep}{department || t.notSet}
+          </Text>
         </View>
 
         {p.sourceImageUrl ? (
@@ -156,63 +163,53 @@ export default function FamilyDetailScreen() {
             resizeMode="contain"
           />
         ) : (
-          <View style={[styles.img, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }]}>
-            <Ionicons name="image-outline" size={40} color="#ccc" />
-            <Text style={{ color: '#999', marginTop: 8 }}>{t.noPrescriptionImage}</Text>
+          <View style={[styles.img, styles.imgEmpty]}>
+            <Ionicons name="image-outline" size={40} color={colors.textDisabled} />
+            <Text style={styles.imgEmptyText}>{t.noPrescriptionImage}</Text>
           </View>
         )}
 
-        <View style={styles.prescriptionNoteCard}>
-          <Text style={styles.prescriptionNoteLabel}>{t.prescriptionNote}</Text>
-          <Text style={prescriptionMemo ? styles.prescriptionNoteValue : styles.emptyNoteValue}>
+        <Card tone="sunken" style={styles.noteCard}>
+          <Text style={styles.noteLabel}>{t.prescriptionNote}</Text>
+          <Text style={prescriptionMemo ? styles.noteValue : styles.emptyNoteValue}>
             {prescriptionMemo || t.none}
           </Text>
-        </View>
+        </Card>
 
-        <Text style={styles.sectionTitle}>{t.medicineContent}</Text>
-        
+        <Text style={styles.sectionTitle} accessibilityRole="header">{t.medicineContent}</Text>
+
         {p.items?.map((it: any, idx: number) => {
           // 💡 邏輯：將 usage_zh 以逗號拆分為「用法」與「時段」
           const usageString = it.usage_zh || "";
-
           const parts = usageString
             .split(/[，,]/)
             .map((part: string) => part.trim())
             .filter(Boolean);
-
           const method = parts[0] || t.notSet;
-
           const timeDetail =
             parts.slice(1).join("，") ||
             t.asDirectedUsage;
 
           return (
-            <View key={idx} style={styles.itemCard}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.itemName}>{it.name}</Text>
-              </View>
-              
+            <Card key={idx} style={styles.itemCard}>
+              <Text style={styles.itemName}>{it.name}</Text>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{t.dosage}：</Text>
+                <Text style={styles.infoLabel}>{t.dosage}</Text>
                 <Text style={styles.infoValue}>{it.dosage}</Text>
               </View>
-
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{t.method}：</Text>
+                <Text style={styles.infoLabel}>{t.method}</Text>
                 <Text style={styles.infoValue}>{method}</Text>
               </View>
-
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{t.usageTime}：</Text>
+                <Text style={styles.infoLabel}>{t.usageTime}</Text>
                 <Text style={styles.infoValue}>{timeDetail}</Text>
               </View>
-
-              <View style={styles.noteBox}>
-                <Text style={it.memo ? styles.noteText : styles.emptyItemNote}>
-                  {t.medicineNote}：{it.memo || t.none}
-                </Text>
-              </View>
-            </View>
+              <Divider style={styles.itemDivider} />
+              <Text style={it.memo ? styles.noteText : styles.emptyItemNote}>
+                {t.medicineNote}{sep}{it.memo || t.none}
+              </Text>
+            </Card>
           );
         })}
       </ScrollView>
@@ -221,43 +218,39 @@ export default function FamilyDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  header: { backgroundColor: "#F4E770", paddingTop: 12, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", minHeight: 56 },
-  backButton: { flexDirection: "row", alignItems: "center", minWidth: 100 },
-  backText: { fontSize: 20, fontWeight: 'bold', color: '#333', marginLeft: 2 },
-  scrollContent: { padding: 20, paddingBottom: 48 },
-  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 },
-  mainTitle: { fontSize: 28, fontWeight: "900", color: "#333" },
-  subInfo: { fontSize: 14, color: "#999", marginTop: 4 },
-  editBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
-  editBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
-  img: { 
-    width: "100%", 
+  container: { flex: 1, backgroundColor: colors.canvas },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.md },
+  loadingText: { ...typography.bodySmall },
+  scrollContent: {
+    padding: layout.screenPaddingX,
+    paddingBottom: spacing.xxxl,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+  },
+  titleBlock: { marginBottom: spacing.lg, gap: 2 },
+  mainTitle: { ...typography.title, marginBottom: spacing.xs },
+  subInfo: { ...typography.bodySmall, color: colors.textMuted },
+  img: {
+    width: "100%",
     height: 300,
-    borderRadius: 15, 
-    backgroundColor: "#f0f0f0", 
-    marginBottom: 25,
+    borderRadius: radii.card,
+    backgroundColor: colors.surfaceSunken,
+    marginBottom: spacing.lg,
   },
-  prescriptionNoteCard: { padding: 16, borderRadius: 12, backgroundColor: "#F7F7F7", marginBottom: 20 },
-  prescriptionNoteLabel: { fontSize: 16, color: "#555", fontWeight: "700", marginBottom: 6 },
-  prescriptionNoteValue: { fontSize: 15, color: "#333", lineHeight: 22 },
-  emptyNoteValue: { fontSize: 15, color: "#AAA" },
-  sectionTitle: { fontSize: 22, fontWeight: "800", color: "#333", marginBottom: 15 },
-  itemCard: { 
-    padding: 18, 
-    borderRadius: 16, 
-    backgroundColor: "#F9F9F9", 
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: "#EEE"
-  },
-  cardHeader: { marginBottom: 10 },
-  itemName: { fontSize: 19, fontWeight: "800", color: "#007AFF" },
-  infoRow: { flexDirection: "row", marginBottom: 8, alignItems: 'flex-start' },
-  infoLabel: { fontSize: 15, color: "#666", width: 85 },
-  infoValue: { fontSize: 15, color: "#333", fontWeight: "600", flex: 1 },
-  noteBox: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#EEE" },
-  noteText: { fontSize: 14, color: "#888", fontStyle: "italic" },
-  emptyItemNote: { fontSize: 14, color: "#BBB", fontStyle: "italic" },
+  imgEmpty: { justifyContent: "center", alignItems: "center", gap: spacing.sm },
+  imgEmptyText: { ...typography.bodySmall, color: colors.textMuted },
+  noteCard: { marginBottom: spacing.lg },
+  noteLabel: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.xs },
+  noteValue: { ...typography.body },
+  emptyNoteValue: { ...typography.body, color: colors.textMuted },
+  sectionTitle: { ...typography.header, marginBottom: spacing.md },
+  itemCard: { marginBottom: spacing.md },
+  itemName: { ...typography.header, fontSize: 19, marginBottom: spacing.sm },
+  infoRow: { flexDirection: "row", marginBottom: spacing.xs, alignItems: "flex-start", gap: spacing.sm },
+  infoLabel: { ...typography.bodySmall, color: colors.textMuted, width: 96 },
+  infoValue: { ...typography.body, flex: 1 },
+  itemDivider: { marginVertical: spacing.sm },
+  noteText: { ...typography.bodySmall },
+  emptyItemNote: { ...typography.bodySmall, color: colors.textMuted },
 });

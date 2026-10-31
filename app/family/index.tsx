@@ -6,14 +6,16 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { getHomeLayout } from "@/src/ui/homeLayout";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type DimensionValue } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AppHeader } from "@/src/ui/components";
+import { AppHeader, Button, Card, EmptyState, StatusBadge, type IconName, type StatusTone } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useHealthThresholds } from "@/src/health/useHealthThresholds";
 import { translations } from "@/src/i18n/translations";
+import { familyCopy, relativeTimeLabel } from "@/src/i18n/copy/familyCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { useMedicationProgress } from "@/src/reminders/useMedicationProgress";
 import { progressCopy } from "@/src/reminders/medicationProgress";
@@ -24,6 +26,15 @@ type VitalStatus = 'normal' | 'abnormal' | 'outdated' | 'nodata';
 type SingleVital = { val: number; ts: number } | null;
 type BloodPressureVital = { sys: number; dia: number; ts: number } | null;
 type SugarVital = { val: number; type: string; ts: number } | null;
+type VitalType = 'temp' | 'hr' | 'bp' | 'sugar';
+
+// 狀態外觀：正常時安靜、異常時醒目、未更新／無資料時灰階；皆附圖示與文字（不只靠顏色）
+const statusLook: Record<VitalStatus, { tone: StatusTone; icon: IconName }> = {
+  normal: { tone: 'success', icon: 'checkmark-circle' },
+  abnormal: { tone: 'danger', icon: 'warning' },
+  outdated: { tone: 'neutral', icon: 'time-outline' },
+  nodata: { tone: 'neutral', icon: 'remove-circle-outline' },
+};
 
 export default function FamilyHomeScreen() {
   const { width, fontScale } = useWindowDimensions();
@@ -31,6 +42,7 @@ export default function FamilyHomeScreen() {
   const { ready, activePatient, activePatientId, linkedCareTargets, setActivePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
+  const fc = familyCopy[language];
   const stats = useMedicationProgress(activePatientId);
   const medicationCopy = progressCopy[language];
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
@@ -109,18 +121,11 @@ export default function FamilyHomeScreen() {
       <View style={styles.container}>
         <AppHeader title={t.navHome} left="menu" />
         <SafeAreaView style={styles.body} edges={["left", "right"]}>
-        <ScrollView contentContainerStyle={{ padding: 24, gap: 20 }}>
-          <Text style={{ fontSize: 26, fontWeight: "700" }}>{copy.empty}</Text>
-          <Text style={{ fontSize: 18, lineHeight: 28 }}>{copy.hint}</Text>
-          <Pressable accessibilityRole="button" onPress={() => router.push("/care-target/create")}
-            style={{ padding: 18, borderRadius: 12, backgroundColor: "#007AFF" }}>
-            <Text style={{ color: "white", fontSize: 18, textAlign: "center" }}>{t.createCareTarget}</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => router.push("/care-target/join")}
-            style={{ padding: 18, borderRadius: 12, borderWidth: 1, borderColor: "#007AFF" }}>
-            <Text style={{ color: "#007AFF", fontSize: 18, textAlign: "center" }}>{t.joinCareTarget}</Text>
-          </Pressable>
-        </ScrollView>
+          <ScrollView contentContainerStyle={styles.emptyScroll}>
+            <EmptyState icon="people-outline" title={copy.empty} body={copy.hint} />
+            <Button label={t.createCareTarget} icon="add" size="lg" fullWidth onPress={() => router.push("/care-target/create")} />
+            <Button label={t.joinCareTarget} icon="enter-outline" size="lg" variant="secondary" fullWidth onPress={() => router.push("/care-target/join")} />
+          </ScrollView>
         </SafeAreaView>
       </View>
     );
@@ -130,7 +135,7 @@ export default function FamilyHomeScreen() {
     return (
       <View style={styles.container}>
         <AppHeader title={t.navHome} left="menu" />
-        <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />
+        <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} color={colors.primary} />
       </View>
     );
   }
@@ -141,7 +146,7 @@ export default function FamilyHomeScreen() {
   // ==========================================
   const checkVitalStatus = (type: string, data: any): VitalStatus => {
     if (!data) return 'nodata';
-    
+
     const isOutdated = (now - data.ts) > 24 * 60 * 60 * 1000;
     if (isOutdated) return 'outdated';
 
@@ -149,19 +154,19 @@ export default function FamilyHomeScreen() {
       const min = dbThresholds?.temperature?.enabled ? Number(dbThresholds.temperature.min) : 36.0;
       const max = dbThresholds?.temperature?.enabled ? Number(dbThresholds.temperature.max) : 37.5;
       if (data.val < min || data.val > max) return 'abnormal';
-      
+
     } else if (type === 'hr') {
       const min = dbThresholds?.heartRate?.enabled ? Number(dbThresholds.heartRate.min) : 60;
       const max = dbThresholds?.heartRate?.enabled ? Number(dbThresholds.heartRate.max) : 100;
       if (data.val < min || data.val > max) return 'abnormal';
-      
+
     } else if (type === 'bp') {
       const sysMin = dbThresholds?.systolic?.enabled ? Number(dbThresholds.systolic.min) : 90;
       const sysMax = dbThresholds?.systolic?.enabled ? Number(dbThresholds.systolic.max) : 140;
       const diaMin = dbThresholds?.diastolic?.enabled ? Number(dbThresholds.diastolic.min) : 60;
       const diaMax = dbThresholds?.diastolic?.enabled ? Number(dbThresholds.diastolic.max) : 90;
       if (data.sys < sysMin || data.sys > sysMax || data.dia < diaMin || data.dia > diaMax) return 'abnormal';
-      
+
     } else if (type === 'sugar') {
       if (data.type === '空腹' || data.type === '飯前' || data.type === t.fasting) {
         const min = dbThresholds?.bloodSugar?.enabled ? Number(dbThresholds.bloodSugar.beforeMin) : 70;
@@ -176,177 +181,226 @@ export default function FamilyHomeScreen() {
     return 'normal';
   };
 
-  // 🌟 完全還原你原本首頁的顏色設定！！
-  const getVitalColors = (status: VitalStatus) => {
-    if (status === 'normal') return { top: '#7AEE90', bottom: '#849F84' }; 
-    if (status === 'abnormal') return { top: '#FA7474', bottom: '#987A7A' }; 
-    return { top: '#D4D4D4', bottom: '#8E8E8E' }; 
+  const statusLabel: Record<VitalStatus, string> = {
+    normal: fc.statusNormal,
+    abnormal: fc.statusAbnormal,
+    outdated: fc.statusOutdated,
+    nodata: fc.statusNoData,
   };
 
-  const formatTime = (ts: number | undefined) => {
-    if (!ts) return { time: '--:--', label: '--' };
-    const d = new Date(ts);
-    const time = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-    
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+  const vitalItems: { title: string; type: VitalType; data: any }[] = [
+    { title: t.temperature, type: 'temp', data: vitals.temp },
+    { title: t.heartRate, type: 'hr', data: vitals.hr },
+    { title: t.bloodPressure, type: 'bp', data: vitals.bp },
+    { title: t.bloodSugar, type: 'sugar', data: vitals.sugar },
+  ];
+  const vitalStatuses = vitalItems.map(item => checkVitalStatus(item.type, item.data));
+  const abnormalCount = vitalStatuses.filter(status => status === 'abnormal').length;
 
-    let label = `${d.getMonth() + 1}月${d.getDate()}日`;
-    if (d.toDateString() === today.toDateString()) label = t.today;
-    else if (d.toDateString() === yesterday.toDateString()) label = t.yesterday;
-
-    return { time, label };
-  };
-
-  const renderVitalBlock = (title: string, type: 'temp'|'hr'|'bp'|'sugar', data: any) => {
-    const status = checkVitalStatus(type, data);
-    const colors = getVitalColors(status);
-    const { time, label } = formatTime(data?.ts);
+  const renderVitalBlock = (item: { title: string; type: VitalType; data: any }, status: VitalStatus) => {
+    const { title, type, data } = item;
+    const look = statusLook[status];
+    const isAbnormal = status === 'abnormal';
+    const isMuted = status === 'outdated' || status === 'nodata';
+    const value = !data ? '--' : type === 'bp' ? `${data.sys}/${data.dia}` : String(data.val);
+    const unit = type === 'temp' ? '°C' : type === 'hr' ? 'bpm' : type === 'bp' ? 'mmHg' : 'mg/dL';
+    const unitLine = data && type === 'sugar' && data.type ? `${unit} · ${data.type}` : unit;
+    const timeLabel = data?.ts ? relativeTimeLabel(fc, data.ts, now) : null;
 
     return (
-      <View style={[styles.vitalBlock, { width: vitalWidth }]}>
-        <Text
-          style={styles.vitalTitle}
-        >
-          {title}
-        </Text>
-        <View style={styles.vitalCardWrap}>
-          <View style={[styles.vitalCardTop, { backgroundColor: colors.top }]}>
-            {data ? (
-              type === 'bp' ? (
-                <>
-                  <Text style={[styles.vitalValue, { fontSize: 26 }]}>{data.sys}</Text>
-                  <Text style={[styles.vitalValue, { fontSize: 26, marginBottom: 2 }]}>{data.dia}</Text>
-                  <Text style={[styles.vitalUnit, { fontSize: 12 }]}>mmhg</Text>
-                </>
-              ) : type === 'sugar' ? (
-                <>
-                  <Text style={[styles.vitalValue, { fontSize: 28, marginTop: 4, marginBottom: 2 }]}>{data.val}</Text>
-                  <Text style={[styles.vitalUnit, { fontSize: 12 }]}>{data.type}</Text>
-                  <Text style={[styles.vitalUnit, { fontSize: 12 }]}>mg/dl</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={[styles.vitalValue, { fontSize: 34, marginBottom: 2 }]}>{data.val}</Text>
-                  <Text style={[styles.vitalUnit, { fontSize: 14 }]}>{type === 'temp' ? '°C' : 'bpm'}</Text>
-                </>
-              )
-            ) : (
-              <Text style={styles.vitalValue}>--</Text>
-            )}
-          </View>
-          <View style={[styles.vitalCardBottom, { backgroundColor: colors.bottom }]}>
-            <Text style={styles.vitalTimeText}>{time}</Text>
-            <Text style={styles.vitalLabelText}>{label}</Text>
-          </View>
+      <View
+        key={type}
+        accessible
+        accessibilityLabel={`${title}, ${statusLabel[status]}, ${value} ${unitLine}${timeLabel ? `, ${timeLabel}` : ''}`}
+        style={[
+          styles.vitalCard,
+          { width: vitalWidth },
+          isAbnormal && styles.vitalCardAbnormal,
+          status === 'nodata' && styles.vitalCardNoData,
+        ]}
+      >
+        <View style={styles.vitalTop}>
+          <Text style={styles.vitalTitle} numberOfLines={2}>{title}</Text>
+          <StatusBadge
+            label={statusLabel[status]}
+            tone={look.tone}
+            icon={look.icon}
+            style={isAbnormal ? styles.badgeOnDanger : null}
+          />
         </View>
+        <Text
+          style={[styles.vitalValue, isAbnormal && styles.vitalValueAbnormal, isMuted && styles.vitalValueMuted]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        >
+          {value}
+        </Text>
+        <Text style={styles.vitalMeta} numberOfLines={2}>
+          {unitLine}
+          {timeLabel ? ` · ${timeLabel}` : ''}
+        </Text>
       </View>
     );
   };
+
+  const hasMedicationProgress = !stats.error && !stats.loading && stats.total > 0;
+  const progressRatio = hasMedicationProgress ? Math.min(1, stats.completed / stats.total) : 0;
+
+  const quickActions: { key: string; icon: IconName; label: string; onPress: () => void }[] = [
+    { key: 'list', icon: 'clipboard-outline', label: t.prescriptionRecords, onPress: () => router.push("/family/list") },
+    { key: 'condition', icon: 'videocam-outline', label: t.conditionView, onPress: () => router.push("/family/condition" as any) },
+    { key: 'voice', icon: 'mic-outline', label: t.recordVoice, onPress: () => router.push("/family/voice") },
+  ];
 
   return (
     <View style={styles.container}>
       <AppHeader title={t.navHome} left="menu" />
       <SafeAreaView style={styles.body} edges={["left", "right"]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        <View style={styles.header}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarList}>
-            {linkedCareTargets.map((target) => {
-              const isActive = target.id === activePatientId;
-              return (
-                <Pressable key={target.id} onPress={async () => {
+
+        {/* 照護對象切換 */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.avatarList}
+          accessibilityLabel={fc.careTargets}
+        >
+          {linkedCareTargets.map((target) => {
+            const isActive = target.id === activePatientId;
+            return (
+              <Pressable
+                key={target.id}
+                accessibilityRole="button"
+                accessibilityLabel={fc.switchCareTarget(target.name || "?")}
+                accessibilityState={{ selected: isActive }}
+                onPress={async () => {
                   try { await setActivePatientId(target.id); }
                   catch { Alert.alert(t.prompt, invitationCopy[language].error); }
-                }}>
-                  <View style={[styles.avatar, isActive ? styles.avatarActive : styles.avatarInactive]}>
-                    <Text style={[styles.avatarText, isActive ? styles.textWhite : styles.textGray]}>
-                      {target.name ? target.name.charAt(0) : "?"}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-            <Pressable onPress={() => router.push("/care-target/create")}>
-              <View style={styles.avatarAdd}>
-                <Ionicons name="add" size={24} color="#4F59D5" />
-              </View>
-            </Pressable>
-          </ScrollView>
-        </View>
+                }}
+                style={({ pressed }) => pressed && { opacity: 0.8 }}
+              >
+                <View style={[styles.avatar, isActive ? styles.avatarActive : styles.avatarInactive]}>
+                  <Text style={[styles.avatarText, isActive ? styles.avatarTextActive : styles.avatarTextInactive]}>
+                    {target.name ? target.name.charAt(0) : "?"}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={fc.addCareTarget}
+            onPress={() => router.push("/care-target/create")}
+            style={({ pressed }) => [styles.avatar, styles.avatarAdd, pressed && { backgroundColor: colors.primarySoft }]}
+          >
+            <Ionicons name="add" size={24} color={colors.primary} />
+          </Pressable>
+        </ScrollView>
 
         <View style={styles.userInfo}>
-          <Text style={styles.userName}>{activePatient?.name ?? t.noSelectedPatient}</Text>
-          <View style={styles.inviteBadge}><Text style={styles.inviteText}>{invitationCopy[language].title}</Text></View>
-          <Pressable onPress={copyInviteCode} style={styles.copyIconWrap} hitSlop={8}>
-            <Ionicons name="copy-outline" size={18} color="#6B7280" />
+          <Text style={styles.userName} numberOfLines={2}>{activePatient?.name ?? t.noSelectedPatient}</Text>
+          <Pressable
+            onPress={copyInviteCode}
+            accessibilityRole="button"
+            accessibilityLabel={invitationCopy[language].title}
+            style={({ pressed }) => [styles.inviteBadge, pressed && { backgroundColor: colors.primarySoft }]}
+          >
+            <Ionicons name="person-add-outline" size={16} color={colors.primary} />
+            <Text style={styles.inviteText} numberOfLines={1}>{invitationCopy[language].title}</Text>
           </Pressable>
         </View>
 
-        <View style={styles.medCard}>
-          <Text style={styles.medTitle}>{t.todayMedicationProgress}</Text>
+        {/* 今日用藥進度 */}
+        <Card style={styles.section}>
+          <View style={styles.medHeader}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="medkit-outline" size={22} color={colors.primary} />
+            </View>
+            <Text style={styles.cardTitle}>{t.todayMedicationProgress}</Text>
+          </View>
           {stats.error ? (
-            <Text style={styles.medDetail}>{medicationCopy.error}</Text>
+            <Text style={styles.medError}>{medicationCopy.error}</Text>
           ) : stats.loading ? (
             <Text style={styles.medDetail}>{t.loading}</Text>
           ) : stats.total > 0 ? (
-            <><Text style={styles.medProgress}>{t.completed} {stats.completed} / {stats.total}</Text><Text style={styles.medDetail}>{medicationCopy.unit}</Text></>
+            <>
+              <View style={styles.medProgressRow}>
+                <Text style={styles.medUnit}>{t.completed} </Text>
+                <Text style={styles.medProgress}>{stats.completed}</Text>
+                <Text style={styles.medTotal}> / {stats.total} </Text>
+                <Text style={styles.medUnit}>{medicationCopy.unit}</Text>
+              </View>
+              <View
+                style={styles.progressTrack}
+                accessibilityRole="progressbar"
+                accessibilityValue={{ min: 0, max: stats.total, now: stats.completed }}
+              >
+                <View style={[styles.progressFill, { width: `${Math.round(progressRatio * 100)}%` as DimensionValue }]} />
+              </View>
+            </>
           ) : stats.prescriptionCount > 0 ? (
             <Text style={styles.medDetail}>{medicationCopy.none}</Text>
           ) : (
-            <View style={{ alignItems: "center", marginTop: 10 }}>
-              <Text style={{ fontSize: 16, color: "#999", fontWeight: "bold" }}>{t.noPrescriptions}</Text>
-              <Text style={{ fontSize: 14, color: "#666", marginTop: 4 }}>{invitationCopy[language].primaryOnly}</Text>
-            </View>
+            <>
+              <Text style={styles.medEmptyTitle}>{t.noPrescriptions}</Text>
+              <Text style={styles.medDetail}>{invitationCopy[language].primaryOnly}</Text>
+            </>
           )}
-        </View>
+        </Card>
 
-        <View style={styles.vitalsOuterCard}>
+        {/* 健康數據 */}
+        <Card style={styles.section}>
+          <Text style={[styles.cardTitle, styles.vitalsHeading]} accessibilityRole="header">{fc.vitalsTitle}</Text>
           {!vitals.hasAnyData ? (
-            <View style={{ paddingVertical: 30, alignItems: "center" }}>
-              <Text style={{ fontSize: 18, color: "#999", fontWeight: "bold" }}>{t.noVitals}</Text>
-              <Text style={{ fontSize: 14, color: "#CCC", marginTop: 8 }}>{t.vitalsWillShow}</Text>
-            </View>
+            <EmptyState icon="pulse-outline" title={t.noVitals} body={t.vitalsWillShow} style={styles.vitalsEmpty} />
           ) : (
-            <View style={styles.vitalsGrid}>
-              {renderVitalBlock(t.temperature, 'temp', vitals.temp)}
-              {renderVitalBlock(t.heartRate, 'hr', vitals.hr)}
-              {renderVitalBlock(t.bloodPressure, 'bp', vitals.bp)}
-              {renderVitalBlock(t.bloodSugar, 'sugar', vitals.sugar)}
-            </View>
+            <>
+              {abnormalCount > 0 ? (
+                <View style={styles.alertStrip} accessibilityRole="alert">
+                  <Ionicons name="warning" size={20} color={colors.danger} />
+                  <Text style={styles.alertText}>{fc.abnormalAlert(abnormalCount)}</Text>
+                </View>
+              ) : null}
+              <View style={styles.vitalsGrid}>
+                {vitalItems.map((item, index) => renderVitalBlock(item, vitalStatuses[index]))}
+              </View>
+            </>
           )}
-          <Pressable onPress={() => router.push("/family/dashboard" as any)} style={styles.chartBtn}>
-            <Ionicons name="bar-chart" size={18} color="#FFF" />
-            <Text style={styles.chartBtnText}>{t.viewChart}</Text>
-          </Pressable>
-        </View>
+          <Button
+            label={t.viewChart}
+            icon="bar-chart-outline"
+            variant="secondary"
+            fullWidth
+            onPress={() => router.push("/family/dashboard" as any)}
+            style={styles.chartBtn}
+          />
+        </Card>
 
+        {/* 常用功能 */}
+        <Text style={styles.sectionLabel} accessibilityRole="header">{fc.quickActions}</Text>
         <View style={[styles.actionsRow, stackedActions && styles.actionsColumn]}>
-          <Pressable onPress={() => router.push("/family/list")} style={[styles.actionBtn, { backgroundColor: '#FEF9C3' }]}>
-            <View style={styles.actionGroup}>
-              <View style={[styles.actionIconBadge, { backgroundColor: '#CA8A04' }]}>
-                <Ionicons name="clipboard" size={26} color="#FFFFFF" />
+          {quickActions.map(action => (
+            <Pressable
+              key={action.key}
+              onPress={action.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={action.label}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                stackedActions && styles.actionBtnStacked,
+                pressed && styles.actionBtnPressed,
+              ]}
+            >
+              <View style={styles.actionIconBadge}>
+                <Ionicons name={action.icon} size={26} color={colors.primary} />
               </View>
-              <Text style={styles.actionText}>{t.prescriptionRecords}</Text>
-            </View>
-          </Pressable>
-          <Pressable onPress={() => router.push("/family/condition" as any)} style={[styles.actionBtn, { backgroundColor: '#DBEAFE' }]}>
-            <View style={styles.actionGroup}>
-              <View style={[styles.actionIconBadge, { backgroundColor: '#2563EB' }]}>
-                <Ionicons name="videocam" size={26} color="#FFFFFF" />
-              </View>
-              <Text style={styles.actionText}>{t.conditionView}</Text>
-            </View>
-          </Pressable>
-          <Pressable onPress={() => router.push("/family/voice")} style={[styles.actionBtn, { backgroundColor: '#DCFCE7' }]}>
-            <View style={styles.actionGroup}>
-              <View style={[styles.actionIconBadge, { backgroundColor: '#16A34A' }]}>
-                <Ionicons name="mic" size={26} color="#FFFFFF" />
-              </View>
-              <Text style={styles.actionText}>{t.recordVoice}</Text>
-            </View>
-          </Pressable>
+              <Text style={[styles.actionText, stackedActions && styles.actionTextStacked]} numberOfLines={2}>
+                {action.label}
+              </Text>
+              {stackedActions ? <Ionicons name="chevron-forward" size={20} color={colors.textMuted} /> : null}
+            </Pressable>
+          ))}
         </View>
       </ScrollView>
       </SafeAreaView>
@@ -355,71 +409,136 @@ export default function FamilyHomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  container: { flex: 1, backgroundColor: colors.canvas },
   body: { flex: 1 },
-  scrollContent: { paddingBottom: 24, paddingTop: 8 },
-  header: { flexDirection: "row", justifyContent: "flex-start", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8 },
-  avatarList: { flexDirection: "row", alignItems: "center", gap: 8 },
-  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: "center", alignItems: "center" },
-  avatarActive: { backgroundColor: "#4F59D5" },
-  avatarInactive: { backgroundColor: "#EEF0F4" },
-  avatarText: { fontSize: 20, fontWeight: "bold" },
-  textWhite: { color: "#FFF" },
-  textGray: { color: "#6B7280" },
-  avatarAdd: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: "#E5E7EB", justifyContent: "center", alignItems: "center" },
-
-  userInfo: { flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center", paddingHorizontal: 20, marginTop: 8, marginBottom: 16 },
-  userName: { maxWidth: "100%", flexShrink: 1, fontSize: 28, fontWeight: "bold", letterSpacing: 2, color: "#111827", marginRight: 12 },
-  inviteBadge: { maxWidth: "100%", flexShrink: 1, backgroundColor: "#EDE9FE", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 12 },
-  inviteText: { color: "#4F59D5", fontWeight: "600", fontSize: 14 },
-  copyIconWrap: { width: 24, height: 24, justifyContent: "center", alignItems: "center" },
-
-  medCard: { backgroundColor: "#F8F9FC", marginHorizontal: 20, borderRadius: 20, paddingVertical: 20, paddingHorizontal: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  medTitle: { fontSize: 22, fontWeight: "bold", textAlign: "center", color: "#111827", letterSpacing: 1, marginBottom: 8 },
-  medProgress: { fontSize: 26, fontWeight: "bold", textAlign: "center", color: "#111827", marginBottom: 12 },
-  medDetail: { fontSize: 16, textAlign: "center", color: "#111827", fontWeight: "500" },
-
-  vitalsOuterCard: { backgroundColor: "#F8F9FC", marginHorizontal: 20, marginTop: 16, borderRadius: 20, padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  vitalsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 16 },
-  
-  vitalBlock: { minWidth: 0, alignItems: "center" },
-  vitalTitle: {
+  scrollContent: {
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
     width: "100%",
-    minHeight: 48,
-    fontSize: 18,
-    lineHeight: 21,
-    fontWeight: "bold",
-    color: "#000",
-    letterSpacing: 0.3,
-    marginBottom: 8,
-    textAlign: "center",
-    textAlignVertical: "center",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
-  vitalCardWrap: { width: "100%", flex: 1, minHeight: 130, borderRadius: 12, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
-  
-  vitalCardTop: { flex: 1, justifyContent: "center", alignItems: "center", padding: 6 },
-  vitalCardBottom: { minHeight: 46, padding: 4, justifyContent: "center", alignItems: "center" },
-  
-  vitalValue: { color: "#000", fontWeight: "500", maxWidth: "100%", textAlign: "center" },
-  vitalUnit: { maxWidth: "100%", textAlign: "center", color: "#000", fontWeight: "400" },
-  
-  vitalTimeText: { maxWidth: "100%", textAlign: "center", color: "#FFF", fontSize: 15, fontWeight: "500" },
-  vitalLabelText: { maxWidth: "100%", textAlign: "center", color: "#F3F4F6", fontSize: 13 },
-  
-  chartBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#F5A623", borderRadius: 24, paddingVertical: 10, paddingHorizontal: 24, alignSelf: "center", marginTop: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
-  chartBtnText: { flexShrink: 1, textAlign: "center", color: "#FFF", fontSize: 17, fontWeight: "bold" },
-  actionsRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, marginHorizontal: 20, marginTop: 20 },
-  actionsColumn: { flexDirection: "column" },
-  actionBtn: { flex: 1, minWidth: 0, minHeight: 132, paddingHorizontal: 8, paddingVertical: 16, borderRadius: 20, justifyContent: "flex-start", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
-  actionGroup: { width: "100%", alignItems: "center", justifyContent: "flex-start", gap: 8 },
-  actionIconBadge: { width: 52, height: 52, borderRadius: 26, justifyContent: "center", alignItems: "center" },
-  actionText: {
-    width: "100%",
-    fontSize: 15,
-    lineHeight: 19,
-    fontWeight: "bold",
-    color: "#111827",
-    letterSpacing: 0.2,
-    textAlign: "center",
-  }
+  emptyScroll: { padding: spacing.xl, gap: spacing.md },
+
+  avatarList: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: layout.screenPaddingX },
+  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: "center", alignItems: "center" },
+  avatarActive: { backgroundColor: colors.primary },
+  avatarInactive: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  avatarText: { fontSize: 20, fontWeight: "700" },
+  avatarTextActive: { color: colors.onPrimary },
+  avatarTextInactive: { color: colors.textSecondary },
+  avatarAdd: { backgroundColor: colors.surface, borderWidth: 1, borderStyle: "dashed", borderColor: colors.primaryBorder },
+
+  userInfo: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: layout.screenPaddingX,
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  userName: { ...typography.display, flexShrink: 1, maxWidth: "100%" },
+  inviteBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    maxWidth: "100%",
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    backgroundColor: colors.surface,
+  },
+  inviteText: { ...typography.label, color: colors.primary, flexShrink: 1 },
+
+  section: { marginHorizontal: layout.screenPaddingX, marginBottom: spacing.lg },
+  cardTitle: { ...typography.header, flexShrink: 1 },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySoft,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  medHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.md },
+  medProgressRow: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap" },
+  medProgress: { fontSize: 32, lineHeight: 40, fontWeight: "700", color: colors.text },
+  medTotal: { fontSize: 22, lineHeight: 30, fontWeight: "600", color: colors.textSecondary },
+  medUnit: { ...typography.bodySmall },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: colors.surfaceSunken, marginTop: spacing.md, overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: 4, backgroundColor: colors.primary },
+  medDetail: { ...typography.body, color: colors.textSecondary },
+  medEmptyTitle: { ...typography.bodyStrong, marginBottom: spacing.xs },
+  medError: { ...typography.body, color: colors.danger },
+
+  vitalsHeading: { marginBottom: spacing.md },
+  vitalsEmpty: { paddingVertical: spacing.lg },
+  alertStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radii.control,
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  alertText: { ...typography.bodyStrong, color: colors.danger, flex: 1 },
+  vitalsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: spacing.md },
+
+  vitalCard: {
+    minWidth: 0,
+    minHeight: 136,
+    padding: spacing.md,
+    borderRadius: radii.card - 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  vitalCardAbnormal: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderWidth: 2, padding: spacing.md - 1 },
+  vitalCardNoData: { backgroundColor: colors.surfaceSunken, borderColor: colors.surfaceSunken },
+  vitalTop: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.xs },
+  vitalTitle: { ...typography.label, color: colors.textSecondary, flexShrink: 1, paddingTop: 2 },
+  badgeOnDanger: { backgroundColor: colors.surface },
+  vitalValue: { fontSize: 30, lineHeight: 38, fontWeight: "700", color: colors.text, marginTop: spacing.sm },
+  vitalValueAbnormal: { color: colors.danger },
+  vitalValueMuted: { color: colors.textMuted },
+  vitalMeta: { ...typography.caption, marginTop: 2 },
+
+  chartBtn: { marginTop: spacing.lg },
+
+  sectionLabel: { ...typography.overline, paddingHorizontal: layout.screenPaddingX + spacing.xs, marginBottom: spacing.sm },
+  actionsRow: { flexDirection: "row", gap: spacing.md, marginHorizontal: layout.screenPaddingX },
+  actionsColumn: { flexDirection: "column", gap: spacing.sm },
+  actionBtn: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 120,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.lg,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  actionBtnStacked: { flex: 0, minHeight: 64, flexDirection: "row", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.md },
+  actionBtnPressed: { backgroundColor: colors.primarySoft, borderColor: colors.primaryBorder },
+  actionIconBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primarySoft,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  actionText: { ...typography.bodyStrong, width: "100%", textAlign: "center" },
+  actionTextStacked: { flex: 1, width: undefined, textAlign: "left" },
 });

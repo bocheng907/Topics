@@ -1,16 +1,19 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
 // app/family/medication-detail.tsx
 import React, { useLayoutEffect, useMemo } from "react";
 import {
   View,
   Text,
-  Pressable,
   ScrollView,
   StyleSheet,
   StatusBar,
 } from "react-native";
 import { router, useLocalSearchParams, useNavigation, } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { AppHeader, Card, Divider, EmptyState } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { translations } from "@/src/i18n/translations";
+import { familyCopy } from "@/src/i18n/copy/familyCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
 
 type MedicationRecord = {
   prescriptionId: string;
@@ -33,34 +36,42 @@ function safeParseArray(value?: string) {
   }
 }
 
-function formatDate(createdAt: any) {
-  if (!createdAt) return "未知";
+function formatDate(createdAt: any, unknownText: string) {
+  if (!createdAt) return unknownText;
+
   if (typeof createdAt === "string") return createdAt;
+
   if (createdAt?.seconds) {
     return new Date(createdAt.seconds * 1000).toLocaleDateString();
   }
-  return "未知";
+
+  return unknownText;
 }
 
-function splitUsage(usage?: string) {
+function splitUsage(usage: string | undefined, notProvided: string) {
   const parts = String(usage ?? "")
     .split(/[，,]/)
     .map((part) => part.trim())
     .filter(Boolean);
 
   return {
-    method: parts[0] || "未提供",
-    time: parts.slice(1).join("，") || "未提供",
+    method: parts[0] || notProvided,
+    time: parts.slice(1).join("，") || notProvided,
   };
 }
 
 export default function FamilyMedicationDetailScreen() {
     const navigation = useNavigation();
+
     useLayoutEffect(() => {
       navigation.setOptions({
         headerShown: false,
       });
     }, [navigation]);
+  const { language } = useLanguage();
+  const t = translations[language];
+  const fc = familyCopy[language];
+  const sep = language === "zh" ? "：" : ": ";
 
   const { name, recordsJson, purposesJson, sourceLabel } =
     useLocalSearchParams<{
@@ -80,64 +91,66 @@ export default function FamilyMedicationDetailScreen() {
     [purposesJson]
   );
 
+  // 顯示用：來源字串（資料值為中文）轉為目前語系
+  const rawSource = sourceLabel || "藥單資料";
+  const sourceText =
+    rawSource === "AI 補充" ? fc.aiSupplement
+      : rawSource === "藥單辨識" ? t.prescriptionRecognition
+        : rawSource === "藥單資料" ? fc.medicationData
+          : rawSource;
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <ScreenHeader style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={30} color="#111" />
-          <Text style={styles.backText}>返回</Text>
-        </Pressable>
-      </ScreenHeader>
+      <AppHeader title={name || fc.drugNamePlaceholder} fallbackHref="/family/list" />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.summaryCard}>
+        <Card style={styles.summaryCard}>
           <View style={styles.summaryTopRow}>
-            <Ionicons name="documents-outline" size={54} color="#2F80ED" />
-            <Text style={styles.summaryCount}>
-              共 <Text style={styles.redText}>{records.length}</Text> 筆用藥紀錄
-            </Text>
-          </View>
-
-          <View style={styles.summaryContent}>
-            <Text style={styles.drugName}>{name || "藥品名稱"}</Text>
-
-            <View style={styles.purposeRow}>
-              <Text style={styles.purposeLabel}>常見用途</Text>
-
-              {purposes.length > 0 ? (
-                purposes.slice(0, 3).map((purpose) => (
-                  <View key={purpose} style={styles.purposeTag}>
-                    <Text style={styles.purposeTagText}>{purpose}</Text>
-                  </View>
-                ))
-              ) : (
-                <View style={styles.emptyTag}>
-                  <Text style={styles.emptyTagText}>無</Text>
-                </View>
-              )}
+            <View style={styles.iconCircle}>
+              <Ionicons name="medical-outline" size={24} color={colors.primary} />
             </View>
-
-            <Text style={styles.sourceText}>
-              資料來源：{sourceLabel || "藥單資料"}
-            </Text>
+            <Text style={styles.drugName}>{name || fc.drugNamePlaceholder}</Text>
           </View>
-        </View>
+
+          <View style={styles.purposeRow}>
+            <Text style={styles.purposeLabel}>{t.commonUses}</Text>
+
+            {purposes.length > 0 ? (
+              purposes.slice(0, 3).map((purpose) => (
+                <View key={purpose} style={styles.purposeTag}>
+                  <Text style={styles.purposeTagText}>{purpose}</Text>
+                </View>
+              ))
+            ) : (
+              <View style={[styles.purposeTag, styles.emptyTag]}>
+                <Text style={styles.emptyTagText}>{t.none}</Text>
+              </View>
+            )}
+          </View>
+
+          <Text style={styles.sourceText}>
+            {t.dataSource}{sep}{sourceText}
+          </Text>
+        </Card>
+
+        <Text style={styles.sectionLabel} accessibilityRole="header">
+          {fc.medicationRecordCount(records.length)}
+        </Text>
 
         {records.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Ionicons name="document-text-outline" size={56} color="#CCC" />
-            <Text style={styles.emptyText}>目前沒有用藥紀錄</Text>
-          </View>
+          <EmptyState icon="document-text-outline" title={fc.noMedicationRecords} />
         ) : (
           records.map((record, index) => {
-            const usage = splitUsage(record.usage);
+            const usage = splitUsage(record.usage, fc.notProvided);
 
             return (
-              <Pressable
+              <Card
                 key={`${record.prescriptionId}-${index}`}
+                padding={0}
                 style={styles.recordCard}
+                accessibilityLabel={record.prescriptionTitle || record.title || t.prescriptionName}
                 onPress={() =>
                   router.push({
                     pathname: "/family/detail",
@@ -146,41 +159,27 @@ export default function FamilyMedicationDetailScreen() {
                 }
               >
                 <View style={styles.recordHeader}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.recordTitle}>
-                      {record.prescriptionTitle || record.title || "藥單名稱"}
+                      {record.prescriptionTitle || record.title || t.prescriptionName}
                     </Text>
                     <Text style={styles.recordDate}>
-                      日期：{formatDate(record.createdAt)}
+                      {t.date}{sep}{formatDate(record.createdAt, t.unknown)}
                     </Text>
                   </View>
 
-                  <Ionicons name="chevron-forward" size={30} color="#111" />
+                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
                 </View>
 
-                <View style={styles.divider} />
+                <Divider />
 
                 <View style={styles.infoBlock}>
-                  <Text style={styles.infoText}>
-                    <Text style={styles.infoLabel}>用法劑量：</Text>
-                    {record.dosage || "未提供"}
-                  </Text>
-
-                  <Text style={styles.infoText}>
-                    <Text style={styles.infoLabel}>使用方式：</Text>
-                    {usage.method}
-                  </Text>
-
-                  <Text style={styles.infoText}>
-                    <Text style={styles.infoLabel}>服用時段：</Text>
-                    {usage.time}
-                  </Text>
-
-                  <Text style={styles.noteText}>
-                    備註：{record.memo || "無"}
-                  </Text>
+                  <InfoLine label={fc.dosageLabel} value={record.dosage || fc.notProvided} />
+                  <InfoLine label={fc.usageMethodLabel} value={usage.method} />
+                  <InfoLine label={fc.usageTimeLabel} value={usage.time} />
+                  <InfoLine label={fc.memoLabel} value={record.memo || t.none} muted />
                 </View>
-              </Pressable>
+              </Card>
             );
           })
         )}
@@ -189,148 +188,57 @@ export default function FamilyMedicationDetailScreen() {
   );
 }
 
+function InfoLine({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <View style={styles.infoLine}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={[styles.infoValue, muted && { color: colors.textSecondary }]}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  header: { backgroundColor: "#F4E770", paddingTop: 12, paddingHorizontal: 15, justifyContent: "center", minHeight: 56 },
-  backButton: { flexDirection: "row", alignItems: "center", minHeight: 44, paddingVertical: 8 },
-  backText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#333",
-    marginLeft: 2,
-  },
+  container: { flex: 1, backgroundColor: colors.canvas },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 140,
+    padding: layout.screenPaddingX,
+    paddingBottom: spacing.xxxl,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
-  summaryCard: {
-    borderWidth: 2,
-    borderColor: "#DCCF00",
-    backgroundColor: "#FFFDEB",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 20,
-  },
-  summaryTopRow: {
-    flexDirection: "row",
+  summaryCard: { gap: spacing.md },
+  summaryTopRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
+    justifyContent: "center",
   },
-  summaryContent: {
-    marginLeft: 18,
+  drugName: { ...typography.title, flex: 1 },
+  purposeRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 },
+  purposeLabel: { ...typography.label, color: colors.textSecondary, marginRight: 2 },
+  purposeTag: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    maxWidth: "100%",
   },
-  summaryCount: {
-    flex: 1,
-    fontSize: 28,
-    fontWeight: "900",
-    color: "#111",
-    lineHeight: 34,
-  },
-  redText: {
-    color: "#E53935",
-  },
-  drugName: {
-    fontSize: 26,
-    fontWeight: "900",
-    color: "#111",
-    marginBottom: 10,
-  },
-  purposeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 8,
-  },
-  purposeLabel: {
-    fontSize: 19,
-    fontWeight: "900",
-    color: "#777",
-    marginRight: 4,
-  },
-  purposeTag: { backgroundColor: "#FFF3A8", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 5, maxWidth: "100%" },
-  purposeTagText: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#555",
-  },
-  emptyTag: {
-    backgroundColor: "#EEE",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  emptyTagText: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#777",
-  },
-  sourceText: {
-    fontSize: 16,
-    color: "#777",
-    fontWeight: "800",
-  },
-  recordCard: {
-    borderWidth: 2,
-    borderColor: "#A9A1A1",
-    borderRadius: 14,
-    backgroundColor: "#fff",
-    marginBottom: 16,
-    overflow: "hidden",
-  },
-  recordHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 12,
-  },
-  recordTitle: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#111",
-    marginBottom: 4,
-  },
-  recordDate: {
-    fontSize: 17,
-    color: "#777",
-    fontWeight: "700",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#D8D8D8",
-  },
-  infoBlock: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-  },
-  infoText: {
-    fontSize: 18,
-    color: "#111",
-    fontWeight: "800",
-    marginBottom: 4,
-  },
-  infoLabel: {
-    fontWeight: "900",
-  },
-  noteText: {
-    fontSize: 18,
-    color: "#777",
-    fontWeight: "800",
-    marginTop: 4,
-  },
-  emptyBox: {
-    marginTop: 90,
-    alignItems: "center",
-    gap: 10,
-  },
-  emptyText: {
-    fontSize: 18,
-    color: "#777",
-    fontWeight: "800",
-  },
+  purposeTagText: { ...typography.label, color: colors.primary },
+  emptyTag: { backgroundColor: colors.surfaceSunken },
+  emptyTagText: { ...typography.label, color: colors.textMuted },
+  sourceText: { ...typography.bodySmall, color: colors.textMuted },
+
+  sectionLabel: { ...typography.overline, marginTop: spacing.xl, marginBottom: spacing.sm, marginLeft: spacing.xs },
+
+  recordCard: { marginBottom: spacing.md },
+  recordHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
+  recordTitle: { ...typography.bodyStrong, fontSize: 18 },
+  recordDate: { ...typography.bodySmall, color: colors.textMuted, marginTop: 2 },
+  infoBlock: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm },
+  infoLine: { gap: 2 },
+  infoLabel: { ...typography.caption, fontWeight: "600", color: colors.textSecondary },
+  infoValue: { ...typography.body },
 });

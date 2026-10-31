@@ -1,6 +1,9 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
-import { AppAlert as Alert } from "@/src/ui/AppAlert";
 // app/family/dashboard.tsx
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { AppHeader, Button, Card, Chip, KeyboardAwareScroll, StatusBadge, type IconName, type StatusTone } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { familyCopy, relativeTimeLabel } from "@/src/i18n/copy/familyCopy";
+import { SegmentedTabs } from "@/src/family/SegmentedTabs";
 import { Ionicons } from "@expo/vector-icons";
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
@@ -14,7 +17,6 @@ import {
 } from "@/src/health/useHealthChartData";
 import { PatientThresholds, useHealthThresholds } from "@/src/health/useHealthThresholds";
 import { usePrimaryFamily } from "@/src/care-target/usePrimaryFamily";
-import { router } from "expo-router";
 import {
   collection,
   onSnapshot,
@@ -24,8 +26,6 @@ import {
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -57,10 +57,18 @@ const CRITICAL_BOUNDS = {
   bloodSugarAfter:  { minSafe: 60, maxSafe: 250 },
 };
 
+const statusLook: Record<VitalStatus, { tone: StatusTone; icon: IconName }> = {
+  normal: { tone: "success", icon: "checkmark-circle" },
+  abnormal: { tone: "danger", icon: "warning" },
+  outdated: { tone: "neutral", icon: "time-outline" },
+  nodata: { tone: "neutral", icon: "remove-circle-outline" },
+};
+
 export default function FamilyDashboardScreen() {
   const { ready, activePatient, activePatientId } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
+  const fc = familyCopy[language];
   const isPrimaryFamily = usePrimaryFamily(activePatientId);
 
   const [activeTab, setActiveTab] = useState<"history" | "today" | "settings">("today");
@@ -188,10 +196,11 @@ export default function FamilyDashboardScreen() {
     return "normal";
   };
 
-  const getCardColors = (status: VitalStatus) => {
-    if (status === "normal") return { top: "#76C25F", bottom: "#98F698" };
-    if (status === "abnormal") return { top: "#EE6A6E", bottom: "#F9A4A6" };
-    return { top: "#A8A3A3", bottom: "#E6E6E6" };
+  const statusLabel: Record<VitalStatus, string> = {
+    normal: fc.statusNormal,
+    abnormal: fc.statusAbnormal,
+    outdated: fc.statusOutdated,
+    nodata: fc.statusNoData,
   };
 
   const formatTime = (ts: number | undefined) => {
@@ -338,103 +347,139 @@ export default function FamilyDashboardScreen() {
   };
 
   if (!ready || thresholdsLoading) {
-    return <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} />;
+    return (
+      <View style={styles.container}>
+        <AppHeader title={fc.vitalsTitle} fallbackHref="/family" />
+        <ActivityIndicator style={{ flex: 1, justifyContent: "center" }} color={colors.primary} />
+      </View>
+    );
   }
+
+  const dataTypeLabel: Record<ChartDataType, string> = {
+    "體溫": t.temperature,
+    "心跳": t.heartRate,
+    "血壓": t.bloodPressure,
+    "血糖": t.bloodSugar,
+  };
+  const timeRangeLabel: Record<ChartTimeRange, string> = {
+    "1周": fc.range1w,
+    "2周": fc.range2w,
+    "1個月": fc.range1m,
+    "全部": fc.rangeAll,
+  };
+
+  const renderVitalCard = (
+    key: string,
+    title: string,
+    status: VitalStatus,
+    values: { label?: string; value: string | number; unit: string }[],
+    ts: number | undefined,
+  ) => {
+    const look = statusLook[status];
+    const isAbnormal = status === "abnormal";
+    const isMuted = status === "outdated" || status === "nodata";
+    const timeText = ts ? `${formatTime(ts)} · ${relativeTimeLabel(fc, ts, now)}` : t.noRecord;
+    return (
+      <View
+        key={key}
+        accessible
+        accessibilityLabel={`${title}, ${statusLabel[status]}, ${values.map(v => `${v.label ?? ""} ${v.value} ${v.unit}`).join(", ")}, ${timeText}`}
+        style={[
+          styles.vitalCard,
+          values.length === 1 && styles.vitalCardHalf,
+          isAbnormal && styles.vitalCardAbnormal,
+          status === "nodata" && styles.vitalCardNoData,
+        ]}
+      >
+        <View style={styles.vitalTop}>
+          <Text style={styles.vitalTitle} numberOfLines={2}>{title}</Text>
+          <StatusBadge label={statusLabel[status]} tone={look.tone} icon={look.icon} style={isAbnormal ? styles.badgeOnDanger : null} />
+        </View>
+        <View style={styles.vitalValues}>
+          {values.map((v, index) => (
+            <View key={index} style={styles.vitalValueCol}>
+              {v.label ? <Text style={styles.vitalValueLabel}>{v.label}</Text> : null}
+              <View style={styles.valueRow}>
+                <Text
+                  style={[styles.valueMain, isAbnormal && styles.valueAbnormal, isMuted && styles.valueMuted]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {v.value}
+                </Text>
+                <Text style={styles.valueUnit}>{v.unit}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+        <Text style={styles.vitalMeta} numberOfLines={2}>{timeText}</Text>
+      </View>
+    );
+  };
+
+  const renderThresholdSwitch = (enabled: boolean, onToggle: () => void, title: string) => (
+    <View style={styles.settingCardHeader}>
+      <Text style={styles.settingCardTitle}>{title}</Text>
+      <View style={styles.switchContainer}>
+        <Text style={[styles.switchLabel, enabled && styles.switchLabelActive]}>
+          {enabled ? t.enabledCustomThreshold : t.useSystemDefaultThreshold}
+        </Text>
+        <Switch
+          value={enabled}
+          onValueChange={onToggle}
+          accessibilityLabel={title}
+          trackColor={{ false: colors.border, true: colors.primary }}
+          thumbColor={colors.surface}
+        />
+      </View>
+    </View>
+  );
+
+  const numberInput = (field: keyof PatientThresholds, key: string, value: string, label: string, flex?: boolean) => (
+    <TextInput
+      style={flex ? styles.textInputFlex : styles.textInput}
+      keyboardType="numeric"
+      value={value}
+      accessibilityLabel={label}
+      placeholderTextColor={colors.textMuted}
+      onChangeText={(v) => handleThresholdChange(field, key, v)}
+    />
+  );
+
+  let latestSugarTs = vitals.sugarFasting?.ts || 0;
+  if (vitals.sugarAfter?.ts && vitals.sugarAfter.ts > latestSugarTs) latestSugarTs = vitals.sugarAfter.ts;
 
   return (
     <View style={styles.container}>
-      <ScreenHeader style={styles.topContainer}>
-        {activeTab === "settings" ? (
-          <View style={[styles.headerRow, styles.settingsHeader]}>
-            <Pressable onPress={handleBackPress} style={styles.settingsBackButton} hitSlop={8}>
-              <Ionicons name="chevron-back" size={24} color="#111827" />
-              <Text style={styles.backButtonText}>{t.back}</Text>
-            </Pressable>
-            <Text style={styles.settingsTitle}>{t.customThresholdTitle}</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.headerRow}>
-              <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
-                <Ionicons name="chevron-back" size={24} color="#111827" />
-                <Text style={styles.backButtonText}>{t.back}</Text>
-              </Pressable>
-            </View>
+      {activeTab === "settings" ? (
+        <AppHeader title={t.customThresholdTitle} onBack={handleBackPress} />
+      ) : (
+        <AppHeader title={fc.vitalsTitle} fallbackHref="/family" />
+      )}
 
-            <View style={styles.tabRow}>
-              <Pressable
-                style={[styles.tabButton, activeTab === "history" && styles.tabButtonActive]}
-                onPress={() => setActiveTab("history")}
-              >
-                <Text
-                  numberOfLines={2}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
-                  style={[
-                    styles.tabText,
-                    activeTab === "history" ? styles.tabTextActive : styles.tabTextInactive,
-                  ]}
-                >
-                  {t.historyTrend}
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.tabButton, activeTab === "today" && styles.tabButtonActive]}
-                onPress={() => setActiveTab("today")}
-              >
-                <Text
-                  numberOfLines={2}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
-                  style={[
-                    styles.tabText,
-                    activeTab === "today" ? styles.tabTextActive : styles.tabTextInactive,
-                  ]}
-                >
-                  {t.todayRecords}
-                </Text>
-              </Pressable>
-            </View>
-          </>
-        )}
-      </ScreenHeader>
+      {activeTab !== "settings" ? (
+        <SegmentedTabs
+          tabs={[{ key: "history", label: t.historyTrend }, { key: "today", label: t.todayRecords }] as const}
+          value={activeTab}
+          onChange={setActiveTab}
+          style={styles.tabBar}
+        />
+      ) : null}
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScroll safeAreaBottom={false} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
         {/* ================= 歷史趨勢 ================= */}
         {activeTab === "history" && (
           <View style={styles.tabContent}>
             <View style={styles.filterRow}>
               {dataTypes.map((type) => (
-                <Pressable
-                  key={type}
-                  onPress={() => setChartDataType(type)}
-                  style={[
-                    styles.filterBtn,
-                    chartDataType === type ? styles.filterBtnActive : styles.filterBtnInactive,
-                  ]}
-                >
-                  <Text
-                    numberOfLines={2}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.65}
-                    style={[
-                      styles.filterBtnText,
-                      chartDataType === type
-                        ? styles.filterTextActive
-                        : styles.filterTextInactive,
-                    ]}
-                  >
-                    {type}
-                  </Text>
-                </Pressable>
+                <Chip key={type} label={dataTypeLabel[type]} selected={chartDataType === type} onPress={() => setChartDataType(type)} />
               ))}
             </View>
             <View style={styles.filterRow}>
               {timeRanges.map((range) => (
-                <Pressable key={range} onPress={() => setChartTimeRange(range)} style={[styles.filterBtn, chartTimeRange === range ? styles.filterBtnActive : styles.filterBtnInactive]}>
-                  <Text style={[styles.filterBtnText, chartTimeRange === range ? styles.filterTextActive : styles.filterTextInactive]}>{range}</Text>
-                </Pressable>
+                <Chip key={range} label={timeRangeLabel[range]} selected={chartTimeRange === range} onPress={() => setChartTimeRange(range)} />
               ))}
             </View>
             <HealthTrendChart chartDataType={chartDataType} loading={loading} empty={empty} lineData={lineData} bpSysData={bpSysData} bpDiaData={bpDiaData} />
@@ -444,135 +489,29 @@ export default function FamilyDashboardScreen() {
         {/* ================= 本日紀錄 ================= */}
         {activeTab === "today" && (
           <View style={styles.tabContent}>
-            {isPrimaryFamily && <View style={{ alignItems: 'flex-end', marginBottom: 16 }}>
-              <Pressable onPress={() => setActiveTab("settings")} style={styles.settingsBtn}>
-                <Ionicons name="settings" size={14} color="#D37B2B" />
-                <Text style={styles.settingsBtnText}>{t.settingsButtonLabel}</Text>
-              </Pressable>
-            </View>}
+            {isPrimaryFamily && (
+              <Button
+                label={t.settingsButtonLabel}
+                icon="options-outline"
+                variant="secondary"
+                onPress={() => setActiveTab("settings")}
+                style={styles.settingsBtn}
+              />
+            )}
 
-            <View style={styles.gridRow}>
-              <View style={styles.gridCard}>
-                {(() => {
-                  const status = checkVitalStatus("temp", vitals.temp);
-                  const colors = getCardColors(status);
-                  return (
-                    <>
-                      <View style={[styles.cardHeader, { backgroundColor: colors.top }]}>
-                        <Text style={styles.cardTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.temperature}</Text>
-                      </View>
-                      <View style={[styles.cardBody, { backgroundColor: colors.bottom }]}>
-                        <View style={styles.valueRow}>
-                          <Text style={styles.valueMain}>{vitals.temp?.val ?? "-"}</Text>
-                          <Text style={styles.valueUnit}>°C</Text>
-                        </View>
-                        <View style={styles.timeBadge}>
-                          <Text style={styles.timeBadgeText}>
-                            {vitals.temp ? formatTime(vitals.temp.ts) : t.noRecord}
-                          </Text>
-                        </View>
-                      </View>
-                    </>
-                  );
-                })()}
-              </View>
-
-              <View style={styles.gridCard}>
-                {(() => {
-                  const status = checkVitalStatus("hr", vitals.hr);
-                  const colors = getCardColors(status);
-                  return (
-                    <>
-                      <View style={[styles.cardHeader, { backgroundColor: colors.top }]}>
-                        <Text style={styles.cardTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{t.heartRate}</Text>
-                      </View>
-                      <View style={[styles.cardBody, { backgroundColor: colors.bottom }]}>
-                        <View style={styles.valueRow}>
-                          <Text style={styles.valueMain}>{vitals.hr?.val ?? "-"}</Text>
-                          <Text style={styles.valueUnit}>bpm</Text>
-                        </View>
-                        <View style={styles.timeBadge}>
-                          <Text style={styles.timeBadgeText}>
-                            {vitals.hr ? formatTime(vitals.hr.ts) : t.noRecord}
-                          </Text>
-                        </View>
-                      </View>
-                    </>
-                  );
-                })()}
-              </View>
-            </View>
-
-            <View style={styles.fullCard}>
-              {(() => {
-                const status = checkVitalStatus("bp", vitals.bp);
-                const colors = getCardColors(status);
-                return (
-                  <>
-                    <View style={[styles.fullCardHeader, { backgroundColor: colors.top }]}>
-                      <Text style={styles.cardTitle}>{t.bloodPressure}</Text>
-                      <View style={styles.headerSubRow}>
-                        <Text style={styles.headerSubText}>{t.systolic}</Text>
-                        <Text style={styles.headerSubText}>{t.diastolic}</Text>
-                      </View>
-                    </View>
-                    <View style={[styles.fullCardBody, { backgroundColor: colors.bottom }]}>
-                      <View style={styles.fullCardValueRow}>
-                        <View style={styles.valueCol}>
-                          <Text style={styles.valueMain}>{vitals.bp?.sys ?? "-"}</Text>
-                          <Text style={styles.valueUnitLarge}>mmhg</Text>
-                        </View>
-                        <View style={styles.valueCol}>
-                          <Text style={styles.valueMain}>{vitals.bp?.dia ?? "-"}</Text>
-                          <Text style={styles.valueUnitLarge}>mmhg</Text>
-                        </View>
-                      </View>
-                      <View style={[styles.timeBadge, { paddingHorizontal: 32 }]}>
-                        <Text style={styles.timeBadgeText}>
-                          {vitals.bp ? formatTime(vitals.bp.ts) : t.noRecord}
-                        </Text>
-                      </View>
-                    </View>
-                  </>
-                );
-              })()}
-            </View>
-
-            <View style={styles.fullCard}>
-              {(() => {
-                const status = checkVitalStatus("sugar", vitals.sugarFasting, vitals.sugarAfter);
-                const colors = getCardColors(status);
-                let latestTs = vitals.sugarFasting?.ts || 0;
-                if (vitals.sugarAfter?.ts && vitals.sugarAfter.ts > latestTs) latestTs = vitals.sugarAfter.ts;
-                return (
-                  <>
-                    <View style={[styles.fullCardHeader, { backgroundColor: colors.top }]}>
-                      <Text style={styles.cardTitle}>{t.bloodSugar}</Text>
-                      <View style={styles.headerSubRow}>
-                        <Text style={styles.headerSubText}>{t.fasting}</Text>
-                        <Text style={styles.headerSubText}>{t.afterMeal}</Text>
-                      </View>
-                    </View>
-                    <View style={[styles.fullCardBody, { backgroundColor: colors.bottom }]}>
-                      <View style={styles.fullCardValueRow}>
-                        <View style={styles.valueCol}>
-                          <Text style={styles.valueMain}>{vitals.sugarFasting?.val ?? "-"}</Text>
-                          <Text style={styles.valueUnitLarge}>mg/dl</Text>
-                        </View>
-                        <View style={styles.valueCol}>
-                          <Text style={styles.valueMain}>{vitals.sugarAfter?.val ?? "-"}</Text>
-                          <Text style={styles.valueUnitLarge}>mg/dl</Text>
-                        </View>
-                      </View>
-                      <View style={[styles.timeBadge, { paddingHorizontal: 32 }]}>
-                        <Text style={styles.timeBadgeText}>
-                          {latestTs > 0 ? formatTime(latestTs) : t.noRecord}
-                        </Text>
-                      </View>
-                    </View>
-                  </>
-                );
-              })()}
+            <View style={styles.vitalGrid}>
+              {renderVitalCard("temp", t.temperature, checkVitalStatus("temp", vitals.temp),
+                [{ value: vitals.temp?.val ?? "--", unit: "°C" }], vitals.temp?.ts)}
+              {renderVitalCard("hr", t.heartRate, checkVitalStatus("hr", vitals.hr),
+                [{ value: vitals.hr?.val ?? "--", unit: "bpm" }], vitals.hr?.ts)}
+              {renderVitalCard("bp", t.bloodPressure, checkVitalStatus("bp", vitals.bp), [
+                { label: t.systolic, value: vitals.bp?.sys ?? "--", unit: "mmHg" },
+                { label: t.diastolic, value: vitals.bp?.dia ?? "--", unit: "mmHg" },
+              ], vitals.bp?.ts)}
+              {renderVitalCard("sugar", t.bloodSugar, checkVitalStatus("sugar", vitals.sugarFasting, vitals.sugarAfter), [
+                { label: t.fasting, value: vitals.sugarFasting?.val ?? "--", unit: "mg/dL" },
+                { label: t.afterMeal, value: vitals.sugarAfter?.val ?? "--", unit: "mg/dL" },
+              ], latestSugarTs > 0 ? latestSugarTs : undefined)}
             </View>
           </View>
         )}
@@ -582,237 +521,191 @@ export default function FamilyDashboardScreen() {
           <View style={styles.settingsContent}>
 
             <View style={styles.infoBanner}>
-              <Ionicons name="bulb" size={18} color="#D37B2B" style={styles.infoBannerIcon} />
-              <Text style={styles.infoBannerText}>
-                {t.thresholdInfoBanner}
-              </Text>
+              <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+              <Text style={styles.infoBannerText}>{t.thresholdInfoBanner}</Text>
             </View>
 
             {/* 1. 體溫設定 */}
-            <View style={[styles.settingCard, localThresholds.temperature.enabled ? styles.settingCardActive : styles.settingCardInactive]}>
-              <View style={styles.settingCardHeader}>
-                <Text style={styles.settingCardTitle}>{t.temperatureWithUnit}</Text>
-                <View style={styles.switchContainer}>
-                  <Text style={[styles.switchLabel, localThresholds.temperature.enabled ? styles.switchLabelActive : styles.switchLabelInactive]}>
-                    {localThresholds.temperature.enabled ? t.enabledCustomThreshold : t.useSystemDefaultThreshold}
-                  </Text>
-                  <Switch
-                    value={localThresholds.temperature.enabled}
-                    onValueChange={() => toggleThreshold("temperature")}
-                    trackColor={{ false: "#D1D5DB", true: "#4A8B46" }}
-                  />
-                </View>
-              </View>
+            <Card style={[styles.settingCard, localThresholds.temperature.enabled && styles.settingCardActive]}>
+              {renderThresholdSwitch(localThresholds.temperature.enabled, () => toggleThreshold("temperature"), t.temperatureWithUnit)}
               {localThresholds.temperature.enabled ? (
                 <View style={styles.settingInputRow}>
                   <View style={styles.inputCol}>
                     <Text style={styles.inputLabel}>{t.minSafeValue}</Text>
-                    <TextInput style={styles.textInput} keyboardType="numeric" value={localThresholds.temperature.min} onChangeText={(v) => handleThresholdChange("temperature", "min", v)} />
+                    {numberInput("temperature", "min", localThresholds.temperature.min, t.minSafeValue)}
                   </View>
                   <Text style={styles.inputTilde}>~</Text>
                   <View style={styles.inputCol}>
                     <Text style={styles.inputLabel}>{t.maxSafeValue}</Text>
-                    <TextInput style={styles.textInput} keyboardType="numeric" value={localThresholds.temperature.max} onChangeText={(v) => handleThresholdChange("temperature", "max", v)} />
+                    {numberInput("temperature", "max", localThresholds.temperature.max, t.maxSafeValue)}
                   </View>
                 </View>
               ) : (
                 <Text style={styles.disabledText}>{t.thresholdDisabledHint}</Text>
               )}
-            </View>
+            </Card>
 
             {/* 2. 心跳設定 */}
-            <View style={[styles.settingCard, localThresholds.heartRate.enabled ? styles.settingCardActive : styles.settingCardInactive]}>
-              <View style={styles.settingCardHeader}>
-                <Text style={styles.settingCardTitle}>{t.heartRateWithUnit}</Text>
-                <View style={styles.switchContainer}>
-                  <Text style={[styles.switchLabel, localThresholds.heartRate.enabled ? styles.switchLabelActive : styles.switchLabelInactive]}>
-                    {localThresholds.heartRate.enabled ? t.enabledCustomThreshold : t.useSystemDefaultThreshold}
-                  </Text>
-                  <Switch
-                    value={localThresholds.heartRate.enabled}
-                    onValueChange={() => toggleThreshold("heartRate")}
-                    trackColor={{ false: "#D1D5DB", true: "#4A8B46" }}
-                  />
-                </View>
-              </View>
+            <Card style={[styles.settingCard, localThresholds.heartRate.enabled && styles.settingCardActive]}>
+              {renderThresholdSwitch(localThresholds.heartRate.enabled, () => toggleThreshold("heartRate"), t.heartRateWithUnit)}
               {localThresholds.heartRate.enabled ? (
                 <View style={styles.settingInputRow}>
                   <View style={styles.inputCol}>
                     <Text style={styles.inputLabel}>{t.minHeartRateValue}</Text>
-                    <TextInput style={styles.textInput} keyboardType="numeric" value={localThresholds.heartRate.min} onChangeText={(v) => handleThresholdChange("heartRate", "min", v)} />
+                    {numberInput("heartRate", "min", localThresholds.heartRate.min, t.minHeartRateValue)}
                   </View>
                   <Text style={styles.inputTilde}>~</Text>
                   <View style={styles.inputCol}>
                     <Text style={styles.inputLabel}>{t.maxHeartRateValue}</Text>
-                    <TextInput style={styles.textInput} keyboardType="numeric" value={localThresholds.heartRate.max} onChangeText={(v) => handleThresholdChange("heartRate", "max", v)} />
+                    {numberInput("heartRate", "max", localThresholds.heartRate.max, t.maxHeartRateValue)}
                   </View>
                 </View>
               ) : (
                 <Text style={styles.disabledText}>{t.thresholdDisabledHint}</Text>
               )}
-            </View>
+            </Card>
 
             {/* 3. 血壓設定 */}
-            <View style={[styles.settingCard, localThresholds.systolic.enabled ? styles.settingCardActive : styles.settingCardInactive]}>
-              <View style={styles.settingCardHeader}>
-                <Text style={styles.settingCardTitle}>{t.bloodPressureWithUnit}</Text>
-                <View style={styles.switchContainer}>
-                  <Text style={[styles.switchLabel, localThresholds.systolic.enabled ? styles.switchLabelActive : styles.switchLabelInactive]}>
-                    {localThresholds.systolic.enabled ? t.enabledCustomThreshold : t.useSystemDefaultThreshold}
-                  </Text>
-                  <Switch
-                    value={localThresholds.systolic.enabled}
-                    onValueChange={() => { toggleThreshold("systolic"); toggleThreshold("diastolic"); }}
-                    trackColor={{ false: "#D1D5DB", true: "#4A8B46" }}
-                  />
-                </View>
-              </View>
+            <Card style={[styles.settingCard, localThresholds.systolic.enabled && styles.settingCardActive]}>
+              {renderThresholdSwitch(localThresholds.systolic.enabled, () => { toggleThreshold("systolic"); toggleThreshold("diastolic"); }, t.bloodPressureWithUnit)}
               {localThresholds.systolic.enabled ? (
                 <>
                   <View style={styles.settingInputRow}>
                     <Text style={styles.inputSideLabel}>{t.systolic}</Text>
-                    <TextInput style={styles.textInputFlex} keyboardType="numeric" value={localThresholds.systolic.min} onChangeText={(v) => handleThresholdChange("systolic", "min", v)} />
+                    {numberInput("systolic", "min", localThresholds.systolic.min, `${t.systolic} ${t.minSafeValue}`, true)}
                     <Text style={styles.inputTildeSmall}>~</Text>
-                    <TextInput style={styles.textInputFlex} keyboardType="numeric" value={localThresholds.systolic.max} onChangeText={(v) => handleThresholdChange("systolic", "max", v)} />
+                    {numberInput("systolic", "max", localThresholds.systolic.max, `${t.systolic} ${t.maxSafeValue}`, true)}
                   </View>
-                  <View style={[styles.settingInputRow, { marginTop: 12 }]}>
+                  <View style={[styles.settingInputRow, { marginTop: spacing.md }]}>
                     <Text style={styles.inputSideLabel}>{t.diastolic}</Text>
-                    <TextInput style={styles.textInputFlex} keyboardType="numeric" value={localThresholds.diastolic.min} onChangeText={(v) => handleThresholdChange("diastolic", "min", v)} />
+                    {numberInput("diastolic", "min", localThresholds.diastolic.min, `${t.diastolic} ${t.minSafeValue}`, true)}
                     <Text style={styles.inputTildeSmall}>~</Text>
-                    <TextInput style={styles.textInputFlex} keyboardType="numeric" value={localThresholds.diastolic.max} onChangeText={(v) => handleThresholdChange("diastolic", "max", v)} />
+                    {numberInput("diastolic", "max", localThresholds.diastolic.max, `${t.diastolic} ${t.maxSafeValue}`, true)}
                   </View>
                 </>
               ) : (
                 <Text style={styles.disabledText}>{t.thresholdDisabledHint}</Text>
               )}
-            </View>
+            </Card>
 
             {/* 4. 血糖設定 */}
-            <View style={[styles.settingCard, localThresholds.bloodSugar.enabled ? styles.settingCardActive : styles.settingCardInactive]}>
-              <View style={styles.settingCardHeader}>
-                <Text style={styles.settingCardTitle}>{t.bloodSugarWithUnit}</Text>
-                <View style={styles.switchContainer}>
-                  <Text style={[styles.switchLabel, localThresholds.bloodSugar.enabled ? styles.switchLabelActive : styles.switchLabelInactive]}>
-                    {localThresholds.bloodSugar.enabled ? t.enabledCustomThreshold : t.useSystemDefaultThreshold}
-                  </Text>
-                  <Switch
-                    value={localThresholds.bloodSugar.enabled}
-                    onValueChange={() => toggleThreshold("bloodSugar")}
-                    trackColor={{ false: "#D1D5DB", true: "#4A8B46" }}
-                  />
-                </View>
-              </View>
+            <Card style={[styles.settingCard, localThresholds.bloodSugar.enabled && styles.settingCardActive]}>
+              {renderThresholdSwitch(localThresholds.bloodSugar.enabled, () => toggleThreshold("bloodSugar"), t.bloodSugarWithUnit)}
               {localThresholds.bloodSugar.enabled ? (
                 <>
                   <View style={styles.settingInputRow}>
                     <Text style={styles.inputSideLabel}>{t.fasting}</Text>
-                    <TextInput style={styles.textInputFlex} keyboardType="numeric" value={localThresholds.bloodSugar.beforeMin} onChangeText={(v) => handleThresholdChange("bloodSugar", "beforeMin", v)} />
+                    {numberInput("bloodSugar", "beforeMin", localThresholds.bloodSugar.beforeMin, `${t.fasting} ${t.minSafeValue}`, true)}
                     <Text style={styles.inputTildeSmall}>~</Text>
-                    <TextInput style={styles.textInputFlex} keyboardType="numeric" value={localThresholds.bloodSugar.beforeMax} onChangeText={(v) => handleThresholdChange("bloodSugar", "beforeMax", v)} />
+                    {numberInput("bloodSugar", "beforeMax", localThresholds.bloodSugar.beforeMax, `${t.fasting} ${t.maxSafeValue}`, true)}
                   </View>
-                  <View style={[styles.settingInputRow, { marginTop: 12 }]}>
+                  <View style={[styles.settingInputRow, { marginTop: spacing.md }]}>
                     <Text style={styles.inputSideLabel}>{t.afterMeal}</Text>
-                    <TextInput style={styles.textInputFlex} keyboardType="numeric" value={localThresholds.bloodSugar.afterMin} onChangeText={(v) => handleThresholdChange("bloodSugar", "afterMin", v)} />
+                    {numberInput("bloodSugar", "afterMin", localThresholds.bloodSugar.afterMin, `${t.afterMeal} ${t.minSafeValue}`, true)}
                     <Text style={styles.inputTildeSmall}>~</Text>
-                    <TextInput style={styles.textInputFlex} keyboardType="numeric" value={localThresholds.bloodSugar.afterMax} onChangeText={(v) => handleThresholdChange("bloodSugar", "afterMax", v)} />
+                    {numberInput("bloodSugar", "afterMax", localThresholds.bloodSugar.afterMax, `${t.afterMeal} ${t.maxSafeValue}`, true)}
                   </View>
                 </>
               ) : (
                 <Text style={styles.disabledText}>{t.thresholdDisabledHint}</Text>
               )}
-            </View>
+            </Card>
 
-            <Pressable style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>{t.saveThresholdSettings}</Text>
-            </Pressable>
+            <Button label={t.saveThresholdSettings} icon="checkmark" size="lg" fullWidth onPress={handleSave} style={styles.saveBtn} />
 
           </View>
         )}
 
-      </ScrollView>
+      </KeyboardAwareScroll>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FAFAFA" },
-  topContainer: { backgroundColor: "#F3CDAD", paddingTop: 12, zIndex: 10, minHeight: 56 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, paddingBottom: 10 },
-  backButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 },
-  backButtonText: { fontSize: 17, fontWeight: "700", color: "#111827" },
-  settingsHeader: { justifyContent: "flex-start", position: "relative", paddingVertical: 10, flexWrap: "wrap", gap: 12 },
-  settingsBackButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 },
-  settingsTitle: { fontSize: 18, fontWeight: "800", color: "#111827", flexShrink: 1 },
-  tabRow: { flexDirection: "row", width: "100%" },
-  tabButton: { flex: 1, paddingVertical: 16, alignItems: "center", justifyContent: "center" },
-  tabButtonActive: { backgroundColor: "#E69A57" },
-  tabText: { width: "94%", fontSize: 24, lineHeight: 27, fontWeight: "bold", letterSpacing: 0.3, textAlign: "center" },
-  tabTextActive: { color: "#000" },
-  tabTextInactive: { color: "rgba(0,0,0,0.6)" },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 140 },
+  container: { flex: 1, backgroundColor: colors.canvas },
+  tabBar: { marginHorizontal: layout.screenPaddingX, marginTop: spacing.md },
+  scrollContent: { paddingHorizontal: layout.screenPaddingX, paddingTop: spacing.lg, paddingBottom: spacing.xxxl, gap: 0, width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" },
   tabContent: { flex: 1 },
-  filterRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 16, gap: 8 },
-  filterBtn: { flex: 1, paddingVertical: 8, borderRadius: 12, borderWidth: 1, alignItems: "center" },
-  filterBtnActive: { backgroundColor: "#EAA161", borderColor: "transparent" },
-  filterBtnInactive: { backgroundColor: "#FFF", borderColor: "#000" },
-  filterBtnText: { width: "96%", fontSize: 18, lineHeight: 20, fontWeight: "bold", textAlign: "center" },
-  filterTextActive: { color: "#000" },
-  filterTextInactive: { color: "#000" },
-  gridRow: { flexDirection: "row", gap: 16, marginBottom: 16 },
-  gridCard: { flex: 1, borderRadius: 16, overflow: "hidden", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 },
-  cardHeader: { paddingVertical: 8, alignItems: "center" },
-  cardTitle: {
-    width: "96%",
-    fontSize: 22,
-    lineHeight: 25,
-    fontWeight: "bold",
-    letterSpacing: 0.3,
-    color: "#000",
-    textAlign: "center",
+  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
+
+  settingsBtn: { alignSelf: "flex-end", marginBottom: spacing.lg },
+  vitalGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: spacing.md },
+  vitalCard: {
+    width: "100%",
+    minWidth: 0,
+    padding: spacing.lg,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  cardBody: {
-    flex: 1,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  valueRow: { flexDirection: "row", alignItems: "baseline", gap: 4, marginBottom: 12, flexWrap: "wrap", justifyContent: "center", maxWidth: "100%" },
-  valueMain: { fontSize: 36, fontWeight: "500", color: "#000", maxWidth: "100%", textAlign: "center" },
-  valueUnit: { fontSize: 24, fontWeight: "500", color: "#000" },
-  timeBadge: { backgroundColor: "rgba(0,0,0,0.25)", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 4, maxWidth: "100%" },
-  timeBadgeText: { color: "#FFF", fontSize: 14, fontWeight: "bold", letterSpacing: 1, textAlign: "center" },
-  fullCard: { borderRadius: 16, overflow: "hidden", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, marginBottom: 16 },
-  fullCardHeader: { paddingTop: 8, paddingBottom: 4, alignItems: "center" },
-  headerSubRow: { flexDirection: "row", marginTop: 4, width: "100%" },
-  headerSubText: { flex: 1, textAlign: "center", fontSize: 18, fontWeight: "bold", color: "rgba(0,0,0,0.7)" },
-  fullCardBody: { paddingVertical: 16, alignItems: "center" },
-  fullCardValueRow: { flexDirection: "row", width: "100%", marginBottom: 12 },
-  valueCol: { flex: 1, alignItems: "center" },
-  valueUnitLarge: { fontSize: 22, fontWeight: "500", color: "#000" },
-  settingsBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FFF4E5", borderColor: "#F2A25B", borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1, maxWidth: "100%" },
-  settingsBtnText: { color: "#D37B2B", fontWeight: "bold", fontSize: 14, flexShrink: 1, textAlign: "center" },
+  vitalCardHalf: { width: "48%", padding: spacing.md },
+  vitalCardAbnormal: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderWidth: 2 },
+  vitalCardNoData: { backgroundColor: colors.surfaceSunken, borderColor: colors.surfaceSunken },
+  vitalTop: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.xs },
+  vitalTitle: { ...typography.label, color: colors.textSecondary, flexShrink: 1, paddingTop: 2 },
+  badgeOnDanger: { backgroundColor: colors.surface },
+  vitalValues: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.sm },
+  vitalValueCol: { flex: 1, minWidth: 0 },
+  vitalValueLabel: { ...typography.caption, color: colors.textSecondary },
+  valueRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.xs, flexWrap: "wrap" },
+  valueMain: { fontSize: 30, lineHeight: 38, fontWeight: "700", color: colors.text, flexShrink: 1 },
+  valueAbnormal: { color: colors.danger },
+  valueMuted: { color: colors.textMuted },
+  valueUnit: { ...typography.caption, color: colors.textSecondary },
+  vitalMeta: { ...typography.caption, marginTop: spacing.xs },
+
   settingsContent: { flex: 1 },
-  infoBanner: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#FFF4E5", borderColor: "#F2A25B", borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 20 },
-  infoBannerIcon: { marginTop: 2 },
-  infoBannerText: { flex: 1, color: "#D37B2B", fontWeight: "bold", fontSize: 14, lineHeight: 22 },
-  settingCard: { backgroundColor: "#FFF", borderWidth: 2, borderRadius: 20, padding: 16, marginBottom: 16 },
-  settingCardActive: { borderColor: "#E59752", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
-  settingCardInactive: { borderColor: "#E5E5E5", opacity: 0.7 },
-  settingCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 12 },
-  settingCardTitle: { fontSize: 20, fontWeight: "bold", color: "#000", flexShrink: 1 },
-  switchContainer: { flexDirection: "row", alignItems: "center", gap: 8 },
-  switchLabel: { fontSize: 14, fontWeight: "bold" },
-  switchLabelActive: { color: "#4A8B46" },
-  switchLabelInactive: { color: "#9CA3AF" },
-  disabledText: { fontSize: 14, color: "#6B7280", lineHeight: 20, marginTop: 8 },
+  infoBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.control,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  infoBannerText: { ...typography.bodySmall, color: colors.text, flex: 1 },
+  settingCard: { marginBottom: spacing.lg },
+  settingCardActive: { borderColor: colors.primaryBorder },
+  settingCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.md, flexWrap: "wrap", gap: spacing.md },
+  settingCardTitle: { ...typography.header, fontSize: 18, flexShrink: 1 },
+  switchContainer: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  switchLabel: { ...typography.caption, fontWeight: "600" },
+  switchLabelActive: { color: colors.primary },
+  disabledText: { ...typography.bodySmall, color: colors.textMuted },
   settingInputRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   inputCol: { flex: 1, flexDirection: "column" },
-  inputLabel: { fontSize: 12, color: "#6B7280", fontWeight: "bold", marginBottom: 4, marginLeft: 4 },
-  textInput: { backgroundColor: "#F5F5F5", borderRadius: 12, textAlign: "center", fontSize: 20, fontWeight: "bold", color: "#000", minHeight: 48, paddingVertical: 8, minWidth: 0 },
-  inputTilde: { fontSize: 24, color: "#9CA3AF", marginHorizontal: 12, marginTop: 16 },
-  inputSideLabel: { fontSize: 14, fontWeight: "bold", color: "#374151", width: 48, textAlign: "center" },
-  textInputFlex: { flex: 1, backgroundColor: "#F5F5F5", borderRadius: 12, textAlign: "center", fontSize: 20, fontWeight: "bold", color: "#000", minHeight: 48, paddingVertical: 8, minWidth: 0 },
-  inputTildeSmall: { fontSize: 20, color: "#9CA3AF", marginHorizontal: 8 },
-  saveBtn: { backgroundColor: "#4F59D5", borderRadius: 18, paddingVertical: 16, alignItems: "center", marginTop: 16, shadowColor: "#4F59D5", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-  saveBtnText: { color: "#FFF", fontSize: 22, fontWeight: "bold", letterSpacing: 2, width: "100%", textAlign: "center" },
+  inputLabel: { ...typography.caption, fontWeight: "600", color: colors.textSecondary, marginBottom: spacing.xs, marginLeft: spacing.xs },
+  textInput: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.control,
+    textAlign: "center",
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.text,
+    minHeight: 52,
+    paddingVertical: spacing.sm,
+    minWidth: 0,
+  },
+  inputTilde: { fontSize: 22, color: colors.textMuted, marginHorizontal: spacing.md, marginTop: spacing.lg },
+  inputSideLabel: { ...typography.label, color: colors.textSecondary, width: 56, textAlign: "center" },
+  textInputFlex: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.control,
+    textAlign: "center",
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.text,
+    minHeight: 52,
+    paddingVertical: spacing.sm,
+    minWidth: 0,
+  },
+  inputTildeSmall: { fontSize: 20, color: colors.textMuted, marginHorizontal: spacing.sm },
+  saveBtn: { marginTop: spacing.sm },
 });

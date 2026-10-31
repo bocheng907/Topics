@@ -1,18 +1,10 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, Card, KeyboardAwareScroll, TextField } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
+import { familyCopy } from "@/src/i18n/copy/familyCopy";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  StatusBar,
-  KeyboardAvoidingView, 
-  Platform,
-} from "react-native";
+import { View, Text, StyleSheet, StatusBar, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuthContext } from "@/src/auth/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
@@ -230,181 +222,133 @@ function FamilyEditScreen() {
     }
   };
 
-  if (!ready) return <View style={styles.center}><Text>{t.loading}</Text></View>;
+  const fc = familyCopy[language];
+
+  if (!ready) {
+    return (
+      <View style={styles.container}>
+        <AppHeader title={t.editPrescriptionInfo} />
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.loadingText}>{t.loading}</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <ScreenHeader style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={28} color="#333" />
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-      </ScreenHeader>
+      <AppHeader
+        title={t.editPrescriptionInfo}
+        fallbackHref="/family/list"
+        right={<Button label={t.save} icon="checkmark" variant="ghost" onPress={handleSave} />}
+      />
 
-      <View style={styles.titleRow}>
-        <Text style={styles.pageTitle}>{t.editPrescriptionInfo}</Text>
-        <Pressable onPress={handleSave} style={styles.saveBtn}>
-          <Text style={styles.saveBtnText}>{t.save}</Text>
-        </Pressable>
-      </View>
+      <KeyboardAwareScroll safeAreaBottom={false} contentContainerStyle={styles.scrollContent}>
+        <Card style={styles.editCard}>
+          <Text style={styles.itemTag}>{fc.prescriptionBasicInfo}</Text>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={
-            Platform.OS === "ios" ? "interactive" : "on-drag"
-          }
-        >
-        <View style={styles.editCard}>
-          <Text style={styles.itemTag}>藥單基本資訊</Text>
+          <TextField
+            label={t.recordTitle}
+            value={title}
+            onChangeText={setTitle}
+            placeholder={t.recordTitlePlaceholder}
+          />
 
-          <View style={styles.inputBox}>
-            <Text style={styles.label}>{t.recordTitle}</Text>
-            <TextInput
-              style={styles.input}
-              value={title}
-              onChangeText={setTitle}
-              placeholder={t.recordTitlePlaceholder}
-            />
-          </View>
+          <TextField
+            label={fc.clinicField}
+            value={clinicName}
+            onChangeText={setClinicName}
+            placeholder={fc.clinicPlaceholder}
+          />
 
-          <View style={styles.inputBox}>
-            <Text style={styles.label}>診所／醫療機構</Text>
-            <TextInput
-              style={styles.input}
-              value={clinicName}
-              onChangeText={setClinicName}
-              placeholder="請輸入診所或醫療機構名稱"
-            />
-          </View>
+          <TextField
+            label={fc.departmentLabel}
+            value={department}
+            onChangeText={setDepartment}
+            placeholder={fc.departmentPlaceholder}
+          />
+        </Card>
 
-          <View style={styles.inputBox}>
-            <Text style={styles.label}>科別</Text>
-            <TextInput
-              style={styles.input}
-              value={department}
-              onChangeText={setDepartment}
-              placeholder="請輸入科別"
-            />
-          </View>
-        </View>
-
-        <View style={styles.memoCard}>
-          <Text style={styles.label}>{t.prescriptionNote}</Text>
-          <TextInput
-            style={[styles.input, styles.memoInput]}
+        <Card tone="sunken" style={styles.editCard}>
+          <TextField
+            label={t.prescriptionNote}
             value={prescriptionMemo}
             multiline
             placeholder={t.notePlaceholder}
             onChangeText={setPrescriptionMemo}
           />
-        </View>
+        </Card>
+
         {items.map((it, idx) => (
-          <View key={it.itemId ?? idx} style={styles.editCard}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.itemTag}>{t.medicineItem} {idx + 1}</Text>
-            </View>
+          <Card key={it.itemId ?? idx} style={styles.editCard}>
+            <Text style={styles.itemTag}>{t.medicineItem} {idx + 1}</Text>
 
-            <View style={styles.inputBox}>
-              <Text style={styles.label}>{t.medicineName}</Text>
-              <TextInput
-                style={styles.input}
-                value={it.name}
-                onChangeText={(t) => updateItem(idx, "name", t)}
-              />
-            </View>
+            <TextField
+              label={t.medicineName}
+              value={it.name}
+              onChangeText={(text) => updateItem(idx, "name", text)}
+            />
 
-            <View style={styles.inputBox}>
-              <Text style={styles.label}>{t.medicineDoseExample}</Text>
-              <TextInput
-                style={styles.input}
-                value={it.dosage}
-                onChangeText={(t) => updateItem(idx, "dosage", t)}
-              />
-            </View>
+            <TextField
+              label={t.medicineDoseExample}
+              value={it.dosage}
+              onChangeText={(text) => updateItem(idx, "dosage", text)}
+            />
 
-            <View style={styles.inputBox}>
-              <Text style={styles.label}>{t.usageExample}</Text>
-              <TextInput
-                style={styles.input}
-                value={it.usage_type}
-                onChangeText={(t) => updateItem(idx, "usage_type", t)}
-              />
-            </View>
+            <TextField
+              label={t.usageExample}
+              value={it.usage_type}
+              onChangeText={(text) => updateItem(idx, "usage_type", text)}
+            />
 
-            <View style={styles.inputBox}>
-              <Text style={styles.label}>{t.usageTimeExample}</Text>
-              <TextInput
-                style={styles.input}
-                value={it.usage_time}
-                onChangeText={(t) => updateItem(idx, "usage_time", t)}
-              />
-            </View>
+            <TextField
+              label={t.usageTimeExample}
+              value={it.usage_time}
+              onChangeText={(text) => updateItem(idx, "usage_time", text)}
+            />
 
-            <View style={styles.inputBox}>
-              <Text style={styles.label}>自訂餵藥時間</Text>
-              <TextInput
-                style={styles.input}
-                value={it.feeding_times}
-                onChangeText={(text) => updateItem(idx, "feeding_times", text)}
-                placeholder="例如 08:30, 13:00, 19:30"
-                keyboardType="numbers-and-punctuation"
-              />
-              <Text style={styles.helperText}>可輸入多個時間，以逗號分隔；未設定時沿用藥單自動判斷的時間。</Text>
-            </View>
+            <TextField
+              label={fc.feedingTimes}
+              value={it.feeding_times}
+              onChangeText={(text) => updateItem(idx, "feeding_times", text)}
+              placeholder={fc.feedingTimesPlaceholder}
+              keyboardType="numbers-and-punctuation"
+              helper={fc.feedingTimesHelper}
+            />
 
-            <View style={styles.inputBox}>
-              <Text style={styles.label}>{t.noteDescription}</Text>
-              <TextInput
-                style={[styles.input, styles.memoInput]}
-                value={it.memo}
-                multiline
-                placeholder={t.notePlaceholder}
-                onChangeText={(text) => updateItem(idx, "memo", text)}
-              />
-            </View>
-          </View>
+            <TextField
+              label={t.noteDescription}
+              value={it.memo}
+              multiline
+              placeholder={t.notePlaceholder}
+              onChangeText={(text) => updateItem(idx, "memo", text)}
+            />
+          </Card>
         ))}
-      </ScrollView>
-      </KeyboardAvoidingView>
+
+        <Button label={t.save} icon="checkmark" size="lg" fullWidth onPress={handleSave} />
+      </KeyboardAwareScroll>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  header: { backgroundColor: "#F4E770", paddingTop: 12, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", minHeight: 56 },
-  backBtn: { flexDirection: "row", alignItems: "center" },
-  backText: { fontSize: 20, fontWeight: "bold", color: "#333", marginLeft: 2 },
-  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 15, backgroundColor: "#fff", flexWrap: "wrap", gap: 12 },
-  pageTitle: { fontSize: 26, fontWeight: "900", color: "#000", flexShrink: 1 },
-  saveBtn: { backgroundColor: "#A7C7FF", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 12 },
-  saveBtnText: { color: "#0863f6", fontWeight: "bold", fontSize: 16 },
-  scrollContent: { padding: 20, gap: 20 },
-  memoCard: { padding: 20, borderRadius: 20, backgroundColor: "#F7F7F7", gap: 8 },
-  editCard: {
-    padding: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    backgroundColor: "#fff",
-    gap: 15,
+  container: { flex: 1, backgroundColor: colors.canvas },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.md },
+  loadingText: { ...typography.bodySmall },
+  scrollContent: {
+    padding: layout.screenPaddingX,
+    gap: spacing.lg,
+    paddingBottom: spacing.xxxl,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
-  cardHeader: { marginBottom: 5 },
-  itemTag: { color: "#007AFF", fontWeight: "bold", fontSize: 16 },
-  inputBox: { gap: 8 },
-  label: { fontSize: 15, color: "#666", fontWeight: "600" },
-  input: { backgroundColor: "#F5F5F5", padding: 12, borderRadius: 10, fontSize: 16, color: "#333" },
-  memoInput: { textAlignVertical: "top", minHeight: 100 },
-  helperText: { fontSize: 12, color: "#888", lineHeight: 18 },
+  editCard: { gap: spacing.lg },
+  itemTag: { ...typography.overline, color: colors.primary },
 });
 
 export default function GuardedFamilyEditScreen() {

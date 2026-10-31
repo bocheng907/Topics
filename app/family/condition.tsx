@@ -1,4 +1,5 @@
-import { ScreenHeader } from "@/src/ui/ScreenLayout";
+import { AppHeader, EmptyState, StatusBadge } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { Ionicons } from '@expo/vector-icons';
 import VideoPlayerView from '@/src/media/VideoPlayerView';
 import { router, useNavigation } from 'expo-router';
@@ -139,37 +140,59 @@ export default function FamilyConditionScreen() {
 
   // --- UI 渲染區塊 ---
 
+  const renderDoctorToggle = (onLabel: string, offLabel: string) => (
+    <View style={styles.doctorModeRow}>
+      <Pressable
+        onPress={() => setIsDoctorMode(!isDoctorMode)}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: isDoctorMode }}
+        style={({ pressed }) => [
+          styles.doctorModeBtn,
+          isDoctorMode ? styles.doctorModeBtnActive : styles.doctorModeBtnIdle,
+          pressed && !isDoctorMode && { backgroundColor: colors.primarySoft },
+        ]}
+      >
+        <Ionicons name="language" size={18} color={isDoctorMode ? colors.onPrimary : colors.primary} />
+        <Text style={[styles.doctorModeText, isDoctorMode && { color: colors.onPrimary }]}>
+          {isDoctorMode ? onLabel : offLabel}
+        </Text>
+      </Pressable>
+    </View>
+  );
+
   const renderList = () => (
     <View style={styles.viewContainer}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.listHint}>{t.conditionHint}</Text>
-        
+
         {records.length === 0 ? (
-           <View style={{ alignItems: 'center', marginTop: 50 }}>
-             <Ionicons name="clipboard-outline" size={64} color="#CCC" style={{ marginBottom: 12 }} />
-             <Text style={{ color: '#999', fontSize: 16 }}>{t.noConditionRecords}</Text>
-           </View>
+          <EmptyState icon="clipboard-outline" title={t.noConditionRecords} />
         ) : (
           records.map(record => (
-            <Pressable key={record.id} onPress={() => goToDetail(record)} style={styles.listItem}>
-              <View style={{ flex: 1 }}>
-                <View style={styles.tagContainer}>
-                  {record.type === 'folder' ? (
-                    <Text style={styles.tagFolder}>{t.trackingFolder}</Text>
-                  ) : (
-                    <Text style={styles.tagSingle}>{t.singleRecord}</Text>
-                  )}
-                </View>
+            <Pressable
+              key={record.id}
+              onPress={() => goToDetail(record)}
+              accessibilityRole="button"
+              accessibilityLabel={record.titleOriginal || t.unnamedRecord}
+              style={({ pressed }) => [styles.listItem, pressed && styles.pressed]}
+            >
+              <View style={styles.listIconBox}>
+                {record.type === 'folder' ? (
+                  <Ionicons name="folder-outline" size={24} color={colors.primary} />
+                ) : (
+                  <Ionicons name={isVideoMedia(record.mediaType, record.mediaUrl) ? "videocam-outline" : "image-outline"} size={24} color={colors.primary} />
+                )}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <StatusBadge
+                  label={record.type === 'folder' ? t.trackingFolder : t.singleRecord}
+                  tone={record.type === 'folder' ? 'primary' : 'neutral'}
+                  style={styles.tag}
+                />
                 <Text style={styles.listTitle} numberOfLines={1}>{record.titleOriginal || t.unnamedRecord}</Text>
                 <Text style={styles.listDate}>{record.displayDate}</Text>
               </View>
-              <View style={styles.listIconBox}>
-                {record.type === 'folder' ? (
-                  <Ionicons name="folder" size={24} color="white" />
-                ) : (
-                  <Ionicons name={isVideoMedia(record.mediaType, record.mediaUrl) ? "videocam" : "image"} size={24} color="white" />
-                )}
-              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
             </Pressable>
           ))
         )}
@@ -180,19 +203,12 @@ export default function FamilyConditionScreen() {
   const renderDetail = () => (
     <View style={styles.viewContainer}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.doctorModeRow}>
-          <Pressable onPress={() => setIsDoctorMode(!isDoctorMode)} style={[styles.doctorModeBtn, isDoctorMode ? styles.doctorModeBtnActive : styles.doctorModeBtnIdle]}>
-            <Ionicons name="language" size={18} color={isDoctorMode ? 'white' : '#666'} />
-            <Text style={[styles.doctorModeText, isDoctorMode && { color: 'white' }]}>
-              {isDoctorMode ? t.doctorModeOn : t.doctorModeSwitch}
-            </Text>
-          </Pressable>
-        </View>
+        {renderDoctorToggle(t.doctorModeOn, t.doctorModeSwitch)}
 
         <View style={styles.mediaContainer}>
           {selectedRecord?.hasMedia && selectedRecord?.mediaUrl ? (
             renderMedia(selectedRecord.mediaUrl, selectedRecord.mediaType)
-          ) : (<Text style={{ color: '#999', fontWeight: 'bold' }}>{t.noMedia}</Text>)}
+          ) : (<Text style={styles.mediaEmptyText}>{t.noMedia}</Text>)}
         </View>
 
         <View style={styles.detailHeaderRow}>
@@ -200,10 +216,10 @@ export default function FamilyConditionScreen() {
         </View>
 
         <Text style={styles.detailDate}>{selectedRecord?.displayDate}</Text>
-        
+
         <View style={styles.noteBox}>
-          <Text style={styles.noteTitle}>{t.note}：</Text>
-          <Text style={[styles.noteText, isDoctorMode && { fontSize: 18 }]}>
+          <Text style={styles.noteTitle}>{t.note}</Text>
+          <Text style={[styles.noteText, isDoctorMode && { fontSize: 18, lineHeight: 28 }]}>
             {isDoctorMode ? (pickAbnormalNotes(selectedRecord, language) || t.aiTranslating) : selectedRecord?.notesOriginal}
           </Text>
         </View>
@@ -214,25 +230,20 @@ export default function FamilyConditionScreen() {
   const renderFolder = () => (
     <View style={styles.viewContainer}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.doctorModeRow}>
-          <Pressable onPress={() => setIsDoctorMode(!isDoctorMode)} style={[styles.doctorModeBtn, isDoctorMode ? styles.doctorModeBtnActive : styles.doctorModeBtnIdle]}>
-            <Ionicons name="language" size={18} color={isDoctorMode ? 'white' : '#666'} />
-            <Text style={[styles.doctorModeText, isDoctorMode && { color: 'white' }]}>{isDoctorMode ? t.chineseModeOn : t.switchChinese}</Text>
-          </Pressable>
-        </View>
+        {renderDoctorToggle(t.chineseModeOn, t.switchChinese)}
 
         <View style={styles.folderHeader}>
-          <Ionicons name="folder-open" size={36} color="#7BC6F9" style={{ marginRight: 12 }} />
+          <View style={[styles.listIconBox, { marginRight: spacing.md }]}>
+            <Ionicons name="folder-open-outline" size={24} color={colors.primary} />
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.detailTitle}>{isDoctorMode ? (pickAbnormalTitle(selectedRecord, language) || t.aiTranslating) : selectedRecord?.titleOriginal}</Text>
-            <Text style={styles.detailDate}>{t.createdAt}: {selectedRecord?.displayDate}</Text>
+            <Text style={[styles.detailDate, { marginBottom: 0 }]}>{t.createdAt}: {selectedRecord?.displayDate}</Text>
           </View>
         </View>
 
         {(!selectedRecord?.entries || selectedRecord?.entries.length === 0) && (
-          <View style={{ alignItems: 'center', marginTop: 30, padding: 20, backgroundColor: '#FFF4E5', borderRadius: 12 }}>
-            <Text style={{ color: '#D37B2B', fontWeight: 'bold' }}>{t.emptyFolder}</Text>
-          </View>
+          <EmptyState icon="folder-open-outline" title={t.emptyFolder} />
         )}
 
         <View style={styles.timelineContainer}>
@@ -240,26 +251,32 @@ export default function FamilyConditionScreen() {
              const eDateObj = entry.createdAt?.toDate ? entry.createdAt.toDate() : new Date(entry.createdAt);
              const eDateStr = `${eDateObj.getMonth() + 1}/${eDateObj.getDate()} ${String(eDateObj.getHours()).padStart(2, '0')}:${String(eDateObj.getMinutes()).padStart(2, '0')}`;
              return (
-              <Pressable key={entry.entryId || index} style={styles.timelineItem} onPress={() => goToFolderEntry(entry)}>
+              <Pressable
+                key={entry.entryId || index}
+                style={styles.timelineItem}
+                onPress={() => goToFolderEntry(entry)}
+                accessibilityRole="button"
+                accessibilityLabel={`${eDateStr}, ${t.viewMore}`}
+              >
                 <View style={styles.timelineDot} />
                 <Text style={styles.timelineDate}>{eDateStr}</Text>
                 <View style={styles.timelineCard}>
                   <View style={styles.timelineThumbnail}>
                     {entry.mediaUrl ? (
                       isVideoMedia(entry.mediaType, entry.mediaUrl) ? (
-                        <View style={{ width: '100%', height: '100%', borderRadius: 12, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
-                          <Ionicons name="play" size={32} color="white" />
+                        <View style={styles.videoThumb}>
+                          <Ionicons name="play" size={32} color={colors.onPrimary} />
                         </View>
                       ) : (
-                        <Image source={{ uri: entry.mediaUrl }} style={{ width: '100%', height: '100%', borderRadius: 12 }} />
+                        <Image source={{ uri: entry.mediaUrl }} style={styles.thumbImage} />
                       )
-                    ) : <Ionicons name="document-text" size={32} color="#CCC" />}
+                    ) : <Ionicons name="document-text-outline" size={32} color={colors.textDisabled} />}
                   </View>
                   <View style={{ flex: 1, justifyContent: 'center' }}>
                     <Text style={styles.timelineNotes} numberOfLines={2}>{isDoctorMode ? (pickAbnormalEntryNotes(entry, language) || t.aiTranslatingShort) : entry.notesOriginal}</Text>
                     <View style={styles.timelineMoreRow}>
                       <Text style={styles.timelineMore}>{t.viewMore}</Text>
-                      <Ionicons name="chevron-forward" size={12} color="#7BC6F9" />
+                      <Ionicons name="chevron-forward" size={14} color={colors.primary} />
                     </View>
                   </View>
                 </View>
@@ -274,35 +291,30 @@ export default function FamilyConditionScreen() {
   const renderFolderEntryDetail = () => {
     const eDateObj = selectedFolderEntry?.createdAt?.toDate ? selectedFolderEntry.createdAt.toDate() : new Date(selectedFolderEntry?.createdAt ?? NaN);
     const eDateStr = Number.isNaN(eDateObj.getTime()) ? '—' : `${eDateObj.getFullYear()}年 ${eDateObj.getMonth() + 1}月 ${eDateObj.getDate()}日`;
-    
+
     return (
       <View style={styles.viewContainer}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.doctorModeRow}>
-            <Pressable onPress={() => setIsDoctorMode(!isDoctorMode)} style={[styles.doctorModeBtn, isDoctorMode ? styles.doctorModeBtnActive : styles.doctorModeBtnIdle]}>
-              <Ionicons name="language" size={18} color={isDoctorMode ? 'white' : '#666'} />
-              <Text style={[styles.doctorModeText, isDoctorMode && { color: 'white' }]}>{isDoctorMode ? t.chineseModeOn : t.switchChinese}</Text>
-            </Pressable>
-          </View>
+          {renderDoctorToggle(t.chineseModeOn, t.switchChinese)}
 
           <View style={styles.folderBadge}>
-            <Ionicons name="folder" size={16} color="#E59752" style={{ marginRight: 6 }} />
-            <Text style={styles.folderBadgeText}>{t.fromFolder}：{isDoctorMode ? (pickAbnormalTitle(selectedRecord, language) || selectedRecord?.titleOriginal) : selectedRecord?.titleOriginal}</Text>
+            <Ionicons name="folder-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.folderBadgeText}>{t.fromFolder}{language === 'zh' ? '：' : ': '}{isDoctorMode ? (pickAbnormalTitle(selectedRecord, language) || selectedRecord?.titleOriginal) : selectedRecord?.titleOriginal}</Text>
           </View>
 
           <View style={styles.mediaContainer}>
-             {selectedFolderEntry?.mediaUrl ? renderMedia(selectedFolderEntry.mediaUrl, selectedFolderEntry.mediaType) : <Text style={{ color: '#999', fontWeight: 'bold' }}>{t.noPhoto}</Text>}
+             {selectedFolderEntry?.mediaUrl ? renderMedia(selectedFolderEntry.mediaUrl, selectedFolderEntry.mediaType) : <Text style={styles.mediaEmptyText}>{t.noPhoto}</Text>}
           </View>
 
           <View style={styles.detailHeaderRow}>
-            <Text style={styles.detailTitle}>{t.recordTime}：</Text>
+            <Text style={styles.detailTitle}>{t.recordTime}</Text>
           </View>
 
           <Text style={styles.detailDate}>{eDateStr}</Text>
-          
+
           <View style={styles.noteBox}>
-            <Text style={styles.noteTitle}>{t.note}：</Text>
-            <Text style={[styles.noteText, isDoctorMode && { fontSize: 18 }]}>
+            <Text style={styles.noteTitle}>{t.note}</Text>
+            <Text style={[styles.noteText, isDoctorMode && { fontSize: 18, lineHeight: 28 }]}>
               {isDoctorMode ? (pickAbnormalEntryNotes(selectedFolderEntry, language) || t.aiTranslating) : selectedFolderEntry?.notesOriginal}
             </Text>
           </View>
@@ -314,22 +326,15 @@ export default function FamilyConditionScreen() {
   // --- 主結構回傳 ---
   return (
     <View style={styles.container}>
-      <ScreenHeader style={styles.header}>
-        <View style={styles.headerRow}>
-          <Pressable
-            onPress={() => {
-              if (currentView === 'folderEntryDetail') goBackToFolder();
-              else if (currentView !== 'list') goToList();
-              else router.back();
-            }}
-            style={styles.backBtn}
-            hitSlop={8}
-          >
-            <Ionicons name="chevron-back" size={24} color="#111827" />
-            <Text style={styles.backBtnText}>{t.back}</Text>
-          </Pressable>
-        </View>
-      </ScreenHeader>
+      <AppHeader
+        title={t.conditionView}
+        onBack={() => {
+          if (currentView === 'folderEntryDetail') goBackToFolder();
+          else if (currentView !== 'list') goToList();
+          else if (router.canGoBack()) router.back();
+          else router.replace('/family');
+        }}
+      />
 
       <View style={{ flex: 1 }}>
         {currentView === 'list' && renderList()}
@@ -342,48 +347,55 @@ export default function FamilyConditionScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA' },
+  container: { flex: 1, backgroundColor: colors.canvas },
   viewContainer: { flex: 1, position: 'relative' },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
-  
-  header: { backgroundColor: '#7BC6F9', paddingTop: 12, paddingBottom: 16, elevation: 2, minHeight: 56 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'flex-start' },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  backBtnText: { fontSize: 17, fontWeight: '700', color: '#111827' },
+  scrollContent: { paddingHorizontal: layout.screenPaddingX, paddingTop: spacing.lg, paddingBottom: spacing.xxxl, width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center' },
 
-  listHint: { color: '#666', fontSize: 14, fontWeight: '600', marginBottom: 16, marginLeft: 4 },
-  listItem: { backgroundColor: '#FFF', borderRadius: 20, padding: 16, marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } },
-  tagContainer: { flexDirection: 'row', marginBottom: 6 },
-  tagFolder: { backgroundColor: '#FFF4E5', color: '#E59752', fontSize: 12, fontWeight: 'bold', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
-  tagSingle: { backgroundColor: '#E6F4FF', color: '#4A90E2', fontSize: 12, fontWeight: 'bold', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
-  listTitle: { fontSize: 20, fontWeight: 'bold', color: '#000' },
-  listDate: { color: '#888', fontSize: 14, marginTop: 4 },
-  listIconBox: { width: 48, height: 48, backgroundColor: '#7BC6F9', borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
+  listHint: { ...typography.bodySmall, marginBottom: spacing.lg, marginLeft: spacing.xs },
+  listItem: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  pressed: { backgroundColor: colors.surfaceSunken },
+  tag: { marginBottom: spacing.xs },
+  listTitle: { ...typography.bodyStrong, fontSize: 18 },
+  listDate: { ...typography.bodySmall, color: colors.textMuted, marginTop: 2 },
+  listIconBox: { width: 48, height: 48, backgroundColor: colors.primarySoft, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
 
-  doctorModeRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 },
-  doctorModeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, elevation: 1, maxWidth: "100%" },
-  doctorModeBtnIdle: { backgroundColor: '#FFF', borderColor: '#DDD' },
-  doctorModeBtnActive: { backgroundColor: '#4A8B46', borderColor: '#4A8B46' },
-  doctorModeText: { fontWeight: 'bold', fontSize: 14, color: '#555', flexShrink: 1, textAlign: "center" },
-  mediaContainer: { width: '100%', aspectRatio: 4/3, backgroundColor: '#E5E5E5', borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 24, overflow: 'hidden' },
+  doctorModeRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: spacing.lg },
+  doctorModeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.lg, minHeight: layout.minTouchTarget, borderRadius: radii.pill, borderWidth: 1, maxWidth: '100%' },
+  doctorModeBtnIdle: { backgroundColor: colors.surface, borderColor: colors.primaryBorder },
+  doctorModeBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  doctorModeText: { ...typography.label, color: colors.primary, flexShrink: 1, textAlign: 'center' },
+  mediaContainer: { width: '100%', aspectRatio: 4 / 3, backgroundColor: colors.surfaceSunken, borderRadius: radii.card, justifyContent: 'center', alignItems: 'center', marginBottom: spacing.xl, overflow: 'hidden' },
   mediaImage: { width: '100%', height: '100%' },
-  detailHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, flexWrap: "wrap", gap: 8 },
-  detailTitle: { fontSize: 26, fontWeight: 'bold', color: '#000', maxWidth: "100%" },
-  detailDate: { color: '#888', fontSize: 15, marginBottom: 24 },
-  noteBox: { backgroundColor: '#F7F7F7', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#EEE' },
-  noteTitle: { color: '#666', fontWeight: 'bold', marginBottom: 8, fontSize: 15 },
-  noteText: { color: '#000', lineHeight: 24, fontSize: 16 },
+  mediaEmptyText: { ...typography.bodySmall, color: colors.textMuted },
+  detailHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.xs, flexWrap: 'wrap', gap: spacing.sm },
+  detailTitle: { ...typography.title, maxWidth: '100%' },
+  detailDate: { ...typography.bodySmall, color: colors.textMuted, marginBottom: spacing.xl },
+  noteBox: { backgroundColor: colors.surface, padding: spacing.lg, borderRadius: radii.card, borderWidth: 1, borderColor: colors.border },
+  noteTitle: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.sm },
+  noteText: { ...typography.body },
 
-  folderHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
-  timelineContainer: { paddingLeft: 16, borderLeftWidth: 2, borderLeftColor: '#7BC6F9', marginLeft: 16, marginTop: 16 },
-  timelineItem: { marginBottom: 32, position: 'relative' },
-  timelineDot: { position: 'absolute', left: -25, top: 2, width: 16, height: 16, backgroundColor: '#7BC6F9', borderRadius: 8, borderWidth: 3, borderColor: '#FFF' },
-  timelineDate: { color: '#666', fontWeight: 'bold', marginBottom: 8 },
-  timelineCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 12, flexDirection: 'row', gap: 12, elevation: 2, shadowOpacity: 0.05, shadowRadius: 8 },
-  timelineThumbnail: { width: 80, height: 80, backgroundColor: '#F0F0F0', borderRadius: 12, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  timelineNotes: { color: '#000', fontSize: 15, lineHeight: 20, marginBottom: 8 },
-  timelineMore: { color: '#7BC6F9', fontSize: 12, fontWeight: 'bold' },
-  timelineMoreRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  folderBadge: { alignSelf: 'flex-start', backgroundColor: '#FFF4E5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#FBE0C3', marginBottom: 16, flexDirection: 'row', alignItems: 'center' },
-  folderBadgeText: { color: '#E59752', fontWeight: 'bold', fontSize: 14 },
+  folderHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xl },
+  timelineContainer: { paddingLeft: spacing.lg, borderLeftWidth: 2, borderLeftColor: colors.primaryBorder, marginLeft: spacing.lg, marginTop: spacing.lg },
+  timelineItem: { marginBottom: spacing.xl, position: 'relative' },
+  timelineDot: { position: 'absolute', left: -25, top: 2, width: 16, height: 16, backgroundColor: colors.primary, borderRadius: 8, borderWidth: 3, borderColor: colors.canvas },
+  timelineDate: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.sm },
+  timelineCard: { backgroundColor: colors.surface, borderRadius: radii.card, borderWidth: 1, borderColor: colors.border, padding: spacing.md, flexDirection: 'row', gap: spacing.md },
+  timelineThumbnail: { width: 80, height: 80, backgroundColor: colors.surfaceSunken, borderRadius: radii.control, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  videoThumb: { width: '100%', height: '100%', borderRadius: radii.control, backgroundColor: colors.text, justifyContent: 'center', alignItems: 'center' },
+  thumbImage: { width: '100%', height: '100%', borderRadius: radii.control },
+  timelineNotes: { ...typography.bodySmall, color: colors.text, marginBottom: spacing.sm },
+  timelineMore: { ...typography.label, color: colors.primary },
+  timelineMoreRow: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 24 },
+  folderBadge: { alignSelf: 'flex-start', backgroundColor: colors.primarySoft, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radii.control, marginBottom: spacing.lg, flexDirection: 'row', alignItems: 'center', maxWidth: '100%' },
+  folderBadgeText: { ...typography.label, color: colors.primary, flexShrink: 1 },
 });

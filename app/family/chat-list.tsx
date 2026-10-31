@@ -7,7 +7,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
-import { chatMessageCollection, FAMILY_GROUP_COLOR, type CareChatRoom } from "@/src/chat/rooms";
+import { chatMessageCollection, type CareChatRoom } from "@/src/chat/rooms";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { useAuth } from "@/src/auth/useAuth";
@@ -58,30 +59,44 @@ export default function FamilyChatListScreen() {
     params: { patientId: activePatientId ?? "", room },
   });
 
+  const renderRoom = (
+    room: CareChatRoom,
+    icon: "person" | "people",
+    title: string,
+    message: any,
+    translated: typeof caregiverTranslation,
+    fallback: string,
+  ) => (
+    <Pressable
+      disabled={!activePatientId}
+      onPress={() => open(room)}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}, ${elderName}`}
+      style={({ pressed }) => [styles.card, pressed && styles.pressed, !activePatientId && styles.disabled]}
+    >
+      <View style={styles.avatar}>
+        <Ionicons name={icon} size={26} color={colors.primary} />
+      </View>
+      <View style={styles.info}>
+        <View style={styles.row}>
+          <Text style={styles.title} numberOfLines={1}>{title}</Text>
+          <Text style={styles.time}>{time(message, language)}</Text>
+        </View>
+        <Text style={styles.elder} numberOfLines={1}>{elderName}</Text>
+        <Text style={styles.preview} numberOfLines={1}>{preview(message, translated, fallback)}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+    </Pressable>
+  );
+
   return (
     <View style={styles.container}>
       <AppHeader title={t.chatRoom} left="menu" />
       <ScrollView contentContainerStyle={styles.list}>
-        <Pressable disabled={!activePatientId} onPress={() => open("caregiver")} style={({pressed}) => [styles.card, pressed && styles.pressed]}>
-          <View style={styles.avatar}><Ionicons name="person" size={28} color="#666" /></View>
-          <View style={styles.info}>
-            <View style={styles.row}><Text style={styles.title}>{t.caregiverChatTitle}</Text><Text style={styles.time}>{time(caregiverMessage, language)}</Text></View>
-            <Text style={styles.elder}>{elderName}</Text>
-            <Text style={styles.preview} numberOfLines={1}>{preview(caregiverMessage, caregiverTranslation, t.noChatRecords)}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={22} color="#AAA" />
-        </Pressable>
+        {renderRoom("caregiver", "person", t.caregiverChatTitle, caregiverMessage, caregiverTranslation, t.noChatRecords)}
         <ChatTranslationStatus language={language} {...caregiverTranslation} />
 
-        <Pressable disabled={!activePatientId} onPress={() => open("family")} style={({pressed}) => [styles.card, styles.familyCard, pressed && styles.familyPressed]}>
-          <View style={styles.familyAvatar}><Ionicons name="people" size={30} color="#FFF" /></View>
-          <View style={styles.info}>
-            <View style={styles.row}><Text style={[styles.title, styles.familyTitle]}>{t.familyGroupTitle}</Text><Text style={styles.familyTime}>{time(familyMessage, language)}</Text></View>
-            <Text style={styles.familyElder}>{elderName}</Text>
-            <Text style={styles.familyPreview} numberOfLines={1}>{preview(familyMessage, familyTranslation, t.familyGroupAutoJoinHint)}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={22} color="#FFF" />
-        </Pressable>
+        {renderRoom("family", "people", t.familyGroupTitle, familyMessage, familyTranslation, t.familyGroupAutoJoinHint)}
         <ChatTranslationStatus language={language} {...familyTranslation} />
         <Text style={styles.hint}>{t.familyGroupFixedHint}</Text>
       </ScrollView>
@@ -90,16 +105,27 @@ export default function FamilyChatListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8F7FC" },
-  list: { padding: 18, gap: 14 },
-  card: { minHeight: 106, flexDirection: "row", alignItems: "center", padding: 16, borderRadius: 20, backgroundColor: "#FFF", shadowColor: "#000", shadowOpacity: .08, shadowRadius: 10, elevation: 3 },
-  pressed: { backgroundColor: "#F1F1F1" }, familyCard: { backgroundColor: FAMILY_GROUP_COLOR }, familyPressed: { opacity: .88 },
-  avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#ECECEF", justifyContent: "center", alignItems: "center", marginRight: 14 },
-  familyAvatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: "rgba(255,255,255,.22)", justifyContent: "center", alignItems: "center", marginRight: 14 },
-  info: { flex: 1, minWidth: 0 }, row: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8 },
-  title: { flexShrink: 1, fontSize: 20, fontWeight: "900", color: "#222" }, elder: { color: "#666", marginTop: 2, fontWeight: "700" },
-  preview: { color: "#777", marginTop: 7, fontSize: 14 }, time: { color: "#999", fontSize: 12 },
-  familyTitle: { color: "#FFF" }, familyElder: { color: "rgba(255,255,255,.86)", marginTop: 2, fontWeight: "700" },
-  familyPreview: { color: "rgba(255,255,255,.82)", marginTop: 7, fontSize: 14 }, familyTime: { color: "rgba(255,255,255,.75)", fontSize: 12 },
-  hint: { color: "#777", textAlign: "center", lineHeight: 20, paddingHorizontal: 12, marginTop: 4 },
+  container: { flex: 1, backgroundColor: colors.canvas },
+  list: { padding: spacing.lg, gap: spacing.md, width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" },
+  card: {
+    minHeight: 96,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  pressed: { backgroundColor: colors.surfaceSunken },
+  disabled: { opacity: 0.5 },
+  avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primarySoft, justifyContent: "center", alignItems: "center" },
+  info: { flex: 1, minWidth: 0 },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },
+  title: { ...typography.bodyStrong, fontSize: 18, flexShrink: 1 },
+  elder: { ...typography.bodySmall, marginTop: 2 },
+  preview: { ...typography.bodySmall, color: colors.textMuted, marginTop: spacing.xs },
+  time: { ...typography.caption },
+  hint: { ...typography.bodySmall, color: colors.textMuted, textAlign: "center", paddingHorizontal: spacing.md, marginTop: spacing.xs },
 });

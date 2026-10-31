@@ -7,6 +7,8 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { userErrorMessage } from "@/src/ui/userErrorMessages";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { AppHeader, Button, Card, EmptyState, KeyboardAwareScroll, TextField } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -18,10 +20,8 @@ import React, {
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -438,620 +438,249 @@ export default function ReportCareIssueScreen() {
     }
   }
 
+  const header = (
+    <AppHeader title={t.pageTitle} fallbackHref="/family" />
+  );
+
   if (!activePatientId) {
     return (
       <View style={styles.container}>
-        <View
-          style={[
-            styles.header,
-            {
-              paddingTop:
-                insets.top + 8,
-            },
-          ]}
-        >
-          <Pressable
-            style={styles.headerSide}
-            onPress={() => router.back()}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={30}
-              color="#111827"
-            />
-          </Pressable>
-
-          <Text style={styles.headerTitle}>
-            {t.pageTitle}
-          </Text>
-
-          <View
-            style={styles.headerSide}
-          />
-        </View>
-
-        <View
+        {header}
+        <EmptyState
+          icon="person-outline"
+          title={t.noPatientTitle}
+          body={t.noPatientText}
           style={styles.centerState}
-        >
-          <Ionicons
-            name="person-outline"
-            size={58}
-            color="#4F59D5"
-          />
-
-          <Text
-            style={styles.stateTitle}
-          >
-            {t.noPatientTitle}
-          </Text>
-
-          <Text
-            style={styles.stateText}
-          >
-            {t.noPatientText}
-          </Text>
-        </View>
+        />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop:
-              insets.top + 8,
-          },
-        ]}
-      >
-        <Pressable
-          style={styles.headerSide}
-          onPress={() => router.back()}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={30}
-            color="#111827"
-          />
-        </Pressable>
-
-        <Text style={styles.headerTitle}>
-          {t.pageTitle}
-        </Text>
-
-        <View
-          style={styles.headerSide}
-        />
-      </View>
+      {header}
 
       {contextLoading ? (
-        <View
-          style={styles.centerState}
-        >
-          <ActivityIndicator
-            size="large"
-            color="#4F59D5"
-          />
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : contextError ? (
-        <View
-          style={styles.centerState}
-        >
-          <Ionicons
-            name="alert-circle-outline"
-            size={58}
-            color="#DC2626"
-          />
-
-          <Text
-            style={styles.stateTitle}
-          >
-            {t.loadFailed}
-          </Text>
-
-          <Text
-            style={styles.stateText}
-          >
-            {contextError}
-          </Text>
+        <View style={styles.centerState}>
+          <View style={styles.errorIcon}>
+            <Ionicons name="alert-circle-outline" size={32} color={colors.danger} />
+          </View>
+          <Text style={styles.stateTitle}>{t.loadFailed}</Text>
+          <Text style={styles.stateText}>{contextError}</Text>
         </View>
       ) : caregivers.length === 0 ? (
-        <View
+        <EmptyState
+          icon="business-outline"
+          title={t.noCaregiverTitle}
+          body={t.noCaregiverText}
           style={styles.centerState}
-        >
-          <Ionicons
-            name="business-outline"
-            size={58}
-            color="#4F59D5"
-          />
-
-          <Text
-            style={styles.stateTitle}
-          >
-            {t.noCaregiverTitle}
-          </Text>
-
-          <Text
-            style={styles.stateText}
-          >
-            {t.noCaregiverText}
-          </Text>
-        </View>
+        />
       ) : (
-        <ScrollView
-          style={styles.scrollView}
+        <KeyboardAwareScroll
+          safeAreaBottom={false}
           contentContainerStyle={[
             styles.content,
-            {
-              paddingBottom:
-                Math.max(
-                  40,
-                  insets.bottom + 30
-                ),
-            },
+            { paddingBottom: Math.max(spacing.xxl, insets.bottom + spacing.xl) },
           ]}
-          showsVerticalScrollIndicator={
-            false
-          }
-          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.label}>
-            {t.patient}
-          </Text>
-
-          <View style={styles.infoCard}>
-            <View
-              style={styles.infoIcon}
-            >
-              <Ionicons
-                name="person-outline"
-                size={24}
-                color="#4F59D5"
-              />
-            </View>
-
-            <Text
-              style={styles.infoValue}
-            >
-              {patientName ||
-                activePatient?.name}
-            </Text>
+          <View style={styles.field}>
+            <Text style={styles.label}>{t.patient}</Text>
+            <Card style={styles.infoCard}>
+              <View style={styles.infoIcon}>
+                <Ionicons name="person-outline" size={22} color={colors.primary} />
+              </View>
+              <Text style={styles.infoValue}>{patientName || activePatient?.name}</Text>
+            </Card>
           </View>
 
-          <Text style={styles.label}>
-            {t.caregiver}
-          </Text>
-
-          <View
-            style={
-              styles.caregiverList
-            }
-          >
-            {caregivers.map(
-              (caregiver) => {
-                const selected =
-                  selectedCaregiverUid ===
-                  caregiver.caregiverUid;
-
+          <View style={styles.field}>
+            <Text style={styles.label}>{t.caregiver}</Text>
+            <View style={styles.caregiverList}>
+              {caregivers.map((caregiver) => {
+                const selected = selectedCaregiverUid === caregiver.caregiverUid;
                 return (
                   <Pressable
-                    key={
-                      caregiver.caregiverUid
-                    }
-                    onPress={() =>
-                      setSelectedCaregiverUid(
-                        caregiver.caregiverUid
-                      )
-                    }
-                    style={[
+                    key={caregiver.caregiverUid}
+                    onPress={() => setSelectedCaregiverUid(caregiver.caregiverUid)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={`${caregiver.caregiverName} ${t.caregiverSuffix}`}
+                    style={({ pressed }) => [
                       styles.caregiverCard,
-                      selected &&
-                        styles.caregiverCardSelected,
+                      selected && styles.optionSelected,
+                      pressed && !selected && styles.optionPressed,
                     ]}
                   >
-                    <View
-                      style={
-                        styles.caregiverIcon
-                      }
-                    >
-                      <Ionicons
-                        name="person"
-                        size={22}
-                        color={
-                          selected
-                            ? "#FFFFFF"
-                            : "#4F59D5"
-                        }
-                      />
+                    <View style={[styles.caregiverIcon, selected && { backgroundColor: colors.primary }]}>
+                      <Ionicons name="person" size={20} color={selected ? colors.onPrimary : colors.primary} />
                     </View>
-
-                    <View
-                      style={{ flex: 1 }}
-                    >
-                      <Text
-                        style={
-                          styles.caregiverName
-                        }
-                      >
-                        {
-                          caregiver.caregiverName
-                        }
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.caregiverRole
-                        }
-                      >
-                        {
-                          t.caregiverSuffix
-                        }
-                      </Text>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.caregiverName}>{caregiver.caregiverName}</Text>
+                      <Text style={styles.caregiverRole}>{t.caregiverSuffix}</Text>
                     </View>
-
-                    {selected && (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={25}
-                        color="#4F59D5"
-                      />
-                    )}
+                    {selected && <Ionicons name="checkmark-circle" size={24} color={colors.primary} />}
                   </Pressable>
                 );
-              }
-            )}
+              })}
+            </View>
           </View>
 
-          <Text style={styles.label}>
-            {t.category}
-          </Text>
-
-          <View style={styles.categoryGrid}>
-            {categoryOptions.map((item) => {
-              const selected =
-                category === item.key;
-
-              return (
-                <Pressable
-                  key={item.key}
-                  disabled={submitting}
-                  onPress={() =>
-                    setCategory(item.key)
-                  }
-                  style={[
-                    styles.categoryCard,
-                    selected &&
-                      styles.categoryCardSelected,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.categoryRadio,
-                      selected &&
-                        styles.categoryRadioSelected,
+          <View style={styles.field}>
+            <Text style={styles.label}>{t.category}</Text>
+            <View style={styles.categoryGrid}>
+              {categoryOptions.map((item) => {
+                const selected = category === item.key;
+                return (
+                  <Pressable
+                    key={item.key}
+                    disabled={submitting}
+                    onPress={() => setCategory(item.key)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected, disabled: submitting }}
+                    style={({ pressed }) => [
+                      styles.categoryCard,
+                      selected && styles.optionSelected,
+                      pressed && !selected && styles.optionPressed,
                     ]}
                   >
-                    {selected && (
-                      <Ionicons
-                        name="checkmark"
-                        size={15}
-                        color="#FFFFFF"
-                      />
-                    )}
-                  </View>
-
-                  <Text
-                    style={[
-                      styles.categoryText,
-                      selected &&
-                        styles.categoryTextSelected,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                    <View style={[styles.categoryRadio, selected && styles.categoryRadioSelected]}>
+                      {selected && <Ionicons name="checkmark" size={15} color={colors.onPrimary} />}
+                    </View>
+                    <Text style={[styles.categoryText, selected && styles.categoryTextSelected]}>{item.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
 
-          <Text style={styles.label}>
-            {t.title}
-          </Text>
-
-          <TextInput
+          <TextField
+            label={t.title}
             value={title}
             onChangeText={setTitle}
-            placeholder={
-              t.titlePlaceholder
-            }
+            placeholder={t.titlePlaceholder}
             maxLength={200}
-            style={styles.input}
           />
 
-          <Text style={styles.label}>
-            {t.description}
-          </Text>
-
-          <TextInput
+          <TextField
+            label={t.description}
             value={description}
             onChangeText={setDescription}
-            placeholder={
-              t.descriptionPlaceholder
-            }
+            placeholder={t.descriptionPlaceholder}
             maxLength={3000}
             multiline
-            textAlignVertical="top"
-            style={[
-              styles.input,
-              styles.descriptionInput,
-            ]}
+            inputStyle={styles.descriptionInput}
           />
 
-          <Pressable
+          <Button
+            label={submitting ? t.submitting : t.submit}
+            icon="send-outline"
+            size="lg"
+            fullWidth
+            loading={submitting}
             onPress={handleSubmit}
-            disabled={submitting}
-            style={[
-              styles.submitButton,
-              submitting &&
-                styles.submitButtonDisabled,
-            ]}
-          >
-            {submitting ? (
-              <ActivityIndicator
-                color="#FFFFFF"
-              />
-            ) : (
-              <>
-                <Ionicons
-                  name="send-outline"
-                  size={21}
-                  color="#FFFFFF"
-                />
-
-                <Text
-                  style={
-                    styles.submitText
-                  }
-                >
-                  {t.submit}
-                </Text>
-              </>
-            )}
-          </Pressable>
-        </ScrollView>
+            style={styles.submitButton}
+          />
+        </KeyboardAwareScroll>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8F8FC",
-  },
+  container: { flex: 1, backgroundColor: colors.canvas },
 
-  header: {
-    minHeight: 68,
-    paddingBottom: 12,
-    paddingHorizontal: 12,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#ECECF2",
-    flexDirection: "row",
-    alignItems: "flex-end",
-  },
-
-  headerSide: {
-    width: 46,
-    height: 44,
+  centerState: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: spacing.xl },
+  errorIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.dangerSoft,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: spacing.lg,
   },
-
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#111827",
-    paddingBottom: 10,
-  },
-
-  scrollView: {
-    flex: 1,
-  },
+  stateTitle: { ...typography.header, textAlign: "center" },
+  stateText: { ...typography.bodySmall, textAlign: "center", marginTop: spacing.sm, maxWidth: 320 },
 
   content: {
-    padding: 20,
+    padding: layout.screenPaddingX,
+    gap: spacing.xl,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
+  field: { gap: spacing.sm },
+  label: { ...typography.label },
 
-  label: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#374151",
-    marginBottom: 9,
-    marginTop: 18,
-  },
-
-  infoCard: {
-    minHeight: 66,
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-
+  infoCard: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   infoIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#EEF0FF",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
   },
+  infoValue: { ...typography.bodyStrong, fontSize: 18, flex: 1 },
 
-  infoValue: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#111827",
-  },
-
-  caregiverList: {
-    gap: 10,
-  },
-
+  caregiverList: { gap: spacing.sm },
   caregiverCard: {
-    minHeight: 72,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1.5,
-    borderColor: "#E5E7EB",
+    minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-  },
-
-  caregiverCardSelected: {
-    borderColor: "#4F59D5",
-    backgroundColor: "#F3F4FF",
-  },
-
-  caregiverIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#4F59D5",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  caregiverName: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#111827",
-  },
-
-  caregiverRole: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 3,
-  },
-
-  input: {
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radii.card,
     borderWidth: 1,
-    borderColor: "#E1E1E8",
-    borderRadius: 15,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: "#111827",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-
-  descriptionInput: {
-    minHeight: 140,
-  },
-
-  submitButton: {
-    height: 58,
-    borderRadius: 16,
-    backgroundColor: "#4F59D5",
-    marginTop: 28,
-    flexDirection: "row",
+  optionSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  optionPressed: { backgroundColor: colors.surfaceSunken },
+  caregiverIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
-    gap: 9,
   },
+  caregiverName: { ...typography.bodyStrong },
+  caregiverRole: { ...typography.caption },
 
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-
-  submitText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "900",
-  },
-
-  centerState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 36,
-  },
-
-  stateTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#111827",
-    marginTop: 15,
-    textAlign: "center",
-  },
-
-  stateText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#6B7280",
-    marginTop: 8,
-    textAlign: "center",
-  },
-
-  categoryGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-
+  categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   categoryCard: {
-    width: "48%",
-    minHeight: 58,
-    borderRadius: 15,
-    borderWidth: 1.5,
-    borderColor: "#E1E1E8",
-    backgroundColor: "#FFFFFF",
+    flexGrow: 1,
+    flexBasis: "45%",
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    gap: 10,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-
-  categoryCardSelected: {
-    borderColor: "#4F59D5",
-    backgroundColor: "#F3F4FF",
-  },
-
   categoryRadio: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: "#C7C9D9",
+    borderColor: colors.textDisabled,
     alignItems: "center",
     justifyContent: "center",
   },
+  categoryRadioSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
+  categoryText: { ...typography.body, flexShrink: 1 },
+  categoryTextSelected: { color: colors.primary, fontWeight: "600" },
 
-  categoryRadioSelected: {
-    borderColor: "#4F59D5",
-    backgroundColor: "#4F59D5",
-  },
-
-  categoryText: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#374151",
-  },
-
-  categoryTextSelected: {
-    color: "#3730A3",
-    fontWeight: "800",
-  },
+  descriptionInput: { minHeight: 160 },
+  submitButton: { marginTop: spacing.sm },
 });
