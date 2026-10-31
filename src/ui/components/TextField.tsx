@@ -15,6 +15,11 @@ export type TextFieldProps = Omit<TextInputProps, "style"> & {
 // react-native-web draws its own focus outline; we draw the ring ourselves.
 const webNoOutline = Platform.OS === "web" ? ({ outlineStyle: "none" } as object) : null;
 
+// Native draws the focus/error ring as a 2pt border; at rest the field reserves
+// that extra 1pt as padding so focusing never changes any geometry. Web draws
+// the ring with a box-shadow and needs no reserve.
+const RING_INSET = Platform.OS === "web" ? 0 : 1;
+
 export const TextField = forwardRef<TextInputInstance, TextFieldProps>(function TextField(
   { label, helper, error, required, multiline, containerStyle, inputStyle, onFocus, onBlur, editable = true, ...rest },
   ref,
@@ -84,21 +89,29 @@ export const TextField = forwardRef<TextInputInstance, TextFieldProps>(function 
 const styles = StyleSheet.create({
   container: { alignSelf: "stretch" },
   label: { ...typography.label, marginBottom: 6 },
+  // The field's outer box never changes size on focus/error: native trades
+  // 1pt of padding for 1pt of extra border (1+1 -> 2+0), so the frame, the
+  // TextInput and the text inside all stay put. overflow:hidden makes iOS
+  // paint border + fill on the view's own CALayer instead of two sublayers;
+  // otherwise the border sublayer implicitly animates its frame while the
+  // fill snaps, and they visibly drift apart while KeyboardAvoidingView's
+  // LayoutAnimation moves the form for the keyboard.
   field: {
     minHeight: 52,
     borderWidth: 1,
+    padding: RING_INSET,
     borderRadius: radii.control,
     backgroundColor: colors.surface,
     justifyContent: "center",
+    ...(Platform.OS === "web" ? null : { overflow: "hidden" as const }),
   },
-  // A 1px border plus a 1px ring keeps the text from shifting on focus.
   fieldFocused: Platform.select({
     web: { boxShadow: `0 0 0 1px ${colors.primary}` },
-    default: { borderWidth: 2, margin: -1 },
+    default: { borderWidth: 2, padding: 0 },
   }) as ViewStyle,
   fieldError: Platform.select({
     web: { boxShadow: `0 0 0 1px ${colors.danger}` },
-    default: { borderWidth: 2, margin: -1 },
+    default: { borderWidth: 2, padding: 0 },
   }) as ViewStyle,
   fieldDisabled: { backgroundColor: colors.surfaceSunken },
   // Single-line: no lineHeight (iOS offsets the placeholder downward with it)
@@ -110,8 +123,8 @@ const styles = StyleSheet.create({
     fontWeight: typography.body.fontWeight,
     color: typography.body.color,
     letterSpacing: 0,
-    minHeight: 50,
-    paddingHorizontal: spacing.md + 2,
+    minHeight: 50 - 2 * RING_INSET,
+    paddingHorizontal: spacing.md + 2 - RING_INSET,
     paddingVertical: 0,
     includeFontPadding: false,
     textAlignVertical: "center",
@@ -119,9 +132,9 @@ const styles = StyleSheet.create({
   // Multiline: text starts at the top with equal top/bottom padding.
   inputMultiline: {
     lineHeight: typography.body.lineHeight,
-    minHeight: 112,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    minHeight: 112 - 2 * RING_INSET,
+    paddingTop: spacing.md - RING_INSET,
+    paddingBottom: spacing.md - RING_INSET,
     textAlignVertical: "top",
   },
   helper: { ...typography.caption, marginTop: 6 },
