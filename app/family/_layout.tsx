@@ -23,6 +23,7 @@ import {
   type BottomNavItem,
   type SideDrawerSection,
 } from "@/src/ui/components";
+import { useCommunityProfile } from "@/src/community/useCommunityProfile";
 import { colors } from "@/src/ui/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -61,6 +62,7 @@ function FamilyShell() {
   const { language, setLanguage } = useLanguage();
   const t = translations[language];
   const drawer = useDrawer();
+  const drawerProfile = useCommunityProfile();
   const { user } = useAuth();
   const { activePatient } = useActiveCareTarget();
 
@@ -188,7 +190,7 @@ function FamilyShell() {
         header={
           <SideDrawerProfile
             roleLabel={t.familyMode}
-            name={user?.email || undefined}
+            name={drawerProfile.name || user?.email || undefined}
             detail={activePatient?.name ? `${t.drawerCareTarget}${language === "zh" ? "：" : ": "}${activePatient.name}` : undefined}
           />
         }

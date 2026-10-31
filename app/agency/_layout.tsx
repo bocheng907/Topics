@@ -14,6 +14,7 @@ import React from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { DrawerProvider, useDrawer } from "@/src/ui/DrawerContext";
 import { SideDrawer, SideDrawerProfile, type SideDrawerSection } from "@/src/ui/components";
+import { useCommunityProfile } from "@/src/community/useCommunityProfile";
 import { colors } from "@/src/ui/theme";
 
 export default function AgencyLayout() {
@@ -29,6 +30,7 @@ function AgencyShell() {
   const { language } = useLanguage();
   const t = translations[language];
   const drawer = useDrawer();
+  const drawerProfile = useCommunityProfile();
 
   const goTo = (path: string) => {
     drawer.close();
@@ -125,7 +127,7 @@ function AgencyShell() {
       <SideDrawer
         open={drawer.isOpen}
         onClose={drawer.close}
-        header={<SideDrawerProfile roleLabel={t.agencyMode} icon="business" name={user.email || undefined} />}
+        header={<SideDrawerProfile roleLabel={t.agencyMode} icon="business" name={drawerProfile.name || user.email || undefined} />}
         sections={sections}
       />
     </View>

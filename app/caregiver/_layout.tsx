@@ -25,6 +25,7 @@ import {
   type BottomNavItem,
   type SideDrawerSection,
 } from "@/src/ui/components";
+import { useCommunityProfile } from "@/src/community/useCommunityProfile";
 import { colors, layout, shadows } from "@/src/ui/theme";
 
 const hideBottomNavRoutes = [
@@ -64,6 +65,7 @@ function CaregiverShell() {
   const { language, setLanguage } = useLanguage();
   const t = translations[language];
   const drawer = useDrawer();
+  const drawerProfile = useCommunityProfile();
   const { user } = useAuth();
 
   useSyncCaregiverServices();
@@ -268,7 +270,7 @@ function CaregiverShell() {
         header={
           <SideDrawerProfile
             roleLabel={t.caregiverMode}
-            name={user?.email || undefined}
+            name={drawerProfile.name || user?.email || undefined}
             detail={activePatientName ? `${t.drawerCareTarget}${language === "zh" ? "：" : ": "}${activePatientName}` : undefined}
           />
         }
