@@ -12,3 +12,4 @@ export { BottomNav, type BottomNavItem, type BottomNavProps } from "./BottomNav"
 export { default as UserAvatar, avatarColor, avatarInitial, type UserAvatarProps } from "./UserAvatar";
 export { SegmentedTabBar, SegmentedTabs, type SegmentedOption, type SegmentedTabsProps } from "./SegmentedTabs";
 export { VitalCard, type VitalCardProps, type VitalStatus, type VitalValue } from "./VitalCard";
+export { Fab, FAB_CLEARANCE, FAB_SIZE, type FabProps } from "./Fab";

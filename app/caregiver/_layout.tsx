@@ -16,6 +16,7 @@ import React from "react";
 import { Platform, Linking, Pressable, StyleSheet, View } from "react-native";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BottomInsetHandledProvider } from "@/src/ui/BottomInsetContext";
 import { DrawerProvider, useDrawer } from "@/src/ui/DrawerContext";
 import {
   BottomNav,
@@ -242,14 +243,17 @@ function CaregiverShell() {
           { paddingBottom: showBottomNav ? layout.bottomNavHeight + insets.bottom : insets.bottom },
         ]}
       >
-        <Stack
-          screenOptions={({ route }) => ({
-            headerShown: false,
-            gestureEnabled: false,
-            animation: "none",
-            ...tabAnimationFor(route.name),
-          })}
-        />
+        {/* paddingBottom above already reserves the BottomNav + home indicator (or just the indicator). */}
+        <BottomInsetHandledProvider>
+          <Stack
+            screenOptions={({ route }) => ({
+              headerShown: false,
+              gestureEnabled: false,
+              animation: "none",
+              ...tabAnimationFor(route.name),
+            })}
+          />
+        </BottomInsetHandledProvider>
       </View>
 
       {showBottomNav && (

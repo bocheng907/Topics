@@ -48,6 +48,7 @@ import { AppAlert } from "@/src/ui/AppAlert";
 import { AppHeader, EmptyState, IconButton } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 /** 讀取失敗的原因（畫面上依語言顯示） */
 type LoadError = "" | "notFound" | "gone" | "failed";
@@ -64,6 +65,7 @@ export default function PostDetailScreen() {
   const { language } = useLanguage();
   const c = communityCopy[language];
   const insets = useSafeAreaInsets();
+  const bottomInset = useScreenBottomInset();
 
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -515,7 +517,7 @@ export default function PostDetailScreen() {
       </ScrollView>
 
       {/* 底部留言輸入框 */}
-      <View style={[styles.inputBar, { paddingBottom: spacing.md + insets.bottom }]}>
+      <View style={[styles.inputBar, { paddingBottom: spacing.md + bottomInset }]}>
         <TextInput
           style={[styles.commentInput, Platform.OS === "web" && ({ outlineStyle: "none" } as object)]}
           placeholder={published ? c.commentPlaceholder : c.commentDisabledPlaceholder}

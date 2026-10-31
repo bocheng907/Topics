@@ -19,9 +19,9 @@ import {
 
 import { communityCopy } from "@/src/i18n/copy/communityCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
-import { AppHeader, EmptyState } from "@/src/ui/components";
-import { colors, radii, shadows, spacing, typography } from "@/src/ui/theme";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppHeader, EmptyState, Fab, FAB_CLEARANCE } from "@/src/ui/components";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
+import { colors, radii, spacing, typography } from "@/src/ui/theme";
 import PostCard from "@/src/community/components/PostCard";
 import CategoryTabs from "@/src/community/components/CategoryTabs";
 import ProfileButton from "@/src/community/components/ProfileButton";
@@ -36,7 +36,7 @@ export default function CommunityHomeScreen() {
   const routes = useCommunityRoutes();
   const { language } = useLanguage();
   const c = communityCopy[language];
-  const insets = useSafeAreaInsets();
+  const bottomInset = useScreenBottomInset();
   const [category, setCategory] = useState<CategoryFilter>("全部");
   const [keyword, setKeyword] = useState("");
 
@@ -111,7 +111,7 @@ export default function CommunityHomeScreen() {
 
       <ScrollView
         style={styles.scrollArea}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 112 + insets.bottom }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: FAB_CLEARANCE + spacing.lg + bottomInset }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
@@ -198,19 +198,7 @@ export default function CommunityHomeScreen() {
       </ScrollView>
 
       {/* 發文浮動鍵 */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={c.newPost}
-        style={({ pressed }) => [
-          styles.fab,
-          { bottom: spacing.xl + insets.bottom },
-          pressed && styles.fabPressed,
-        ]}
-        onPress={() => router.push(routes.newPost() as any)}
-      >
-        <Ionicons name="create-outline" size={22} color={colors.onPrimary} />
-        <Text style={styles.fabText}>{c.newPost}</Text>
-      </Pressable>
+      <Fab icon="create-outline" label={c.newPost} onPress={() => router.push(routes.newPost() as any)} />
     </View>
   );
 }
@@ -289,25 +277,5 @@ const styles = StyleSheet.create({
   stateHint: {
     ...typography.body,
     color: colors.textSecondary,
-  },
-  fab: {
-    position: "absolute",
-    right: spacing.lg,
-    minHeight: 56,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    ...shadows.fab,
-  },
-  fabPressed: {
-    backgroundColor: colors.primaryPressed,
-  },
-  fabText: {
-    ...typography.bodyStrong,
-    color: colors.onPrimary,
   },
 });

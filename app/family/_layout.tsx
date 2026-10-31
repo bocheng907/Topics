@@ -15,6 +15,7 @@ import React from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { DrawerProvider, useDrawer } from "@/src/ui/DrawerContext";
+import { BottomInsetHandledProvider } from "@/src/ui/BottomInsetContext";
 import {
   BottomNav,
   DrawerLanguageSwitcher,
@@ -182,13 +183,16 @@ function FamilyShell() {
   return (
     <View style={styles.container}>
       <View style={[styles.content, hideBottomNav && { paddingBottom: insets.bottom }]}>
-        <Stack
-          screenOptions={({ route }) => ({
-            headerShown: false,
-            gestureEnabled: false,
-            ...tabAnimationFor(route.name),
-          })}
-        />
+        {/* The BottomNav (or the paddingBottom above when it is hidden) already clears the home indicator. */}
+        <BottomInsetHandledProvider>
+          <Stack
+            screenOptions={({ route }) => ({
+              headerShown: false,
+              gestureEnabled: false,
+              ...tabAnimationFor(route.name),
+            })}
+          />
+        </BottomInsetHandledProvider>
       </View>
 
       {!hideBottomNav && <BottomNav items={navItems} activeKey={currentPage} onSelect={selectTab} />}

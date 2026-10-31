@@ -1,5 +1,4 @@
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addDoc,
@@ -16,7 +15,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { auth, db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
@@ -38,8 +37,8 @@ import { translations, type Language } from "@/src/i18n/translations";
 import { userErrorCopy } from "@/src/ui/userErrorMessages";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { eventCopy } from "@/src/ui/calendarEventCopy";
-import { AppHeader, KeyboardAwareScroll } from "@/src/ui/components";
-import { colors, eventColors, layout, radii, shadows, spacing, typography } from "@/src/ui/theme";
+import { AppHeader, Fab, FAB_CLEARANCE, KeyboardAwareScroll } from "@/src/ui/components";
+import { colors, eventColors, layout, spacing } from "@/src/ui/theme";
 
 type CalendarEventRecord = {
   id: string;
@@ -1254,15 +1253,7 @@ export default function CaregiverCalendarScreen() {
         </View>
       </KeyboardAwareScroll>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={copy.addEvent}
-        onPress={openCreateForm}
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-      >
-        <Ionicons name="add" size={26} color={colors.onPrimary} />
-        <Text style={styles.fabText}>{copy.addEvent}</Text>
-      </Pressable>
+      <Fab icon="add" label={copy.addEvent} onPress={openCreateForm} />
 
       <EventFormSheet
         visible={formOpen}
@@ -1294,7 +1285,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: layout.screenPaddingX,
     paddingTop: spacing.lg,
-    paddingBottom: 112,
+    paddingBottom: FAB_CLEARANCE + spacing.lg,
     gap: 0,
   },
   column: {
@@ -1303,20 +1294,4 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     gap: spacing.xl,
   },
-  fab: {
-    position: "absolute",
-    right: spacing.lg,
-    bottom: spacing.lg,
-    minHeight: 56,
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.xl,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    ...shadows.fab,
-  },
-  fabPressed: { backgroundColor: colors.primaryPressed },
-  fabText: { ...typography.bodyStrong, color: colors.onPrimary },
 });

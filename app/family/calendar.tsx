@@ -11,8 +11,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { Ionicons } from "@expo/vector-icons";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 import { db } from "@/firebase/firebaseConfig";
 import { useAuth } from "@/src/auth/useAuth";
@@ -27,8 +26,8 @@ import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { eventCopy } from "@/src/ui/calendarEventCopy";
-import { AppHeader } from "@/src/ui/components";
-import { colors, eventColors, layout, radii, shadows, spacing, typography } from "@/src/ui/theme";
+import { AppHeader, Fab, FAB_CLEARANCE } from "@/src/ui/components";
+import { colors, eventColors, layout, spacing } from "@/src/ui/theme";
 
 type CalendarEventRecord = {
   id: string;
@@ -643,15 +642,7 @@ export default function FamilyCalendarScreen() {
         </View>
       </ScrollView>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={copy.addEvent}
-        onPress={openCreateForm}
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-      >
-        <Ionicons name="add" size={26} color={colors.onPrimary} />
-        <Text style={styles.fabText}>{copy.addEvent}</Text>
-      </Pressable>
+      <Fab icon="add" label={copy.addEvent} onPress={openCreateForm} />
 
       <EventFormSheet
         visible={formOpen}
@@ -683,7 +674,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: layout.screenPaddingX,
     paddingTop: spacing.lg,
-    paddingBottom: 112,
+    paddingBottom: FAB_CLEARANCE + spacing.lg,
   },
   column: {
     width: "100%",
@@ -691,20 +682,4 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     gap: spacing.xl,
   },
-  fab: {
-    position: "absolute",
-    right: spacing.lg,
-    bottom: spacing.lg,
-    minHeight: 56,
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.xl,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    ...shadows.fab,
-  },
-  fabPressed: { backgroundColor: colors.primaryPressed },
-  fabText: { ...typography.bodyStrong, color: colors.onPrimary },
 });

@@ -14,7 +14,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 import { useAuth } from "@/src/auth/useAuth";
 import { deletePost, getMyPosts } from "@/src/community/api";
@@ -36,7 +36,7 @@ export default function MyPostsScreen() {
   const profile = useCommunityProfile();
   const { language } = useLanguage();
   const c = communityCopy[language];
-  const insets = useSafeAreaInsets();
+  const bottomInset = useScreenBottomInset();
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,7 +119,7 @@ export default function MyPostsScreen() {
 
       <ScrollView
         style={styles.scrollArea}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + insets.bottom }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
