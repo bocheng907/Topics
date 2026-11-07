@@ -2,6 +2,9 @@
 
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
+import { communityCategoryLabel, communityCopy } from "@/src/i18n/copy/communityCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
+import { radii } from "@/src/ui/theme";
 import { getCategoryStyle } from "../theme";
 
 type Props = {
@@ -9,12 +12,15 @@ type Props = {
 };
 
 export default function CategoryTag({ category }: Props) {
+  const { language } = useLanguage();
   const style = getCategoryStyle(category);
 
   return (
     <View style={[styles.tag, { backgroundColor: style.bg }]}>
-      <Ionicons name={style.icon} size={13} color={style.main} />
-      <Text style={[styles.label, { color: style.main }]}>{category}</Text>
+      <Ionicons name={style.icon} size={14} color={style.main} />
+      <Text style={[styles.label, { color: style.main }]}>
+        {communityCategoryLabel(communityCopy[language], category)}
+      </Text>
     </View>
   );
 }
@@ -25,12 +31,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: radii.pill,
   },
   label: {
     fontSize: 14,
-    fontWeight: "700",
+    lineHeight: 18,
+    fontWeight: "600",
   },
 });

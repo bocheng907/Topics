@@ -1,8 +1,11 @@
-import { ScreenScrollView } from "@/src/ui/ScreenLayout";
+import { AppHeader, Button, Card, KeyboardAwareScroll, SectionHeader, TextField } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
+import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { caregiverCopy } from "@/src/i18n/copy/caregiverCopy";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, Image, ActivityIndicator, Pressable, TextInput, Alert } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { View, Text, Image, ActivityIndicator, StyleSheet } from "react-native";
+import { router, useLocalSearchParams, type Href } from "expo-router";
 import {
   collection,
   doc,
@@ -162,6 +165,8 @@ function ResultScreen() {
   const { user } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
+  const c = caregiverCopy[language];
+  const sep = language === "zh" ? "：" : ": ";
 
   const [status, setStatus] = useState<"loading" | "done">("loading");
   const [items, setItems] = useState<Item[]>([]);
@@ -403,213 +408,137 @@ function ResultScreen() {
   }
 
   return (
-    <ScreenScrollView contentContainerStyle={{ padding: 20, paddingTop: 20, paddingBottom: 160, gap: 16 }}>
-      <Text style={{ fontSize: 24, fontWeight: "900", color: "#333" }}>
-        {status === "loading" ? t.resultLoadingTitle : t.resultDoneTitle}
-      </Text>
+    <View style={styles.screen}>
+      <AppHeader
+        title={status === "loading" ? t.resultLoadingTitle : t.resultDoneTitle}
+        fallbackHref={(user?.role === "family" ? "/family" : "/caregiver") as Href}
+      />
+      <KeyboardAwareScroll contentContainerStyle={styles.content}>
+        {imageUri && (
+          <Image source={{ uri: imageUri }} style={styles.image} resizeMode="contain" />
+        )}
 
-      {imageUri && (
-        <Image
-          source={{ uri: imageUri }}
-          style={{
-            width: "100%",
-            height: 200,
-            borderRadius: 12,
-            backgroundColor: "#eee",
-          }}
-          resizeMode="contain"
-        />
-      )}
-
-      {status === "loading" ? (
-        <View style={{ padding: 40, alignItems: "center" }}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={{ marginTop: 10, opacity: 0.6 }}>
-            {t.resultAiLoading}
-          </Text>
-        </View>
-      ) : (
-        <View style={{ gap: 12 }}>
-          <View style={{ gap: 6 }}>
-            <Text style={{ fontWeight: "800", fontSize: 16 }}>{t.recordTitle}</Text>
-            <TextInput
-              value={title}
-              onChangeText={setTitle}
-              editable={isDraftMode && !saving}
-              placeholder={t.recordTitlePlaceholder}
-              style={{
-                borderWidth: 1,
-                borderColor: "#ccc",
-                borderRadius: 8,
-                padding: 12,
-                backgroundColor: "#f5f5f5",
-              }}
-            />
+        {status === "loading" ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>{t.resultAiLoading}</Text>
           </View>
+        ) : (
+          <>
+            <Card style={styles.cardGap}>
+              <TextField
+                label={t.recordTitle}
+                value={title}
+                onChangeText={setTitle}
+                editable={isDraftMode && !saving}
+                placeholder={t.recordTitlePlaceholder}
+              />
+              <View style={styles.metaBlock}>
+                <Text style={styles.metaText}>{c.clinicLabel}{sep}{clinicName || t.none}</Text>
+                <Text style={styles.metaText}>{c.departmentLabel}{sep}{department || t.none}</Text>
+              </View>
+            </Card>
 
-          <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 15, color: "#666" }}>
-              診所：{clinicName || t.none}
-            </Text>
+            <SectionHeader title={t.medicineDetails} />
 
-            <Text style={{ fontSize: 15, color: "#666" }}>
-              科別：{department || t.none}
-            </Text>
-          </View>
+            {items.map((it, idx) => {
+              const displayItem = getDisplayItem(it, language, t);
+              const note = displayItem.note;
+              const method = displayItem.time[0] || t.notSet;
+              const timeDetail = displayItem.time.slice(1).join("，") || t.asDirectedUsage;
 
-          <Text style={{ fontSize: 18, fontWeight: "800", marginTop: 8 }}>
-            {t.medicineDetails}
-          </Text>
-
-          {items.map((it, idx) => {
-            const displayItem = getDisplayItem(it, language, t);
-            const note = displayItem.note;
-
-            const method =
-              displayItem.time[0] || t.notSet;
-
-            const timeDetail =
-              displayItem.time.slice(1).join("，") ||
-              t.asDirectedUsage;
-
-            return (
-              <View
-                key={idx}
-                style={{
-                  padding: 16,
-                  borderWidth: 1,
-                  borderColor: "#eee",
-                  borderRadius: 12,
-                  backgroundColor: "#fff",
-                  gap: 6,
-                }}
-              >
-                {isDraftMode ? (
-                  <TextInput
-                    value={it.name}
-                    onChangeText={(name) => updateItem(idx, { name })}
-                    editable={!saving}
-                    multiline
-                    style={{
-                      fontSize: 18,
-                      fontWeight: "800",
-                      color: "#007AFF",
-                      padding: 0,
-                    }}
-                  />
-                ) : (
-                  <Text
-                    style={{
-                      fontSize: 18,
-                      fontWeight: "800",
-                      color: "#007AFF",
-                    }}
-                  >
-                    {displayItem.name}
-                  </Text>
-                )}
-                <View style={{ gap: 2 }}>
-
-                  <Text style={{ fontSize: 15, color: "#444" }}>
-                    {t.dosage}：{displayItem.dose}
-                  </Text>
-                  <Text style={{ fontSize: 15, color: "#444" }}>
-                    {t.quantity}：{displayItem.quantity}
-                  </Text>
-                  <Text style={{ fontSize: 15, color: "#444" }}>
-                    {t.method}：{method}
-                  </Text>
-                  <Text style={{ fontSize: 15, color: "#444" }}>
-                    {t.usageTime}：{timeDetail}
-                  </Text>
+              return (
+                <Card key={idx} style={styles.cardGap}>
                   {isDraftMode ? (
-                    <View style={{ marginTop: 8, gap: 6 }}>
-                      <Text style={{ fontSize: 15, color: "#666" }}>{t.medicineNote}</Text>
-                      <TextInput
-                        value={it.note}
-                        onChangeText={(itemNote) => updateItem(idx, { note: itemNote })}
-                        editable={!saving}
-                        multiline
-                        placeholder={t.notePlaceholder}
-                        style={{
-                          minHeight: 64,
-                          padding: 10,
-                          borderRadius: 8,
-                          backgroundColor: "#F5F5F5",
-                          color: "#333",
-                          textAlignVertical: "top",
-                        }}
-                      />
-                    </View>
+                    <TextField
+                      label={t.medicineName}
+                      value={it.name}
+                      onChangeText={(name) => updateItem(idx, { name })}
+                      editable={!saving}
+                      multiline
+                      inputStyle={styles.itemNameInput}
+                    />
                   ) : (
-                    <Text
-                      style={{
-                        fontSize: 15,
-                        color: note ? "#666" : "#CCC",
-                        marginTop: 2,
-                      }}
-                    >
-                      {t.medicineNote}：{note || t.none}
+                    <Text style={styles.itemName}>{displayItem.name}</Text>
+                  )}
+                  <View>
+                    <InfoRow label={t.dosage} value={displayItem.dose} />
+                    <InfoRow label={t.quantity} value={displayItem.quantity} />
+                    <InfoRow label={t.method} value={method} />
+                    <InfoRow label={t.usageTime} value={timeDetail} />
+                  </View>
+                  {isDraftMode ? (
+                    <TextField
+                      label={t.medicineNote}
+                      value={it.note}
+                      onChangeText={(itemNote) => updateItem(idx, { note: itemNote })}
+                      editable={!saving}
+                      multiline
+                      placeholder={t.notePlaceholder}
+                      inputStyle={styles.noteInput}
+                    />
+                  ) : (
+                    <Text style={note ? styles.noteText : styles.noteTextEmpty}>
+                      {t.medicineNote}{sep}{note || t.none}
                     </Text>
                   )}
-                </View>
-              </View>
-            );
-          })}
+                </Card>
+              );
+            })}
 
-          <View style={{ gap: 6, marginTop: 4 }}>
-            <Text style={{ fontWeight: "800", fontSize: 16 }}>{t.prescriptionNote}</Text>
-            <TextInput
+            <TextField
+              label={t.prescriptionNote}
               value={globalMemo}
               onChangeText={setGlobalMemo}
               editable={isDraftMode && !saving}
               multiline
               placeholder={t.notePlaceholder}
-              style={{
-                minHeight: 80,
-                borderWidth: 1,
-                borderColor: "#ccc",
-                borderRadius: 8,
-                padding: 12,
-                backgroundColor: isDraftMode ? "#fff" : "#f5f5f5",
-                color: globalMemo ? "#333" : "#999",
-                textAlignVertical: "top",
-              }}
             />
-          </View>
 
-          <View style={{ marginTop: 20, gap: 12 }}>
-            <Pressable
+            <Button
+              label={saving ? t.saving : isDraftMode ? t.saveConfirm : t.backToList}
+              icon={isDraftMode ? "checkmark" : "list-outline"}
+              size="lg"
+              fullWidth
               onPress={handlePrimaryAction}
-              style={{
-                padding: 18,
-                backgroundColor: "#007AFF",
-                borderRadius: 12,
-                opacity: saving ? 0.6 : 1,
-              }}
-              disabled={saving}
-            >
-              <Text
-                style={{
-                  color: "#fff",
-                  textAlign: "center",
-                  fontWeight: "800",
-                  fontSize: 18,
-                }}
-              >
-                {saving
-                  ? t.saving
-                  : isDraftMode
-                  ? t.saveConfirm
-                  : t.backToList}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-    </ScreenScrollView>
+              loading={saving}
+              style={styles.primaryButton}
+            />
+          </>
+        )}
+      </KeyboardAwareScroll>
+    </View>
   );
 }
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: { width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" },
+  image: { width: "100%", height: 220, borderRadius: radii.card, backgroundColor: colors.surfaceSunken },
+  loadingBox: { padding: spacing.xxl, alignItems: "center", gap: spacing.md },
+  loadingText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
+  cardGap: { gap: spacing.md },
+  metaBlock: { gap: 2 },
+  metaText: { ...typography.bodySmall },
+  itemName: { ...typography.header, color: colors.primary },
+  itemNameInput: { fontWeight: "600", color: colors.primary, minHeight: 50 },
+  noteInput: { minHeight: 72 },
+  infoRow: { flexDirection: "row", gap: spacing.md, paddingVertical: 3 },
+  infoLabel: { ...typography.bodySmall, color: colors.textMuted, width: 96 },
+  infoValue: { ...typography.bodyStrong, flex: 1 },
+  noteText: { ...typography.bodySmall },
+  noteTextEmpty: { ...typography.bodySmall, color: colors.textMuted },
+  primaryButton: { marginTop: spacing.sm },
+});
 
 export default function GuardedResultScreen() {
   return <PrescriptionWriteGuard><ResultScreen /></PrescriptionWriteGuard>;

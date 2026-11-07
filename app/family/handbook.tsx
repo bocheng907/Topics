@@ -5,25 +5,16 @@ import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { doc, getDocFromServer } from "firebase/firestore";
 import { randomUUID } from "expo-crypto";
 import { handbookForm, legacyVersion, publishHandbook, versionOf } from "@/src/care-target/reliableWrites";
 import { reliabilityCopy } from "@/src/care-target/reliabilityCopy";
 import { HandoverStatus } from "@/src/care-target/HandoverStatus";
 import React, { useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { AppHeader, Button, Card, EmptyState, KeyboardAwareScroll, TextField } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 
 type CareHandbookForm = {
   dailyRoutine: string;
@@ -52,8 +43,8 @@ const EMPTY_FORM: CareHandbookForm = {
 };
 
 export default function FamilyHandbookScreen() {
-  const insets = useSafeAreaInsets();
   const { language } = useLanguage();
+
   const t = translations[language];
   const { user } = useAuth();
   const { ready, activePatient, activePatientId } = useActiveCareTarget();
@@ -198,125 +189,102 @@ export default function FamilyHandbookScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
-    >
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={12}>
-          <Ionicons name="chevron-back" size={28} color="#2F2F2F" />
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-        <Text style={styles.title}>{t.handbook}</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 48 }]}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.introCard}>
-          <Text style={styles.patientName}>{activePatient?.name ?? "—"}</Text>
-          <Text style={styles.description}>{t.handbookDescription}</Text>
-        </View>
+    <View style={styles.screen}>
+      <AppHeader title={t.handbook} left="back" fallbackHref={"/family" as Href} />
+      <KeyboardAwareScroll contentContainerStyle={styles.content}>
+        <Card style={styles.introCard}>
+          <View style={styles.introIcon}>
+            <Ionicons name="book-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.introText}>
+            <Text style={styles.patientName} numberOfLines={2}>{activePatient?.name ?? "—"}</Text>
+            <Text style={styles.description}>{t.handbookDescription}</Text>
+          </View>
+        </Card>
 
         {!ready || loading ? (
-          <ActivityIndicator size="large" color="#F5A623" style={styles.loader} />
+          <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
         ) : loadError ? (
-          <Text style={styles.errorText}>{t.handbookLoadFailed}</Text>
+          <EmptyState icon="cloud-offline-outline" title={t.handbookLoadFailed} />
         ) : !activePatientId ? (
-          <Text style={styles.errorText}>{t.resultNoPatient}</Text>
+          <EmptyState icon="people-outline" title={t.resultNoPatient} />
         ) : (
           <>
-            <Text style={styles.description}>{copy.saveHint}</Text>
-            {(conflict || retryNeeded) && <Text accessibilityRole="alert" style={styles.errorText}>{conflict ? copy.conflict : copy.failed}</Text>}
-            {conflict && <Pressable accessibilityRole="button" onPress={() => Alert.alert(copy.reload, copy.discard,
-              [{ text: t.cancel, style: 'cancel' }, { text: t.confirm, onPress: () => setReload(n => n + 1) }])}>
-              <Text style={styles.errorText}>{copy.reload}</Text>
-            </Pressable>}
-            {fields.map((field) => (
-              <View key={field.key} style={styles.inputCard}>
-                <Text style={styles.fieldLabel}>{field.label}</Text>
-                <TextInput
+            <Text style={styles.hint}>{copy.saveHint}</Text>
+            {(conflict || retryNeeded) ? (
+              <View accessibilityRole="alert" style={styles.alert}>
+                <Ionicons name="alert-circle" size={20} color={colors.danger} />
+                <Text style={styles.alertText}>{conflict ? copy.conflict : copy.failed}</Text>
+              </View>
+            ) : null}
+            {conflict ? (
+              <Button
+                label={copy.reload}
+                icon="refresh"
+                variant="secondary"
+                fullWidth
+                onPress={() => Alert.alert(copy.reload, copy.discard,
+                  [{ text: t.cancel, style: 'cancel' }, { text: t.confirm, onPress: () => setReload(n => n + 1) }])}
+              />
+            ) : null}
+
+            <Card style={styles.fieldsCard}>
+              {fields.map((field) => (
+                <TextField
+                  key={field.key}
+                  label={field.label}
                   value={form[field.key]}
                   onChangeText={(value) => updateField(field.key, value)}
                   placeholder={field.placeholder}
-                  placeholderTextColor="#9CA3AF"
                   multiline
                   editable={!saving && !retryNeeded}
                   maxLength={2000}
-                  textAlignVertical="top"
-                  style={styles.input}
                 />
-              </View>
-            ))}
+              ))}
+            </Card>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.saveButton,
-                (pressed || saving) && styles.saveButtonPressed,
-              ]}
-              onPress={() => void saveHandbook()}
+            <Button
+              label={saving ? t.saving : t.saveHandbook}
+              icon="save-outline"
+              size="lg"
+              fullWidth
+              loading={saving}
               disabled={saving || conflict}
-            >
-              {saving ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Ionicons name="save-outline" size={22} color="#FFFFFF" />
-              )}
-              <Text style={styles.saveButtonText}>{saving ? t.saving : t.saveHandbook}</Text>
-            </Pressable>
+              onPress={() => void saveHandbook()}
+            />
             <HandoverStatus key={activePatientId} patientId={activePatientId} revision={revision} />
           </>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScroll>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F7F7F7" },
-  header: { minHeight: 86, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#E5E7EB", flexWrap: "wrap", gap: 8 },
-  backButton: { flexDirection: "row", alignItems: "center", flexShrink: 1, minHeight: 44, maxWidth: "100%" },
-  backText: { color: "#2F2F2F", fontSize: 16, fontWeight: "600", flexShrink: 1 },
-  title: { fontSize: 22, fontWeight: "800", color: "#242424", flex: 1, minWidth: 0, textAlign: "center" },
-  headerSpacer: { width: 28 },
-  content: { padding: 18 },
-  introCard: {
-    backgroundColor: "#FFF5E3",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#F5C66F",
-    padding: 18,
-    marginBottom: 18,
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: { width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" },
+  introCard: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  introIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  patientName: { fontSize: 22, fontWeight: "800", color: "#8A5400", marginBottom: 8 },
-  description: { fontSize: 15, lineHeight: 22, color: "#604A2A" },
-  loader: { marginVertical: 48 },
-  errorText: { textAlign: "center", color: "#B42318", fontSize: 16, marginVertical: 36 },
-  inputCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E2E4E8",
-    padding: 16,
-    marginBottom: 14,
+  introText: { flex: 1, minWidth: 0, gap: spacing.xs },
+  patientName: { ...typography.title },
+  description: { ...typography.bodySmall },
+  hint: { ...typography.bodySmall, paddingHorizontal: spacing.xs },
+  loader: { marginVertical: spacing.xxxl },
+  alert: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.control,
+    backgroundColor: colors.dangerSoft,
   },
-  fieldLabel: { fontSize: 17, fontWeight: "700", color: "#333333", marginBottom: 10 },
-  input: {
-    minHeight: 92,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#D9DCE1",
-    backgroundColor: "#FAFAFA",
-    paddingHorizontal: 13,
-    paddingVertical: 12,
-    fontSize: 16,
-    lineHeight: 23,
-    color: "#222222",
-  },
-  saveButton: { minHeight: 56, borderRadius: 14, backgroundColor: "#F5A623", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 8, paddingHorizontal: 12, paddingVertical: 12 },
-  saveButtonPressed: { opacity: 0.68 },
-  saveButtonText: { color: "#FFFFFF", fontSize: 18, fontWeight: "800", flexShrink: 1, textAlign: "center" },
+  alertText: { ...typography.body, color: colors.danger, flex: 1 },
+  fieldsCard: { gap: spacing.xl },
 });

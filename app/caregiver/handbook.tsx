@@ -5,10 +5,12 @@ import { versionOf } from "@/src/care-target/reliableWrites";
 import { translations, type Language } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import type { Href } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppHeader, Card, Divider, EmptyState, type IconName } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type CareHandbookForm = {
@@ -30,7 +32,8 @@ type CareHandbookDocument = CareHandbookForm & {
 };
 
 type HandbookField = keyof CareHandbookForm;
-type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
+type IoniconName = IconName;
+
 
 const EMPTY_HANDBOOK: CareHandbookDocument = {
   patientId: "",
@@ -140,51 +143,44 @@ export default function CaregiverHandbookScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={12}>
-          <Ionicons name="chevron-back" size={28} color="#163B3C" />
-          <Text style={styles.backText}>{t.back}</Text>
-        </Pressable>
-        <Text style={styles.title}>{t.handbook}</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 48 }]}>
-        <View style={styles.introCard}>
-          <Text style={styles.patientName}>{activePatient?.name ?? "—"}</Text>
-          <Text style={styles.description}>{t.handbookCaregiverDescription}</Text>
-        </View>
+      <AppHeader title={t.handbook} left="back" fallbackHref={"/caregiver" as Href} />
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxxl }]}>
+        <Card style={styles.introCard}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="book-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.introText}>
+            <Text style={styles.patientName} numberOfLines={2}>{activePatient?.name ?? "—"}</Text>
+            <Text style={styles.description}>{t.handbookCaregiverDescription}</Text>
+          </View>
+        </Card>
 
         {!ready || loading ? (
-          <ActivityIndicator size="large" color="#2A9D8F" style={styles.loader} />
+          <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
         ) : loadError ? (
-          <View style={styles.stateCard}>
-            <Ionicons name="cloud-offline-outline" size={42} color="#B42318" />
-            <Text style={styles.errorText}>{t.handbookLoadFailed}</Text>
-          </View>
+          <Card><EmptyState icon="cloud-offline-outline" title={t.handbookLoadFailed} /></Card>
         ) : !activePatientId ? (
-          <View style={styles.stateCard}>
-            <Text style={styles.errorText}>{t.resultNoPatient}</Text>
-          </View>
+          <Card><EmptyState icon="people-outline" title={t.resultNoPatient} /></Card>
         ) : visibleCategories.length === 0 ? (
-          <View style={styles.stateCard}>
-            <Ionicons name="book-outline" size={48} color="#6B8E8C" />
-            <Text style={styles.emptyTitle}>{t.handbookEmptyTitle}</Text>
-            <Text style={styles.emptyMessage}>{t.handbookEmptyMessage}</Text>
-          </View>
+          <Card><EmptyState icon="book-outline" title={t.handbookEmptyTitle} body={t.handbookEmptyMessage} /></Card>
         ) : (
           <>
-            {visibleCategories.map(({ key, label, icon }) => (
-              <View key={key} style={styles.categoryCard}>
-                <View style={styles.iconCircle}>
-                  <Ionicons name={icon} size={25} color="#18766D" />
+            <Card padding={0}>
+              {visibleCategories.map(({ key, label, icon }, index) => (
+                <View key={key}>
+                  {index > 0 ? <Divider inset={spacing.lg + 40 + spacing.md} /> : null}
+                  <View style={styles.category}>
+                    <View style={styles.iconCircle}>
+                      <Ionicons name={icon} size={22} color={colors.primary} />
+                    </View>
+                    <View style={styles.categoryText}>
+                      <Text style={styles.categoryTitle} accessibilityRole="header">{label}</Text>
+                      <Text style={styles.categoryContent} selectable>{handbook[key]}</Text>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.categoryText}>
-                  <Text style={styles.categoryTitle}>{label}</Text>
-                  <Text style={styles.categoryContent}>{handbook[key]}</Text>
-                </View>
-              </View>
-            ))}
+              ))}
+            </Card>
             {updatedDate && (
               <Text style={styles.updatedText}>
                 {t.lastUpdated}: {updatedDate.toLocaleString(localeByLanguage[language])}
@@ -200,56 +196,30 @@ export default function CaregiverHandbookScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F2F7F6" },
-  header: { minHeight: 86, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#DDE8E6", flexWrap: "wrap", gap: 8 },
-  backButton: { flexDirection: "row", alignItems: "center", flexShrink: 1, minHeight: 44, maxWidth: "100%" },
-  backText: { color: "#163B3C", fontSize: 16, fontWeight: "600", flexShrink: 1 },
-  title: { color: "#163B3C", fontSize: 22, fontWeight: "800", flex: 1, minWidth: 0, textAlign: "center" },
-  headerSpacer: { width: 28 },
-  content: { padding: 18 },
-  introCard: {
-    backgroundColor: "#DDF3EF",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#A9DAD3",
-    padding: 18,
-    marginBottom: 18,
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: {
+    padding: layout.screenPaddingX,
+    gap: spacing.lg,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
-  patientName: { color: "#135E57", fontSize: 22, fontWeight: "800", marginBottom: 8 },
-  description: { color: "#315F5C", fontSize: 15, lineHeight: 22 },
-  loader: { marginVertical: 48 },
-  stateCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 30,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#DDE8E6",
-  },
-  errorText: { color: "#B42318", textAlign: "center", fontSize: 16, marginTop: 12 },
-  emptyTitle: { color: "#244E4B", fontSize: 19, fontWeight: "800", marginTop: 14 },
-  emptyMessage: { color: "#607572", fontSize: 15, lineHeight: 22, textAlign: "center", marginTop: 7 },
-  categoryCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#DDE8E6",
-    padding: 16,
-    marginBottom: 13,
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
+  introCard: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  introText: { flex: 1, minWidth: 0, gap: spacing.xs },
+  patientName: { ...typography.title },
+  description: { ...typography.bodySmall },
+  loader: { marginVertical: spacing.xxxl },
   iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#DDF3EF",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 13,
   },
-  categoryText: { flex: 1 },
-  categoryTitle: { color: "#1E4C48", fontSize: 17, fontWeight: "800", marginBottom: 7 },
-  categoryContent: { color: "#334B49", fontSize: 16, lineHeight: 24 },
-  updatedText: { color: "#6A7D7B", fontSize: 13, textAlign: "center", marginTop: 10 },
+  category: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, padding: spacing.lg },
+  categoryText: { flex: 1, minWidth: 0, gap: spacing.xs },
+  categoryTitle: { ...typography.bodyStrong, color: colors.textSecondary },
+  categoryContent: { ...typography.body },
+  updatedText: { ...typography.caption, textAlign: "center" },
 });

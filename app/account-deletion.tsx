@@ -3,76 +3,20 @@ import { AppAlert as Alert } from "@/src/ui/AppAlert";
 import { signOut } from "@/src/auth/auditSession";
 import { useAuth } from "@/src/auth/useAuth";
 import { useLanguage } from "@/src/store/LanguageContext";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { httpsCallable } from "firebase/functions";
 import { reauthenticateUser, requiresPasswordReauthentication } from "@/src/auth/reauthenticate";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { accountDeletionCopy } from "@/src/i18n/copy/accountCopy";
+import { AppHeader, Button, Card, Divider, KeyboardAwareScroll, SectionHeader, StatusBadge, TextField, type IconName } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
+import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-
-const copy = {
-  zh: {
-    title: "刪除帳號",
-    pendingTitle: "帳號已排定刪除",
-    warning: "重新驗證後，帳號會進入 30 天緩衝期並立即登出。到期後將刪除帳號、個人資料與本人建立或上傳的內容；其他成員的共享照護資料會保留。",
-    pending: "在刪除日前可重新驗證並取消。緩衝期內登入只會看到此頁。",
-    scheduled: "預計刪除時間",
-    password: "請輸入目前密碼以重新驗證",
-    request: "確認申請刪除",
-    cancelDeletion: "取消帳號刪除",
-    back: "返回",
-    authFailed: "重新驗證失敗，請確認密碼後再試。",
-    requestDone: "刪除申請已建立，帳號將在 30 天後刪除。",
-    cancelDone: "已取消帳號刪除，請重新登入。",
-    failed: "操作失敗，請稍後再試。",
-  },
-  en: {
-    title: "Delete account", pendingTitle: "Account scheduled for deletion",
-    warning: "After verification, your account enters a 30-day grace period and you are signed out. Your account, personal data, and uploaded media are then deleted. Shared care data remains available to other members.",
-    pending: "You can verify again and cancel before the deletion date. During the grace period, sign-in only opens this page.",
-    scheduled: "Scheduled deletion", password: "Enter your current password",
-    request: "Schedule account deletion", cancelDeletion: "Cancel deletion",
-    back: "Back", authFailed: "Verification failed. Check your password.",
-    requestDone: "Deletion scheduled for 30 days from now.",
-    cancelDone: "Deletion cancelled. Please sign in again.",
-    failed: "The operation failed. Please try again.",
-  },
-  vi: {
-    title: "Xóa tài khoản", pendingTitle: "Tài khoản đã được lên lịch xóa",
-    warning: "Sau khi xác minh, tài khoản sẽ có thời gian chờ 30 ngày và bạn sẽ đăng xuất. Sau đó tài khoản, dữ liệu cá nhân và tệp tải lên sẽ bị xóa; dữ liệu chăm sóc dùng chung vẫn được giữ lại.",
-    pending: "Bạn có thể xác minh lại và hủy trước ngày xóa.",
-    scheduled: "Thời gian dự kiến xóa", password: "Nhập mật khẩu hiện tại",
-    request: "Xác nhận xóa tài khoản", cancelDeletion: "Hủy xóa tài khoản",
-    back: "Quay lại", authFailed: "Xác minh thất bại. Vui lòng kiểm tra mật khẩu.",
-    requestDone: "Đã lên lịch xóa tài khoản sau 30 ngày.",
-    cancelDone: "Đã hủy xóa. Vui lòng đăng nhập lại.",
-    failed: "Thao tác thất bại. Vui lòng thử lại.",
-  },
-  id: {
-    title: "Hapus akun", pendingTitle: "Akun dijadwalkan untuk dihapus",
-    warning: "Setelah verifikasi, akun masuk masa tenggang 30 hari dan Anda akan keluar. Setelah itu akun, data pribadi, dan media unggahan dihapus; data perawatan bersama tetap tersedia bagi anggota lain.",
-    pending: "Anda dapat memverifikasi ulang dan membatalkan sebelum tanggal penghapusan.",
-    scheduled: "Jadwal penghapusan", password: "Masukkan kata sandi saat ini",
-    request: "Jadwalkan penghapusan", cancelDeletion: "Batalkan penghapusan",
-    back: "Kembali", authFailed: "Verifikasi gagal. Periksa kata sandi Anda.",
-    requestDone: "Penghapusan dijadwalkan 30 hari dari sekarang.",
-    cancelDone: "Penghapusan dibatalkan. Silakan masuk kembali.",
-    failed: "Operasi gagal. Silakan coba lagi.",
-  },
-};
+import { StyleSheet, Text, View } from "react-native";
 
 export default function AccountDeletionScreen() {
   const {user} = useAuth();
   const {language} = useLanguage();
-  const t = copy[language];
+  const t = accountDeletionCopy[language];
   const pending = user?.accountStatus === "pending_deletion";
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -109,60 +53,126 @@ export default function AccountDeletionScreen() {
     }
   }
 
+  const facts: { icon: IconName; title: string; body: string }[] = [
+    { icon: "time-outline", title: t.graceTitle, body: t.graceBody },
+    { icon: "log-out-outline", title: t.signOutTitle, body: t.signOutBody },
+    { icon: "trash-outline", title: t.deletedTitle, body: t.deletedBody },
+    { icon: "people-outline", title: t.keptTitle, body: t.keptBody },
+  ];
+  const submitDisabled = busy || (passwordRequired && !password);
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>{pending ? t.pendingTitle : t.title}</Text>
-        <View style={styles.warningBox}>
-          <Text style={styles.warningText}>{pending ? t.pending : t.warning}</Text>
-          {pending && scheduled ? (
-            <Text style={styles.scheduled}>{t.scheduled}：{scheduled}</Text>
+    <View style={styles.screen}>
+      {/* Pending accounts can only reach this page, so there is nowhere to go back to. */}
+      <AppHeader
+        title={pending ? t.pendingTitle : t.title}
+        left={pending ? "none" : "back"}
+        fallbackHref={"/" as Href}
+        onBack={busy ? () => {} : undefined}
+      />
+      <KeyboardAwareScroll contentContainerStyle={styles.content}>
+        {pending ? (
+          <>
+            <Card style={styles.pendingCard}>
+              <StatusBadge label={t.pendingBadge} tone="warning" icon="time-outline" />
+              <Text style={styles.body}>{t.pending}</Text>
+            </Card>
+            {scheduled ? (
+              <Card padding={0} style={styles.block}>
+                <View style={styles.scheduledRow}>
+                  <Text style={styles.scheduledLabel}>{t.scheduled}</Text>
+                  <Text style={styles.scheduledValue}>{scheduled}</Text>
+                </View>
+              </Card>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <SectionHeader title={t.beforeSection} style={styles.firstSection} />
+            <Card padding={0}>
+              {facts.map((fact, index) => (
+                <View key={fact.title}>
+                  {index > 0 ? <Divider inset={spacing.lg + 36 + spacing.md} /> : null}
+                  <View style={styles.fact}>
+                    <View style={styles.factIcon}>
+                      <Ionicons name={fact.icon} size={20} color={colors.textSecondary} />
+                    </View>
+                    <View style={styles.factText}>
+                      <Text style={styles.factTitle}>{fact.title}</Text>
+                      <Text style={styles.factBody}>{fact.body}</Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </Card>
+          </>
+        )}
+
+        <SectionHeader title={t.verifySection} />
+        <Card style={styles.verifyCard}>
+          {passwordRequired ? (
+            <TextField
+              label={t.password}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              editable={!busy}
+            />
+          ) : (
+            <Text style={styles.body}>{t.verifyHintOther}</Text>
+          )}
+        </Card>
+
+        <View style={styles.actions}>
+          {/* Danger colour is reserved for the one irreversible action; cancelling a deletion is restorative. */}
+          <Button
+            label={pending ? t.cancelDeletion : t.request}
+            variant={pending ? "primary" : "danger"}
+            size="lg"
+            fullWidth
+            loading={busy}
+            disabled={submitDisabled}
+            onPress={submit}
+          />
+          {!pending ? (
+            <Button
+              label={t.keepAccount}
+              variant="secondary"
+              size="lg"
+              fullWidth
+              disabled={busy}
+              onPress={() => router.back()}
+            />
           ) : null}
         </View>
-        {passwordRequired && <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder={t.password}
-          secureTextEntry
-          autoCapitalize="none"
-          editable={!busy}
-          style={styles.input}
-        />}
-        <Pressable
-          onPress={submit}
-          disabled={busy || (passwordRequired && !password)}
-          style={[styles.primary,
-            (busy || (passwordRequired && !password)) && styles.disabled]}
-        >
-          {busy ? <ActivityIndicator color="#fff" /> : (
-            <Text style={styles.primaryText}>
-              {pending ? t.cancelDeletion : t.request}
-            </Text>
-          )}
-        </Pressable>
-        {!pending ? (
-          <Pressable onPress={() => router.back()} style={styles.back}>
-            <Text style={styles.backText}>{t.back}</Text>
-          </Pressable>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
+      </KeyboardAwareScroll>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {flex: 1, backgroundColor: "#fff"},
-  content: { padding: 24, paddingTop: 24, gap: 20 },
-  title: {fontSize: 28, fontWeight: "900", color: "#161616"},
-  warningBox: {backgroundColor: "#FFF1F1", borderColor: "#E33B3B",
-    borderWidth: 1, borderRadius: 12, padding: 16, gap: 12},
-  warningText: {fontSize: 16, lineHeight: 24, color: "#6B1F1F"},
-  scheduled: {fontSize: 16, fontWeight: "800", color: "#8B1D1D"},
-  input: {borderWidth: 1, borderColor: "#B8B8B8", borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 14, fontSize: 16},
-  primary: { backgroundColor: "#C92A2A", minHeight: 52, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 16, paddingVertical: 14 },
-  disabled: {opacity: 0.45},
-  primaryText: { color: "#fff", fontSize: 17, fontWeight: "800", textAlign: "center", width: "100%" },
-  back: {minHeight: 48, alignItems: "center", justifyContent: "center"},
-  backText: {fontSize: 16, color: "#444", fontWeight: "700"},
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  content: { gap: 0, width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" },
+  firstSection: { paddingTop: spacing.sm },
+  body: { ...typography.body },
+  pendingCard: { gap: spacing.md },
+  block: { marginTop: spacing.lg },
+  scheduledRow: { padding: spacing.lg, gap: spacing.xs },
+  scheduledLabel: { ...typography.bodySmall },
+  scheduledValue: { ...typography.header },
+  fact: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, padding: spacing.lg },
+  factIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceSunken,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  factText: { flex: 1, gap: 2 },
+  factTitle: { ...typography.bodyStrong },
+  factBody: { ...typography.bodySmall },
+  verifyCard: { gap: spacing.md },
+  actions: { marginTop: spacing.xl, gap: spacing.md },
 });

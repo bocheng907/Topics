@@ -1,3 +1,4 @@
+import { colors } from "@/src/ui/theme";
 import { Stack } from "expo-router";
 
 import { translations } from "@/src/i18n/translations";
@@ -14,6 +15,7 @@ export default function CareTargetLayout() {
         headerTitleAlign: "center",
         gestureEnabled: false,
         headerLeft: () => null,
+        contentStyle: { backgroundColor: colors.canvas },
       }}
     >
       <Stack.Screen name="select" options={{ title: t.selectCareTarget, headerLeft: () => null }} />

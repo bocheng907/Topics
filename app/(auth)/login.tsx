@@ -1,18 +1,22 @@
 // app/(auth)/login.tsx
-import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import { userErrorMessage } from "@/src/ui/userErrorMessages";
 import { useAuth } from "@/src/auth/useAuth";
 import { PrivacyPolicyLink } from "@/src/privacy/PrivacyPolicyLink";
 import { translations } from "@/src/i18n/translations";
+import { authCopy } from "@/src/i18n/copy/authCopy";
 import { useLanguage } from "@/src/store/LanguageContext";
+import { Button, KeyboardAwareScroll, TextField } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
 import { router, Stack } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function LoginScreen() {
   const { login } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
+  const c = authCopy[language];
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,11 +33,7 @@ export default function LoginScreen() {
     try {
       setLoading(true);
       await login(email, password);
-      
-      // 💡 登入成功後，跳轉到根目錄的轉運站 (app/index.tsx)
-      // 轉運站會自動根據使用者的身分 (role)，派發到 /family 或 /caregiver 的主畫面
-      //router.replace("/");
-      
+      // After sign-in, app/_layout.tsx redirects to "/" which routes by role.
     } catch (e: unknown) {
       const message = userErrorMessage(e, "login", language);
       setErrorMessage(message);
@@ -44,82 +44,83 @@ export default function LoginScreen() {
   }
 
   return (
-    <ScreenScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ flexGrow: 1, padding: 24, backgroundColor: "#FFF", justifyContent: "center" }}>
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       <Stack.Screen options={{ headerShown: false }} />
-      
-      <View style={{ marginBottom: 40 }}>
-        <Text style={{ fontSize: 36, fontWeight: "900", color: "#333" }}>{t.welcomeBack}</Text>
-        <Text style={{ fontSize: 16, color: "#666", marginTop: 8 }}>{t.loginSubtitle}</Text>
-      </View>
+      <KeyboardAwareScroll contentContainerStyle={styles.scroll}>
+        <View style={styles.column}>
+          <View style={styles.heading}>
+            <Text style={styles.title} accessibilityRole="header">{t.welcomeBack}</Text>
+            <Text style={styles.subtitle}>{t.loginSubtitle}</Text>
+          </View>
 
-      <View style={{ gap: 16 }}>
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontSize: 14, fontWeight: "800", color: "#666", marginLeft: 4 }}>EMAIL</Text>
-          <TextInput
-            placeholder={t.emailPlaceholder}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-            style={{ 
-              backgroundColor: "#F2F2F7", 
-              borderRadius: 14, 
-              padding: 16, 
-              fontSize: 16,
-              borderWidth: 1,
-              borderColor: "#EEE"
-            }}
-          />
+          <View style={styles.form}>
+            <TextField
+              label={c.emailLabel}
+              placeholder={t.emailPlaceholder}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              textContentType="emailAddress"
+              autoComplete="email"
+              value={email}
+              onChangeText={setEmail}
+              editable={!loading}
+              returnKeyType="next"
+            />
+            <TextField
+              label={t.password}
+              placeholder={t.passwordPlaceholder}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="password"
+              autoComplete="password"
+              value={password}
+              onChangeText={setPassword}
+              editable={!loading}
+              returnKeyType="go"
+              onSubmitEditing={onLogin}
+            />
+
+            {!!errorMessage && (
+              <Text accessibilityRole="alert" style={styles.error}>{errorMessage}</Text>
+            )}
+
+            <Button label={t.loginNow} size="lg" fullWidth loading={loading} onPress={onLogin} style={styles.submit} />
+          </View>
+
+          <View style={styles.footer}>
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => router.push("/(auth)/register")}
+              style={({ pressed }) => [styles.switchLink, pressed && styles.pressed]}
+            >
+              <Text style={styles.switchText}>
+                {t.noAccount}
+                <Text style={styles.switchAction}>{t.goRegister}</Text>
+              </Text>
+            </Pressable>
+            <PrivacyPolicyLink />
+          </View>
         </View>
-
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontSize: 14, fontWeight: "800", color: "#666", marginLeft: 4 }}>{t.password}</Text>
-          <TextInput
-            placeholder={t.passwordPlaceholder}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            style={{ 
-              backgroundColor: "#F2F2F7", 
-              borderRadius: 14, 
-              padding: 16, 
-              fontSize: 16,
-              borderWidth: 1,
-              borderColor: "#EEE"
-            }}
-          />
-        </View>
-
-        {!!errorMessage && <Text accessibilityRole="alert" style={{ color: "#B42318", fontSize: 15 }}>{errorMessage}</Text>}
-        <Pressable
-          accessibilityRole="button"
-          onPress={onLogin}
-          disabled={loading}
-          style={({ pressed }) => ({
-            marginTop: 20,
-            padding: 18,
-            borderRadius: 16,
-            backgroundColor: loading ? "#CCC" : "#007AFF",
-            alignItems: "center",
-            opacity: pressed ? 0.8 : 1,
-          })}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={{ color: "#FFF", fontSize: 18, fontWeight: "900" }}>{t.loginNow}</Text>
-          )}
-        </Pressable>
-      </View>
-
-      <View style={{ marginTop: 32, alignItems: "center" }}>
-        <PrivacyPolicyLink />
-        <Pressable onPress={() => router.push("/(auth)/register")}>
-          <Text style={{ color: "#666", fontSize: 15, fontWeight: "600" }}>
-            {t.noAccount}<Text style={{ color: "#007AFF", fontWeight: "900" }}>{t.goRegister}</Text>
-          </Text>
-        </Pressable>
-      </View>
-    </ScreenScrollView>
+      </KeyboardAwareScroll>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  scroll: { flexGrow: 1, justifyContent: "center", paddingHorizontal: spacing.xl, paddingTop: spacing.xxl },
+  column: { width: "100%", maxWidth: 480, alignSelf: "center" },
+  heading: { gap: spacing.sm, marginBottom: spacing.xxl },
+  title: { ...typography.display },
+  subtitle: { ...typography.body, color: colors.textSecondary },
+  form: { gap: spacing.lg },
+  error: { ...typography.bodySmall, color: colors.danger, fontWeight: "600" },
+  submit: { marginTop: spacing.sm },
+  footer: { marginTop: spacing.xl, alignItems: "center", gap: spacing.xs },
+  switchLink: { minHeight: layout.minTouchTarget, justifyContent: "center", paddingHorizontal: spacing.md },
+  switchText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
+  switchAction: { color: colors.primary, fontWeight: "700" },
+  pressed: { opacity: 0.6 },
+});

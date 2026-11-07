@@ -1,7 +1,6 @@
-import { ScreenScrollView } from "@/src/ui/ScreenLayout";
 import React, { useMemo, useState } from "react";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/src/auth/useAuth";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
@@ -12,6 +11,8 @@ import JoinRequests from "@/src/care-target/JoinRequests";
 import { invitationCopy } from "@/src/care-target/invitationCopy";
 import { inviteErrorMessage } from "@/src/care-target/inviteFeedback";
 import { joinNavigationCopy } from "@/src/care-target/joinNavigationCopy";
+import { AppHeader, Button, KeyboardAwareScroll, TextField } from "@/src/ui/components";
+import { colors, layout, spacing, typography } from "@/src/ui/theme";
 
 export default function CareTargetJoinScreen() {
   const { user } = useAuth();
@@ -82,68 +83,65 @@ export default function CareTargetJoinScreen() {
     }
   };
 
-  return (
-    <ScreenScrollView contentContainerStyle={{ padding: 24, paddingTop: 20, gap: 24 }}>
-      <JoinRequests />
-      <View style={{ gap: 8 }}>
-        <Text style={{ fontSize: 28, fontWeight: "900" }}>{t.joinCareTarget}</Text>
-        <Text style={{ fontSize: 16, color: "#666" }}>{t.askInviteCode}</Text>
-        <Text style={{ color: "#666" }}>{invitationCopy[language].validity}</Text>
-      </View>
+  const leaveTarget = user?.role === "caregiver" ? "/caregiver" : "/";
 
-      <View style={{ gap: 12 }}>
-        <TextInput
+  return (
+    <View style={styles.container}>
+      <AppHeader title={t.joinCareTarget} left="back" fallbackHref={leaveTarget as any} />
+      <KeyboardAwareScroll contentContainerStyle={styles.content}>
+        <View style={styles.intro}>
+          <Text style={styles.lead}>{t.askInviteCode}</Text>
+          <Text style={styles.helper}>{invitationCopy[language].validity}</Text>
+        </View>
+
+        <TextField
+          label={t.inviteCode}
           value={code}
           maxLength={8}
           onChangeText={setCode}
           placeholder={t.inviteCodePlaceholder}
           autoCapitalize="characters"
-          style={{
-            borderWidth: 1,
-            borderColor: "#007AFF",
-            borderRadius: 12,
-            padding: 20,
-            fontSize: 24,
-            fontWeight: "800",
-            textAlign: "center",
-            letterSpacing: 4,
-            backgroundColor: "#F9FBFF",
+          autoCorrect={false}
+          returnKeyType="go"
+          onSubmitEditing={() => { if (canSubmit) void onJoin(); }}
+          inputStyle={styles.codeInput}
+        />
+
+        <Button label={t.joinNow} size="lg" fullWidth loading={busy} disabled={!canSubmit} onPress={onJoin} />
+
+        <Button
+          label={user?.role === "caregiver" ? joinNavigationCopy[language].later : joinNavigationCopy[language].home}
+          variant="ghost"
+          fullWidth
+          disabled={busy}
+          onPress={() => {
+            router.replace(leaveTarget);
           }}
         />
-      </View>
 
-      <Pressable
-        onPress={onJoin}
-        disabled={!canSubmit}
-        style={{ backgroundColor: canSubmit ? "#007AFF" : "#CCC", padding: 18, borderRadius: 12 }}
-      >
-        <Text style={{ color: "#FFF", textAlign: "center", fontWeight: "900", fontSize: 18 }}>
-          {t.joinNow}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        disabled={busy}
-        onPress={() => {
-          router.replace(user?.role === "caregiver" ? "/caregiver" : "/");
-        }}
-        style={({ pressed }) => ({
-          marginTop: 10,
-          padding: 12,
-          opacity: pressed ? 0.6 : 1,
-        })}
-      >
-        <Text
-          style={{
-            color: "#666",
-            textAlign: "center",
-            fontWeight: "700",
-            fontSize: 16,
-          }}
-        >
-          {user?.role === "caregiver" ? joinNavigationCopy[language].later : joinNavigationCopy[language].home}
-        </Text>
-      </Pressable>
-    </ScreenScrollView>
+        <JoinRequests />
+      </KeyboardAwareScroll>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.canvas },
+  content: {
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+    gap: spacing.lg,
+  },
+  intro: { gap: spacing.xs },
+  lead: { ...typography.body },
+  helper: { ...typography.bodySmall },
+  codeInput: {
+    fontSize: 24,
+    lineHeight: 32,
+    fontWeight: "700",
+    textAlign: "center",
+    letterSpacing: 4,
+    minHeight: 60,
+  },
+});

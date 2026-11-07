@@ -174,3 +174,62 @@ describe("likes, views, comments, reports", () => {
     await assertFails(getDoc(doc(authed(env, FAM), "reports", reportId(POST, FAM))));
   });
 });
+
+describe("author avatar snapshot (authorAvatarUrl)", () => {
+  const AVATAR = "https://firebasestorage.googleapis.com/v0/b/x/o/avatars%2Fa.jpg?alt=media&token=t";
+  const BAD = [
+    "https://evil.example.com/a.jpg",
+    "http://firebasestorage.googleapis.com/v0/b/x/o/a.jpg",
+    "http://127.0.0.1:9199/v0/b/x/o/a.jpg",
+    "https://firebasestorage.googleapis.com.evil.com/a.jpg",
+    "https://firebasestorage.googleapis.com/" + "a".repeat(2048),
+    42,
+  ];
+  const COMMENT = "2026-10-18_10-01-00-000_comment_family00";
+
+  function commentBatch(db, author, id, extra = {}) {
+    const batch = writeBatch(db);
+    batch.set(doc(db, "posts", POST, "comments", id), {
+      postId: POST, content: "謝謝分享", authorUid: author, authorName: "王小明", createdAt: serverTimestamp(),
+      likeCount: 0, ...extra,
+    });
+    batch.update(doc(db, "posts", POST), { commentCount: increment(1), lastCommentId: id });
+    return batch.commit();
+  }
+
+  test("post create accepts a Storage URL or empty string; rejects wrong prefix / too long / non-string", async () => {
+    const fam = authed(env, FAM);
+    await assertSucceeds(setDoc(doc(fam, "posts", POST), newPost(FAM, { authorAvatarUrl: AVATAR })));
+    await assertSucceeds(setDoc(doc(fam, "posts", "empty_avatar"), newPost(FAM, { authorAvatarUrl: "" })));
+    for (const [i, bad] of BAD.entries()) {
+      await assertFails(setDoc(doc(fam, "posts", `bad_${i}`), newPost(FAM, { authorAvatarUrl: bad })));
+    }
+  });
+
+  test("author edits keep it unchanged; nobody can change it afterwards", async () => {
+    await seedPost(FAM, { authorAvatarUrl: AVATAR });
+    const fam = authed(env, FAM);
+    await assertSucceeds(updateDoc(doc(fam, "posts", POST), {
+      title: "新標題", content: "新內容", preview: "新內容", updatedAt: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(fam, "posts", POST), { authorAvatarUrl: "", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(authed(env, OTHER), "posts", POST), { authorAvatarUrl: "" }));
+    const db = authed(env, OTHER);
+    const batch = writeBatch(db);
+    batch.set(doc(db, "posts", POST, "likes", OTHER), { createdAt: serverTimestamp() });
+    batch.update(doc(db, "posts", POST), { likeCount: increment(1), authorAvatarUrl: "" });
+    await assertFails(batch.commit());
+  });
+
+  test("comment create accepts a Storage URL or empty string; rejects bad values; comments stay immutable", async () => {
+    await seedPost();
+    const fam = authed(env, FAM);
+    await assertSucceeds(commentBatch(fam, FAM, COMMENT, { authorAvatarUrl: AVATAR }));
+    await assertSucceeds(commentBatch(fam, FAM, "2026-10-18_10-02-00-000_comment_family00", { authorAvatarUrl: "" }));
+    for (const [i, bad] of BAD.entries()) {
+      await assertFails(commentBatch(fam, FAM, `2026-10-18_10-03-0${i}-000_comment_family00`, { authorAvatarUrl: bad }));
+    }
+    await assertFails(updateDoc(doc(fam, "posts", POST, "comments", COMMENT), { authorAvatarUrl: "" }));
+    await assertFails(updateDoc(doc(authed(env, OTHER), "posts", POST, "comments", COMMENT), { authorAvatarUrl: "" }));
+  });
+});

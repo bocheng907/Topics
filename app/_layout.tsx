@@ -6,6 +6,7 @@ import { registerForPushToken } from "@/src/notifications/registerForPushToken";
 import { LanguageProvider } from "@/src/store/LanguageContext";
 import { StoreProvider } from "@/src/store/StoreProvider";
 import { ClientOnly } from "@/src/ui/ClientOnly";
+import { colors } from "@/src/ui/theme";
 import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
 import { useEffect } from "react";
 
@@ -22,12 +23,15 @@ function RootLayoutNav() {
 
     const inAuthGroup = segments[0] === "(auth)";
     const inAccountDeletion = segments[0] === "account-deletion";
+    // Dev-only design-system pages (app/dev/*) are reachable while logged out.
+    // __DEV__ is false in production builds, so this never relaxes auth there.
+    const inDevTools = __DEV__ && segments[0] === "dev";
 
     if (user?.accountStatus === "pending_deletion" && !inAccountDeletion) {
       router.replace("/account-deletion" as any);
     } else if (user && inAuthGroup) {
       router.replace("/");
-    } else if (!user && !inAuthGroup) {
+    } else if (!user && !inAuthGroup && !inDevTools) {
       router.replace("/(auth)/login");
     }
   }, [user, segments, isNavigationReady, router]);
@@ -51,6 +55,7 @@ function RootLayoutNav() {
         headerTitleAlign: "center",
         headerShown: false,
         gestureEnabled: false,
+        contentStyle: { backgroundColor: colors.canvas },
       }}
     >
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />

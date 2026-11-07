@@ -16,6 +16,8 @@ export type PostAuthor = {
   name: string;
   /** 舊文章、舊留言沒有存身分，顯示時就不出現標籤 */
   role?: CommunityAuthorRole;
+  /** 發文／留言當下存的頭像網址；舊資料沒有，顯示時退回字首頭像 */
+  avatarUrl?: string;
 };
 
 export type Post = {

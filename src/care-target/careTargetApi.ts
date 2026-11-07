@@ -18,7 +18,11 @@ export const leaveCareTarget = httpsCallable<
 
 export type InvitationState = { code: string; status: string; expiresAt: number;
   requestId: string; role: string; applicantUid: string;
-  secondaryFamilyUids: string[] };
+  secondaryFamilyUids: string[];
+  // 新版後端才有；舊版部署時為 undefined
+  applicant?: InvitationMemberIdentity;
+  secondaryFamilyProfiles?: (InvitationMemberIdentity & { uid: string })[] };
+export type InvitationMemberIdentity = { displayName: string; avatarUrl: string; role: string };
 export const manageInvitation = httpsCallable<
   { patientId: string; action: "get" | "regenerate" | "revoke" | "approve" |
     "reject" | "transfer"; requestId?: string; targetUid?: string },

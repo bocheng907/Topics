@@ -45,8 +45,8 @@ const REPORTS_COLLECTION = "reports";
 
 /** 檢舉達到這個次數，文章自動隱藏（規劃書 4-1） */
 export const AUTO_HIDE_REPORT_COUNT = 3;
-/** 文章不存在時的錯誤訊息，畫面可用它分辨是不是被刪除 */
-const POST_NOT_FOUND = "找不到這篇文章";
+/** 文章不存在時的錯誤代碼（不直接顯示給使用者），畫面可用它分辨是不是被刪除 */
+const POST_NOT_FOUND = "community/post-not-found";
 /** 同一使用者對同一篇文章，這段時間內只計一次觀看（規劃書 3-3） */
 const VIEW_DEDUPE_MS = 24 * 60 * 60 * 1000;
 /** 列表單次最多撈幾筆，避免資料量成長後一次讀太多 */
@@ -78,6 +78,25 @@ export function communityAuthorRole(role?: string | null): CommunityAuthorRole |
   return toAuthorRole(role);
 }
 
+/** 與 firestore.rules 的 validAuthorAvatarUrl 一致：Firebase Storage 下載網址、長度上限 2048 */
+const AUTHOR_AVATAR_PREFIX = "https://firebasestorage.googleapis.com/";
+const AUTHOR_AVATAR_MAX_LENGTH = 2048;
+
+/**
+ * 寫入前整理作者頭像網址：不符合規則（例如模擬器的 http://127.0.0.1 網址）就存空字串，
+ * 避免整篇文章／留言因頭像欄位被 Rules 拒絕
+ */
+export function sanitizeAuthorAvatarUrl(url?: string | null): string {
+  const trimmed = (url ?? "").trim();
+  if (trimmed.length > AUTHOR_AVATAR_MAX_LENGTH || /\s/.test(trimmed)) return "";
+  return trimmed.startsWith(AUTHOR_AVATAR_PREFIX) ? trimmed : "";
+}
+
+function toAuthorAvatarUrl(value: unknown): string | undefined {
+  const url = typeof value === "string" ? sanitizeAuthorAvatarUrl(value) : "";
+  return url || undefined;
+}
+
 function toPost(id: string, data: Record<string, unknown>): Post {
   return {
     id,
@@ -89,6 +108,7 @@ function toPost(id: string, data: Record<string, unknown>): Post {
       uid: String(data.authorUid ?? ""),
       name: String(data.authorName ?? "照顧者"),
       role: toAuthorRole(data.authorRole),
+      avatarUrl: toAuthorAvatarUrl(data.authorAvatarUrl),
     },
     createdAt: toMillis(data.createdAt),
     viewCount: Number(data.viewCount ?? 0),
@@ -108,6 +128,7 @@ function toComment(postId: string, id: string, data: Record<string, unknown>): C
       uid: String(data.authorUid ?? ""),
       name: String(data.authorName ?? "照顧者"),
       role: toAuthorRole(data.authorRole),
+      avatarUrl: toAuthorAvatarUrl(data.authorAvatarUrl),
     },
     content: String(data.content ?? ""),
     createdAt: toMillis(data.createdAt),
@@ -129,6 +150,8 @@ export type CreatePostInput = {
   authorName: string;
   /** 發文者身分（家屬／仲介），選填 */
   authorRole?: CommunityAuthorRole;
+  /** 發文者自己 users 文件上的頭像網址；可為空字串（沒有頭像） */
+  authorAvatarUrl?: string;
   imageUrls?: string[];
 };
 
@@ -157,6 +180,9 @@ export async function createPost(input: CreatePostInput): Promise<string> {
     status: "published",
     imageUrls: (input.imageUrls ?? []).slice(0, MAX_POST_IMAGES),
     ...(input.authorRole ? { authorRole: input.authorRole } : {}),
+    ...(input.authorAvatarUrl !== undefined
+      ? { authorAvatarUrl: sanitizeAuthorAvatarUrl(input.authorAvatarUrl) }
+      : {}),
   });
 
   return postId;
@@ -417,6 +443,8 @@ export type CreateCommentInput = {
   authorName: string;
   /** 留言者身分（家屬／仲介），選填 */
   authorRole?: CommunityAuthorRole;
+  /** 留言者自己 users 文件上的頭像網址；可為空字串（沒有頭像） */
+  authorAvatarUrl?: string;
 };
 
 /** 新增留言，同時把文章的留言數 +1 */
@@ -434,6 +462,9 @@ export async function createComment(input: CreateCommentInput): Promise<string> 
       createdAt: serverTimestamp(),
       likeCount: 0,
       ...(input.authorRole ? { authorRole: input.authorRole } : {}),
+      ...(input.authorAvatarUrl !== undefined
+        ? { authorAvatarUrl: sanitizeAuthorAvatarUrl(input.authorAvatarUrl) }
+        : {}),
     }
   );
   batch.update(doc(db, POSTS_COLLECTION, input.postId), {
@@ -486,7 +517,7 @@ export async function reportPost(
     return await runTransaction(db, async (tx) => {
       const postSnap = await tx.get(postRef);
       if (!postSnap.exists()) {
-        throw new Error(POST_NOT_FOUND);
+        throw Object.assign(new Error(POST_NOT_FOUND), { code: POST_NOT_FOUND });
       }
 
       const nextCount = Number(postSnap.data()?.reportCount ?? 0) + 1;

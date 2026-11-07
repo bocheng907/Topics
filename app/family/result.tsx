@@ -276,7 +276,12 @@ function ResultScreen() {
                 borderWidth: 1,
                 borderColor: "#ccc",
                 borderRadius: 8,
-                padding: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 0,
+                minHeight: 48,
+                fontSize: 16,
+                includeFontPadding: false,
+                textAlignVertical: "center",
                 backgroundColor: "#fff",
               }}
             />

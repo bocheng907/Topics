@@ -4,9 +4,12 @@ import type {
   AgencyReport,
   AgencyReportCategory,
 } from "@/src/agency/agencyReportTypes";
+import { agencyCopy, type AgencyCopy } from "@/src/i18n/copy/agencyCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
+import { AppHeader, Card, Chip, EmptyState } from "@/src/ui/components";
+import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 import React, { useMemo, useState } from "react";
 
 import {
@@ -27,22 +30,25 @@ import Svg, {
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const CATEGORY_LABELS: Record<
-  AgencyReportCategory,
-  string
-> = {
-  communication: "溝通協調",
-  schedule: "排班／出勤",
-  service: "服務內容",
-  other: "其他",
-};
-
 const CATEGORY_ORDER: AgencyReportCategory[] = [
   "communication",
   "schedule",
   "service",
   "other",
 ];
+
+function categoryLabel(c: AgencyCopy, category: AgencyReportCategory) {
+  switch (category) {
+    case "communication":
+      return c.catCommunication;
+    case "schedule":
+      return c.catSchedule;
+    case "service":
+      return c.catService;
+    default:
+      return c.catOther;
+  }
+}
 
 type AnalysisMode =
   | "distribution"
@@ -57,14 +63,18 @@ type TrendPoint = {
   other: number;
 };
 
+/**
+ * Categorical series colours for the trend chart only. Four lines need four
+ * distinguishable hues; they are not status colours. The first is the brand primary.
+ */
 const TREND_COLORS: Record<
   AgencyReportCategory,
   string
 > = {
-  communication: "#4F59D5",
-  schedule: "#D39A2C",
-  service: "#6FA58A",
-  other: "#DC5A5A",
+  communication: colors.primary,
+  schedule: "#B7832F",
+  service: "#4E8F72",
+  other: "#8A6BB5",
 };
 
 function getLocalDateKey(date: Date) {
@@ -89,8 +99,10 @@ function getDateLabel(date: Date) {
 
 function ReportTrendChart({
   data,
+  c,
 }: {
   data: TrendPoint[];
+  c: AgencyCopy;
 }) {
   const width = 320;
   const height = 220;
@@ -149,40 +161,17 @@ function ReportTrendChart({
   return (
     <View>
       <View style={styles.trendLegend}>
-        {CATEGORY_ORDER.map(
-          (category) => (
+        {CATEGORY_ORDER.map((category) => (
+          <View key={category} style={styles.trendLegendItem}>
             <View
-              key={category}
-              style={
-                styles.trendLegendItem
-              }
-            >
-              <View
-                style={[
-                  styles.trendLegendDot,
-                  {
-                    backgroundColor:
-                      TREND_COLORS[
-                        category
-                      ],
-                  },
-                ]}
-              />
-
-              <Text
-                style={
-                  styles.trendLegendText
-                }
-              >
-                {
-                  CATEGORY_LABELS[
-                    category
-                  ]
-                }
-              </Text>
-            </View>
-          )
-        )}
+              style={[
+                styles.trendLegendDot,
+                { backgroundColor: TREND_COLORS[category] },
+              ]}
+            />
+            <Text style={styles.trendLegendText}>{categoryLabel(c, category)}</Text>
+          </View>
+        ))}
       </View>
 
       <View style={styles.svgChartWrap}>
@@ -208,7 +197,7 @@ function ReportTrendChart({
                   y1={y}
                   x2={width - right}
                   y2={y}
-                  stroke="#E8EAF0"
+                  stroke={colors.divider}
                   strokeWidth="1"
                 />
 
@@ -216,8 +205,8 @@ function ReportTrendChart({
                   x={left - 6}
                   y={y + 4}
                   textAnchor="end"
-                  fontSize="9"
-                  fill="#9CA3AF"
+                  fontSize="10"
+                  fill={colors.textMuted}
                 >
                   {value}
                 </SvgText>
@@ -225,75 +214,77 @@ function ReportTrendChart({
             );
           })}
 
-          {CATEGORY_ORDER.map(
-            (category) => (
-              <React.Fragment
-                key={category}
-              >
-                <Polyline
-                  points={buildPoints(
-                    category
-                  )}
-                  fill="none"
-                  stroke={
-                    TREND_COLORS[
-                      category
-                    ]
-                  }
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+          {CATEGORY_ORDER.map((category) => (
+            <React.Fragment key={category}>
+              <Polyline
+                points={buildPoints(category)}
+                fill="none"
+                stroke={TREND_COLORS[category]}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+
+              {data.map((item, index) => (
+                <Circle
+                  key={`${category}-${item.dateKey}`}
+                  cx={getX(index)}
+                  cy={getY(item[category])}
+                  r="3"
+                  fill={TREND_COLORS[category]}
                 />
+              ))}
+            </React.Fragment>
+          ))}
 
-                {data.map(
-                  (item, index) => (
-                    <Circle
-                      key={`${category}-${item.dateKey}`}
-                      cx={getX(index)}
-                      cy={getY(
-                        item[
-                          category
-                        ]
-                      )}
-                      r="3"
-                      fill={
-                        TREND_COLORS[
-                          category
-                        ]
-                      }
-                    />
-                  )
-                )}
-              </React.Fragment>
-            )
-          )}
+          {data.map((item, index) => {
+            const showLabel = index % 2 === 0;
 
-          {data.map(
-            (item, index) => {
-              const showLabel =
-                index % 2 === 0;
-
-              if (!showLabel) {
-                return null;
-              }
-
-              return (
-                <SvgText
-                  key={item.dateKey}
-                  x={getX(index)}
-                  y={
-                    height - 10
-                  }
-                  textAnchor="middle"
-                  fontSize="8.5"
-                  fill="#8B8B93"
-                >
-                  {item.label}
-                </SvgText>
-              );
+            if (!showLabel) {
+              return null;
             }
-          )}
+
+            return (
+              <SvgText
+                key={item.dateKey}
+                x={getX(index)}
+                y={height - 10}
+                textAnchor="middle"
+                fontSize="10"
+                fill={colors.textMuted}
+              >
+                {item.label}
+              </SvgText>
+            );
+          })}
         </Svg>
+      </View>
+    </View>
+  );
+}
+
+function BarRow({
+  label,
+  value,
+  ratio,
+  muted,
+  c,
+}: {
+  label: string;
+  value: number;
+  ratio: number;
+  muted?: boolean;
+  c: AgencyCopy;
+}) {
+  const width = `${Math.max(value > 0 ? 5 : 0, ratio * 100)}%` as `${number}%`;
+  return (
+    <View style={styles.barItem}>
+      <View style={styles.barLabelRow}>
+        <Text style={styles.barLabel}>{label}</Text>
+        <Text style={[styles.barValue, muted && { color: colors.textSecondary }]}>{c.cases(value)}</Text>
+      </View>
+      <View style={styles.barTrack}>
+        <View style={[styles.barFill, muted && styles.barFillMuted, { width }]} />
       </View>
     </View>
   );
@@ -306,6 +297,8 @@ export default function AgencyAnalyticsScreen() {
 
 function AgencyAnalyticsContent({ onRetry }: { onRetry: () => void }) {
   const insets = useSafeAreaInsets();
+  const { language } = useLanguage();
+  const c = agencyCopy[language];
 
   const {
     reports,
@@ -340,7 +333,6 @@ function AgencyAnalyticsContent({ onRetry }: { onRetry: () => void }) {
   const categoryStats = useMemo(() => {
     return CATEGORY_ORDER.map((category) => ({
       category,
-      label: CATEGORY_LABELS[category],
       count: reports.filter(
         (report) => report.category === category
       ).length,
@@ -465,85 +457,85 @@ function AgencyAnalyticsContent({ onRetry }: { onRetry: () => void }) {
 
   const caregiverStats = useMemo(() => {
     return caregivers
-        .map((caregiver) => {
+      .map((caregiver) => {
         const caregiverReports = reports.filter(
-            (report) =>
+          (report) =>
             report.caregiverUid ===
             caregiver.caregiverUid
         );
 
         const categories = CATEGORY_ORDER.map(
-            (category) => ({
+          (category) => ({
             category,
-            label: CATEGORY_LABELS[category],
             count: caregiverReports.filter(
-                (report) =>
+              (report) =>
                 report.category === category
             ).length,
-            })
+          })
         );
 
         const uncategorizedCount =
-            caregiverReports.filter(
+          caregiverReports.filter(
             (report) =>
-                !report.category ||
-                !CATEGORY_ORDER.includes(
+              !report.category ||
+              !CATEGORY_ORDER.includes(
                 report.category
-                )
-            ).length;
+              )
+          ).length;
 
         return {
-            caregiverUid:
+          caregiverUid:
             caregiver.caregiverUid,
-            name:
+          // Empty name falls back to a localized label at render time.
+          name:
             caregiver.displayName ||
             caregiver.caregiverEmail ||
-            "未命名看護",
-            total: caregiverReports.length,
-            categories,
-            uncategorizedCount,
+            "",
+          total: caregiverReports.length,
+          categories,
+          uncategorizedCount,
         };
-        })
-        .sort((a, b) => b.total - a.total);
-    }, [caregivers, reports]);
+      })
+      .sort((a, b) => b.total - a.total);
+  }, [caregivers, reports]);
 
-    const [
+  const [
     selectedCaregiverUid,
     setSelectedCaregiverUid,
-    ] = useState("");
+  ] = useState("");
 
-    const [
+  const [
     caregiverDropdownOpen,
     setCaregiverDropdownOpen,
-    ] = useState(false);
+  ] = useState(false);
 
-    const selectedCaregiverStat = useMemo(() => {
+  const selectedCaregiverStat = useMemo(() => {
     if (caregiverStats.length === 0) {
-        return null;
+      return null;
     }
 
     return (
-        caregiverStats.find(
+      caregiverStats.find(
         (item) =>
-            item.caregiverUid ===
-            selectedCaregiverUid
-        ) ?? caregiverStats[0]
+          item.caregiverUid ===
+          selectedCaregiverUid
+      ) ?? caregiverStats[0]
     );
-    }, [
+  }, [
     caregiverStats,
     selectedCaregiverUid,
-    ]);
+  ]);
 
-    const selectedCaregiverMaxCount =
+  const selectedCaregiverMaxCount =
     selectedCaregiverStat
-        ? Math.max(
-            1,
-            ...selectedCaregiverStat.categories.map(
+      ? Math.max(
+          1,
+          ...selectedCaregiverStat.categories.map(
             (item) => item.count
-            ),
-            selectedCaregiverStat.uncategorizedCount
+          ),
+          selectedCaregiverStat.uncategorizedCount
         )
-        : 1;
+      : 1;
 
   const maxCategoryCount = Math.max(
     1,
@@ -554,540 +546,233 @@ function AgencyAnalyticsContent({ onRetry }: { onRetry: () => void }) {
   const loading =
     reportLoading || caregiverLoading;
 
+  const summary = [
+    { key: "total", label: c.totalReports, value: totalReports },
+    { key: "open", label: c.pending, value: openCount },
+    { key: "resolved", label: c.resolved, value: resolvedCount },
+  ];
+
   return (
     <View style={styles.container}>
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: insets.top + 8,
-          },
-        ]}
-      >
-        <Pressable
-          style={styles.headerSide}
-          onPress={() => router.back()}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={30}
-            color="#111827"
-          />
-        </Pressable>
-
-        <Text style={styles.headerTitle}>
-          回報統計
-        </Text>
-
-        <View style={styles.headerSide} />
-      </View>
+      <AppHeader title={c.analyticsTitle} left="back" fallbackHref="/agency" />
 
       {reportError || caregiverError ? (
-        <View style={styles.loadingState}>
-          <Text accessibilityRole="alert" style={styles.loadingText}>
-            統計資料載入失敗，暫時無法顯示完整統計。請確認網路連線及帳號權限後重試。
-          </Text>
-          <Pressable accessibilityRole="button" onPress={onRetry} style={{ padding: 16 }}>
-            <Text style={styles.loadingText}>重新載入</Text>
-          </Pressable>
+        <View style={styles.centerState}>
+          <EmptyState
+            icon="cloud-offline-outline"
+            title={c.loadFailed}
+            actionLabel={c.reload}
+            onAction={onRetry}
+          />
         </View>
       ) : loading ? (
-        <View style={styles.loadingState}>
-          <ActivityIndicator
-            size="large"
-            color="#4F59D5"
-          />
-
-          <Text style={styles.loadingText}>
-            統計資料載入中...
-          </Text>
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>{c.loadingStats}</Text>
         </View>
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
-            {
-              paddingBottom:
-                Math.max(40, insets.bottom + 30),
-            },
+            { paddingBottom: Math.max(spacing.xxl, insets.bottom + spacing.xl) },
           ]}
         >
-          <Text style={styles.sectionTitle}>
-            回報概況
+          <Text style={styles.pageTitle} accessibilityRole="header">
+            {c.overviewTitle}
           </Text>
-
-          <Text style={styles.sectionSubtitle}>
-            根據目前累積的家庭問題回報整理
-          </Text>
+          <Text style={styles.pageSubtitle}>{c.overviewSubtitle}</Text>
 
           <View style={styles.summaryRow}>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>
-                總回報
-              </Text>
-
-              <Text style={styles.summaryValue}>
-                {totalReports}
-              </Text>
-
-              <Text style={styles.summaryUnit}>
-                件
-              </Text>
-            </View>
-
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>
-                待處理
-              </Text>
-
-              <Text style={styles.summaryValue}>
-                {openCount}
-              </Text>
-
-              <Text style={styles.summaryUnit}>
-                件
-              </Text>
-            </View>
-
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>
-                已處理
-              </Text>
-
-              <Text style={styles.summaryValue}>
-                {resolvedCount}
-              </Text>
-
-              <Text style={styles.summaryUnit}>
-                件
-              </Text>
-            </View>
+            {summary.map((item) => (
+              <Card key={item.key} style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>{item.label}</Text>
+                <Text style={[styles.summaryValue, item.key === "open" && item.value > 0 && { color: colors.danger }]}>
+                  {item.value}
+                </Text>
+              </Card>
+            ))}
           </View>
 
-          <View style={styles.chartCard}>
-            {/* 標題 Header */}
-            <View style={styles.chartHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.chartTitle}>
-                  問題分析
-                </Text>
+          <Card style={styles.chartCard}>
+            <Text style={styles.chartTitle} accessibilityRole="header">
+              {c.analysisTitle}
+            </Text>
+            <Text style={styles.chartSubtitle}>{c.analysisSubtitle}</Text>
 
-                <Text style={styles.chartSubtitle}>
-                  查看整體問題類型與近期每日變化
-                </Text>
-              </View>
-
-              <View style={styles.chartIcon}>
-                <Ionicons
-                  name={
-                    analysisMode === "distribution"
-                      ? "bar-chart-outline"
-                      : "trending-up-outline"
-                  }
-                  size={22}
-                  color="#4F59D5"
-                />
-              </View>
+            <View style={styles.modeRow}>
+              <Chip
+                label={c.modeDistribution}
+                icon="bar-chart-outline"
+                selected={analysisMode === "distribution"}
+                onPress={() => setAnalysisMode("distribution")}
+              />
+              <Chip
+                label={c.modeTrend}
+                icon="trending-up-outline"
+                selected={analysisMode === "trend"}
+                onPress={() => setAnalysisMode("trend")}
+              />
             </View>
 
-            {/* 這裡就是我說的 Header 下方切換鍵 */}
-            <View style={styles.analysisToggle}>
-              <Pressable
-                style={[
-                  styles.analysisToggleButton,
-                  analysisMode === "distribution" &&
-                    styles.analysisToggleButtonActive,
-                ]}
-                onPress={() =>
-                  setAnalysisMode("distribution")
-                }
-              >
-                <Ionicons
-                  name="bar-chart-outline"
-                  size={17}
-                  color={
-                    analysisMode === "distribution"
-                      ? "#4F59D5"
-                      : "#8B8B93"
-                  }
-                />
-
-                <Text
-                  style={[
-                    styles.analysisToggleText,
-                    analysisMode === "distribution" &&
-                      styles.analysisToggleTextActive,
-                  ]}
-                >
-                  問題類型
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.analysisToggleButton,
-                  analysisMode === "trend" &&
-                    styles.analysisToggleButtonActive,
-                ]}
-                onPress={() =>
-                  setAnalysisMode("trend")
-                }
-              >
-                <Ionicons
-                  name="trending-up-outline"
-                  size={17}
-                  color={
-                    analysisMode === "trend"
-                      ? "#4F59D5"
-                      : "#8B8B93"
-                  }
-                />
-
-                <Text
-                  style={[
-                    styles.analysisToggleText,
-                    analysisMode === "trend" &&
-                      styles.analysisToggleTextActive,
-                  ]}
-                >
-                  每日趨勢
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* 問題類型長條圖 */}
             {analysisMode === "distribution" ? (
-              <>
-                {totalReports === 0 ? (
-                  <Text style={styles.emptyText}>
-                    尚未有可統計的問題回報
-                  </Text>
-                ) : (
-                  <>
-                    {categoryStats.map((item) => {
-                      const percent =
-                        (item.count / maxCategoryCount) *
-                        100;
+              totalReports === 0 ? (
+                <Text style={styles.emptyText}>{c.noReportsYet}</Text>
+              ) : (
+                <>
+                  {categoryStats.map((item) => (
+                    <BarRow
+                      key={item.category}
+                      label={categoryLabel(c, item.category)}
+                      value={item.count}
+                      ratio={item.count / maxCategoryCount}
+                      c={c}
+                    />
+                  ))}
 
-                      const width =
-                        `${Math.max(
-                          item.count > 0 ? 5 : 0,
-                          percent
-                        )}%` as `${number}%`;
-
-                      return (
-                        <View
-                          key={item.category}
-                          style={styles.barItem}
-                        >
-                          <View style={styles.barLabelRow}>
-                            <Text style={styles.barLabel}>
-                              {item.label}
-                            </Text>
-
-                            <Text style={styles.barValue}>
-                              {item.count} 件
-                            </Text>
-                          </View>
-
-                          <View style={styles.barTrack}>
-                            <View
-                              style={[
-                                styles.barFill,
-                                { width },
-                              ]}
-                            />
-                          </View>
-                        </View>
-                      );
-                    })}
-
-                    {uncategorizedCount > 0 && (
-                      <View style={styles.barItem}>
-                        <View style={styles.barLabelRow}>
-                          <Text style={styles.barLabel}>
-                            未分類
-                          </Text>
-
-                          <Text style={styles.barValue}>
-                            {uncategorizedCount} 件
-                          </Text>
-                        </View>
-
-                        <View style={styles.barTrack}>
-                          <View
-                            style={[
-                              styles.barFillMuted,
-                              {
-                                width:
-                                  `${Math.max(
-                                    5,
-                                    (uncategorizedCount /
-                                      maxCategoryCount) *
-                                      100
-                                  )}%` as `${number}%`,
-                              },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                    )}
-                  </>
-                )}
-              </>
+                  {uncategorizedCount > 0 && (
+                    <BarRow
+                      label={c.uncategorized}
+                      value={uncategorizedCount}
+                      ratio={uncategorizedCount / maxCategoryCount}
+                      muted
+                      c={c}
+                    />
+                  )}
+                </>
+              )
             ) : (
-              /* 每日趨勢折線圖 */
               <View>
-                <View style={styles.trendHeader}>
-                  <Text style={styles.trendTitle}>
-                    最近 13 天問題變化
-                  </Text>
-
-                  <Text style={styles.trendSubtitle}>
-                    所有旗下看護的家庭回報
-                  </Text>
-                </View>
-
-                <ReportTrendChart
-                  data={trendData}
-                />
+                <Text style={styles.trendTitle}>{c.trendTitle}</Text>
+                <Text style={styles.trendSubtitle}>{c.trendSubtitle}</Text>
+                <ReportTrendChart data={trendData} c={c} />
               </View>
             )}
-          </View>
+          </Card>
 
-          <View style={styles.chartCard}>
-            <View style={styles.chartHeader}>
-              <View>
-                <Text style={styles.chartTitle}>
-                各看護問題類型分布
-                </Text>
-
-                <Text style={styles.chartSubtitle}>
-                選擇看護，掌握較常出現的問題類型
-                </Text>
-              </View>
-
-              <View style={styles.chartIcon}>
-                <Ionicons
-                  name="people-outline"
-                  size={22}
-                  color="#4F59D5"
-                />
-              </View>
-            </View>
+          <Card style={styles.chartCard}>
+            <Text style={styles.chartTitle} accessibilityRole="header">
+              {c.perCaregiverTitle}
+            </Text>
+            <Text style={styles.chartSubtitle}>{c.perCaregiverSubtitle}</Text>
 
             {caregiverStats.length === 0 ||
             !selectedCaregiverStat ? (
-            <Text style={styles.emptyText}>
-                尚未有旗下看護
-            </Text>
+              <Text style={styles.emptyText}>{c.noCaregiversTitle}</Text>
             ) : (
-            <>
-                <Text style={styles.selectorLabel}>
-                選擇看護
-                </Text>
+              <>
+                <Text style={styles.selectorLabel}>{c.selectCaregiver}</Text>
 
                 <Pressable
-                style={styles.caregiverSelector}
-                onPress={() =>
+                  style={({ pressed }) => [styles.caregiverSelector, pressed && styles.selectorPressed]}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: caregiverDropdownOpen }}
+                  onPress={() =>
                     setCaregiverDropdownOpen(
-                    (current) => !current
+                      (current) => !current
                     )
-                }
+                  }
                 >
-                <View style={styles.selectorTextWrap}>
-                    <Text
-                    style={styles.selectorName}
-                    numberOfLines={1}
-                    >
-                    {selectedCaregiverStat.name}
+                  <View style={styles.selectorTextWrap}>
+                    <Text style={styles.selectorName} numberOfLines={1}>
+                      {selectedCaregiverStat.name || c.unnamedCaregiverShort}
                     </Text>
-
                     <Text style={styles.selectorCount}>
-                    共 {selectedCaregiverStat.total} 件回報
+                      {c.caregiverTotal(selectedCaregiverStat.total)}
                     </Text>
-                </View>
+                  </View>
 
-                <Ionicons
-                    name={
-                    caregiverDropdownOpen
-                        ? "chevron-up"
-                        : "chevron-down"
-                    }
-                    size={20}
-                    color="#6B7280"
-                />
+                  <Ionicons
+                    name={caregiverDropdownOpen ? "chevron-up" : "chevron-down"}
+                    size={22}
+                    color={colors.textSecondary}
+                  />
                 </Pressable>
 
                 {caregiverDropdownOpen && (
-                <View style={styles.caregiverDropdown}>
-                    {caregiverStats.map((item) => {
-                    const selected =
+                  <View style={styles.caregiverDropdown}>
+                    {caregiverStats.map((item, index) => {
+                      const selected =
                         item.caregiverUid ===
                         selectedCaregiverStat.caregiverUid;
 
-                    return (
+                      return (
                         <Pressable
-                        key={item.caregiverUid}
-                        style={[
+                          key={item.caregiverUid}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          style={({ pressed }) => [
                             styles.caregiverDropdownItem,
-                            selected &&
-                            styles.caregiverDropdownItemSelected,
-                        ]}
-                        onPress={() => {
+                            index > 0 && styles.dropdownDivider,
+                            selected && styles.caregiverDropdownItemSelected,
+                            pressed && !selected && styles.selectorPressed,
+                          ]}
+                          onPress={() => {
                             setSelectedCaregiverUid(
-                            item.caregiverUid
+                              item.caregiverUid
                             );
                             setCaregiverDropdownOpen(false);
-                        }}
+                          }}
                         >
-                        <View style={{ flex: 1 }}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
                             <Text
-                            style={[
+                              style={[
                                 styles.caregiverDropdownName,
-                                selected &&
-                                styles.caregiverDropdownNameSelected,
-                            ]}
-                            numberOfLines={1}
+                                selected && styles.caregiverDropdownNameSelected,
+                              ]}
+                              numberOfLines={1}
                             >
-                            {item.name}
+                              {item.name || c.unnamedCaregiverShort}
                             </Text>
-
-                            <Text
-                            style={
-                                styles.caregiverDropdownCount
-                            }
-                            >
-                            {item.total} 件回報
+                            <Text style={styles.caregiverDropdownCount}>
+                              {c.caregiverReports(item.total)}
                             </Text>
-                        </View>
+                          </View>
 
-                        {selected && (
-                            <Ionicons
-                            name="checkmark-circle"
-                            size={21}
-                            color="#4F59D5"
-                            />
-                        )}
+                          {selected && (
+                            <Ionicons name="checkmark" size={22} color={colors.primary} />
+                          )}
                         </Pressable>
-                    );
+                      );
                     })}
-                </View>
+                  </View>
                 )}
 
                 <View style={styles.selectedCaregiverChart}>
-                {selectedCaregiverStat.total === 0 ? (
-                    <Text style={styles.noReportText}>
-                    目前沒有問題回報
-                    </Text>
-                ) : (
+                  {selectedCaregiverStat.total === 0 ? (
+                    <Text style={styles.emptyText}>{c.noReportsForCaregiver}</Text>
+                  ) : (
                     <>
-                    {selectedCaregiverStat.categories.map(
-                        (item) => {
-                        const percent =
-                            (item.count /
-                            selectedCaregiverMaxCount) *
-                            100;
+                      {selectedCaregiverStat.categories.map((item) => (
+                        <BarRow
+                          key={item.category}
+                          label={categoryLabel(c, item.category)}
+                          value={item.count}
+                          ratio={item.count / selectedCaregiverMaxCount}
+                          c={c}
+                        />
+                      ))}
 
-                        const width =
-                            `${Math.max(
-                            item.count > 0 ? 5 : 0,
-                            percent
-                            )}%` as `${number}%`;
-
-                        return (
-                            <View
-                            key={item.category}
-                            style={styles.barItem}
-                            >
-                            <View
-                                style={styles.barLabelRow}
-                            >
-                                <Text
-                                style={styles.barLabel}
-                                >
-                                {item.label}
-                                </Text>
-
-                                <Text
-                                style={styles.barValue}
-                                >
-                                {item.count} 件
-                                </Text>
-                            </View>
-
-                            <View style={styles.barTrack}>
-                                <View
-                                style={[
-                                    styles.barFillSecondary,
-                                    { width },
-                                ]}
-                                />
-                            </View>
-                            </View>
-                        );
-                        }
-                    )}
-
-                    {selectedCaregiverStat
-                        .uncategorizedCount > 0 && (
-                        <View style={styles.barItem}>
-                        <View
-                            style={styles.barLabelRow}
-                        >
-                            <Text style={styles.barLabel}>
-                            未分類
-                            </Text>
-
-                            <Text style={styles.barValue}>
-                            {
-                                selectedCaregiverStat
-                                .uncategorizedCount
-                            }{" "}
-                            件
-                            </Text>
-                        </View>
-
-                        <View style={styles.barTrack}>
-                            <View
-                            style={[
-                                styles.barFillMuted,
-                                {
-                                width:
-                                    `${Math.max(
-                                    5,
-                                    (selectedCaregiverStat
-                                        .uncategorizedCount /
-                                        selectedCaregiverMaxCount) *
-                                        100
-                                    )}%` as `${number}%`,
-                                },
-                            ]}
-                            />
-                        </View>
-                        </View>
-                    )}
+                      {selectedCaregiverStat.uncategorizedCount > 0 && (
+                        <BarRow
+                          label={c.uncategorized}
+                          value={selectedCaregiverStat.uncategorizedCount}
+                          ratio={selectedCaregiverStat.uncategorizedCount / selectedCaregiverMaxCount}
+                          muted
+                          c={c}
+                        />
+                      )}
                     </>
-                )}
+                  )}
                 </View>
-            </>
+              </>
             )}
-          </View>
+          </Card>
 
-          <View style={styles.noteCard}>
-            <Ionicons
-              name="information-circle-outline"
-              size={20}
-              color="#64748B"
-            />
-
-            <Text style={styles.noteText}>
-              統計結果用於協助仲介掌握服務與溝通狀況，
-              回報數量較多不代表看護服務品質較差，
-              仍需搭配實際回報內容判斷。
-            </Text>
-          </View>
+          <Card tone="sunken" style={styles.noteCard}>
+            <Ionicons name="information-circle-outline" size={22} color={colors.textSecondary} />
+            <Text style={styles.noteText}>{c.analyticsNote}</Text>
+          </Card>
         </ScrollView>
       )}
     </View>
@@ -1097,446 +782,258 @@ function AgencyAnalyticsContent({ onRetry }: { onRetry: () => void }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F8FC",
-  },
-
-  header: {
-    minHeight: 68,
-    paddingBottom: 12,
-    paddingHorizontal: 12,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#ECECF2",
-    flexDirection: "row",
-    alignItems: "flex-end",
-  },
-
-  headerSide: {
-    width: 46,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#111827",
-    paddingBottom: 10,
+    backgroundColor: colors.canvas,
   },
 
   content: {
-    padding: 20,
+    padding: layout.screenPaddingX,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
   },
 
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#111827",
+  pageTitle: {
+    ...typography.title,
   },
 
-  sectionSubtitle: {
-    marginTop: 5,
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#7B7B85",
+  pageSubtitle: {
+    ...typography.bodySmall,
+    marginTop: spacing.xs,
   },
 
   summaryRow: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-    marginBottom: 24,
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
   },
 
   summaryCard: {
     flex: 1,
-    minHeight: 110,
-    borderRadius: 18,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E7E9EF",
-    padding: 14,
-    justifyContent: "center",
+    minWidth: 0,
   },
 
   summaryLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#6B7280",
+    ...typography.label,
+    color: colors.textSecondary,
   },
 
   summaryValue: {
-    marginTop: 6,
-    fontSize: 28,
-    fontWeight: "900",
-    color: "#4F59D5",
-  },
-
-  summaryUnit: {
-    marginTop: 1,
-    fontSize: 12,
-    color: "#9CA3AF",
+    ...typography.display,
+    marginTop: spacing.xs,
   },
 
   chartCard: {
-    borderRadius: 22,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E7E9EF",
-    padding: 18,
-    marginBottom: 18,
-  },
-
-  chartHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 20,
+    marginBottom: spacing.lg,
   },
 
   chartTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#111827",
+    ...typography.header,
   },
 
   chartSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 18,
-    color: "#7B7B85",
+    ...typography.bodySmall,
+    marginTop: 2,
   },
 
-  chartIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    backgroundColor: "#EEF0FF",
-    alignItems: "center",
-    justifyContent: "center",
+  modeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
   },
 
   barItem: {
-    marginBottom: 17,
+    marginBottom: spacing.lg,
   },
 
   barLabelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 7,
+    gap: spacing.md,
+    marginBottom: 6,
   },
 
   barLabel: {
+    ...typography.body,
     flex: 1,
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#374151",
   },
 
   barValue: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#4F59D5",
+    ...typography.bodyStrong,
+    color: colors.primary,
   },
 
   barTrack: {
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#EEF0F5",
+    backgroundColor: colors.surfaceSunken,
     overflow: "hidden",
   },
 
   barFill: {
     height: "100%",
     borderRadius: 5,
-    backgroundColor: "#4F59D5",
-  },
-
-  barFillSecondary: {
-    height: "100%",
-    borderRadius: 5,
-    backgroundColor: "#6FA58A",
+    backgroundColor: colors.primary,
   },
 
   barFillMuted: {
-    height: "100%",
-    borderRadius: 5,
-    backgroundColor: "#A1A1AA",
+    backgroundColor: colors.textDisabled,
   },
 
   emptyText: {
-    paddingVertical: 20,
+    ...typography.body,
+    color: colors.textMuted,
+    paddingVertical: spacing.xl,
     textAlign: "center",
-    fontSize: 14,
-    color: "#8B8B93",
   },
 
   noteCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 9,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: "#F1F5F9",
+    gap: spacing.sm,
   },
 
   noteText: {
+    ...typography.bodySmall,
     flex: 1,
-    fontSize: 12,
-    lineHeight: 19,
-    color: "#64748B",
   },
 
-  loadingState: {
+  centerState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    padding: spacing.xl,
   },
 
   loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: "#6B7280",
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
   },
 
-  caregiverBreakdownCard: {
-    borderTopWidth: 1,
-    borderTopColor: "#ECEEF3",
-    paddingTop: 18,
-    marginTop: 4,
-    marginBottom: 18,
-    },
+  selectorLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
 
-    caregiverBreakdownHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 15,
-    },
-
-    caregiverBreakdownName: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#111827",
-    },
-
-    caregiverBreakdownHint: {
-    marginTop: 3,
-    fontSize: 12,
-    color: "#8B8B93",
-    },
-
-    caregiverBreakdownTotal: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#4F59D5",
-    },
-
-    miniBarItem: {
-    marginBottom: 13,
-    },
-
-    miniBarLabelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 6,
-    },
-
-    miniBarLabel: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#4B5563",
-    },
-
-    miniBarValue: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#6FA58A",
-    },
-
-    selectorLabel: {
-    marginBottom: 8,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#6B7280",
-    },
-
-    caregiverSelector: {
-    minHeight: 66,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: "#DDE3FF",
-    backgroundColor: "#F7F8FF",
-    paddingHorizontal: 15,
-    paddingVertical: 11,
+  caregiverSelector: {
+    minHeight: 64,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    },
+    gap: spacing.md,
+  },
 
-    selectorTextWrap: {
+  selectorPressed: {
+    backgroundColor: colors.surfaceSunken,
+  },
+
+  selectorTextWrap: {
     flex: 1,
     minWidth: 0,
-    },
+  },
 
-    selectorName: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#111827",
-    },
+  selectorName: {
+    ...typography.bodyStrong,
+  },
 
-    selectorCount: {
-    marginTop: 3,
-    fontSize: 12,
-    color: "#7B7B85",
-    },
+  selectorCount: {
+    ...typography.caption,
+    marginTop: 2,
+  },
 
-    caregiverDropdown: {
-    marginTop: 8,
-    borderRadius: 16,
+  caregiverDropdown: {
+    marginTop: spacing.sm,
+    borderRadius: radii.control,
     borderWidth: 1,
-    borderColor: "#E1E4EC",
-    backgroundColor: "#FFFFFF",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     overflow: "hidden",
-    },
+  },
 
-    caregiverDropdownItem: {
-    minHeight: 60,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+  caregiverDropdownItem: {
+    minHeight: 56,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F1F5",
-    },
+    gap: spacing.md,
+  },
 
-    caregiverDropdownItemSelected: {
-    backgroundColor: "#F3F4FF",
-    },
+  dropdownDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+  },
 
-    caregiverDropdownName: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#374151",
-    },
+  caregiverDropdownItemSelected: {
+    backgroundColor: colors.primarySoft,
+  },
 
-    caregiverDropdownNameSelected: {
-    color: "#3730A3",
-    fontWeight: "900",
-    },
+  caregiverDropdownName: {
+    ...typography.body,
+  },
 
-    caregiverDropdownCount: {
-    marginTop: 3,
-    fontSize: 12,
-    color: "#9CA3AF",
-    },
+  caregiverDropdownNameSelected: {
+    ...typography.bodyStrong,
+    color: colors.primary,
+  },
 
-    selectedCaregiverChart: {
-    marginTop: 20,
-    },
+  caregiverDropdownCount: {
+    ...typography.caption,
+    marginTop: 2,
+  },
 
-    noReportText: {
-    paddingVertical: 18,
-    textAlign: "center",
-    fontSize: 13,
-    color: "#9CA3AF",
-    },
+  selectedCaregiverChart: {
+    marginTop: spacing.xl,
+  },
 
-    analysisToggle: {
-      flexDirection: "row",
-      backgroundColor: "#F1F2F7",
-      borderRadius: 14,
-      padding: 4,
-      marginBottom: 20,
-    },
+  trendTitle: {
+    ...typography.bodyStrong,
+  },
 
-    analysisToggleButton: {
-      flex: 1,
-      minHeight: 42,
-      borderRadius: 11,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-    },
+  trendSubtitle: {
+    ...typography.caption,
+    marginTop: 2,
+    marginBottom: spacing.md,
+  },
 
-    analysisToggleButtonActive: {
-      backgroundColor: "#FFFFFF",
+  trendLegend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
 
-      shadowColor: "#000",
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
-      shadowOpacity: 0.05,
-      shadowRadius: 3,
-      elevation: 1,
-    },
+  trendLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
 
-    analysisToggleText: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: "#8B8B93",
-    },
+  trendLegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
 
-    analysisToggleTextActive: {
-      color: "#4F59D5",
-      fontWeight: "900",
-    },
+  trendLegendText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
 
-    trendHeader: {
-      marginBottom: 12,
-    },
-
-    trendTitle: {
-      fontSize: 15,
-      fontWeight: "900",
-      color: "#374151",
-    },
-
-    trendSubtitle: {
-      marginTop: 3,
-      fontSize: 12,
-      color: "#8B8B93",
-    },
-
-    trendLegend: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 12,
-      marginBottom: 8,
-    },
-
-    trendLegendItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-    },
-
-    trendLegendDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-
-    trendLegendText: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: "#6B7280",
-    },
-
-    svgChartWrap: {
-      width: "100%",
-      overflow: "hidden",
-    },
+  svgChartWrap: {
+    width: "100%",
+    overflow: "hidden",
+  },
 });

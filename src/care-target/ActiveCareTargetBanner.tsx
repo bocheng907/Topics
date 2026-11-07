@@ -31,7 +31,7 @@ export default function ActiveCareTargetBanner() {
   }
 
   const name = activePatient?.name ?? "(尚未選擇長輩)";
-  const hint = activePatientId ? `ID：${activePatientId}` : "請先選擇要查看的長輩";
+  const hint = activePatientId ? "點「切換長輩」可更換照護對象" : "請先選擇要查看的長輩";
 
   return (
     <View

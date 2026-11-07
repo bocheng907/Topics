@@ -25,8 +25,8 @@ export type ContentCheckResult = {
   passed: boolean;
   /** 命中的字詞，用於提示使用者要修哪裡 */
   matched: string[];
-  message: string;
 };
+// 給使用者看的提示文字由呼叫端用 communityCopy.contentBlockedBody 依語言組出
 
 /**
  * 檢查標題與內容是否包含敏感字詞
@@ -40,12 +40,8 @@ export function checkPostContent(title: string, content: string): ContentCheckRe
   const unique = [...new Set(matched)];
 
   if (unique.length === 0) {
-    return { passed: true, matched: [], message: "" };
+    return { passed: true, matched: [] };
   }
 
-  return {
-    passed: false,
-    matched: unique,
-    message: `內容包含以下不適合的字詞，請修改後再發布：\n${unique.join("、")}`,
-  };
+  return { passed: false, matched: unique };
 }
