@@ -40,7 +40,10 @@ test('OCR converts fetch, HTTP and malformed responses to bounded error codes', 
   const originalFetch = global.fetch;
   const previousUrl = process.env.EXPO_PUBLIC_PRESCRIPTION_API_BASE_URL;
   process.env.EXPO_PUBLIC_PRESCRIPTION_API_BASE_URL = 'https://example.invalid';
-  const {analyzePrescriptionByUrl} = load('../src/api/analyzePrescription.ts', {'expo-constants': {default:{}}});
+  const {analyzePrescriptionByUrl} = load('../src/api/analyzePrescription.ts', {
+    'expo-constants': {default:{}},
+    '../../firebase/firebaseConfig': {auth:{currentUser:{uid:'test-user',getIdToken:async ()=>'test-token'}}},
+  });
   try {
     const cases = [
       [async () => {throw new Error('private network details');}, 'ocr/network'],

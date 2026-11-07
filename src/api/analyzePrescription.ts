@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { auth } from "../../firebase/firebaseConfig";
 
 export interface AnalyzedMedicine {
   drug_name: string;
@@ -35,6 +36,13 @@ export interface BatchTranslationResult {
   translations: { key: string; translated_text: string; cached: boolean }[];
 }
 
+// Temporary, user-approved compatibility: prescription image URLs and chat
+// text go unencrypted to this unauthenticated server. Do not send Firebase
+// login tokens or cookies to it. All other HTTP destinations remain blocked.
+function isApprovedHttpEndpoint(url: URL) {
+  return url.protocol === "http:" && url.hostname === "123.195.84.227" && url.port === "8080";
+}
+
 function getPrescriptionApiBaseUrl() {
   const baseUrl = process.env.EXPO_PUBLIC_PRESCRIPTION_API_BASE_URL ||
     Constants.expoConfig?.extra?.prescriptionApiBaseUrl;
@@ -51,10 +59,7 @@ function getPrescriptionApiBaseUrl() {
   } catch {
     throw new Error("OCR is unavailable: invalid API URL");
   }
-  const allowInsecureHttp =
-    Constants.expoConfig?.extra?.allowInsecurePrescriptionApi === true &&
-    parsed.protocol === "http:";
-  if (parsed.protocol !== "https:" && !allowInsecureHttp) {
+  if (parsed.protocol !== "https:" && !isApprovedHttpEndpoint(parsed)) {
     throw new Error("OCR is unavailable: insecure HTTP endpoints are blocked");
   }
   if (parsed.username || parsed.password) {
@@ -95,15 +100,33 @@ export async function requestServiceJson<T>(
   });
   const request = async () => {
     if (controller.signal.aborted) throw serviceFailure(service, "cancelled");
+    // Firebase bearer tokens must never be sent over the approved HTTP connection.
+    let endpoint: URL;
+    try { endpoint = new URL(url); } catch { throw serviceFailure(service, "unavailable"); }
+    const approvedHttp = isApprovedHttpEndpoint(endpoint);
+    if ((endpoint.protocol !== "https:" && !approvedHttp) || endpoint.username || endpoint.password) {
+      throw serviceFailure(service, "unavailable");
+    }
+    const user = auth.currentUser;
+    if (!user) throw serviceFailure(service, "unauthenticated");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (!approvedHttp) {
+      let token: string;
+      try { token = await user.getIdToken(); } catch { throw serviceFailure(service, "unauthenticated"); }
+      headers.Authorization = `Bearer ${token}`;
+    }
+    if (controller.signal.aborted) throw serviceFailure(service, "cancelled");
+    if (auth.currentUser?.uid !== user.uid) throw serviceFailure(service, "unauthenticated");
     let response: Response;
     try {
       response = await fetch(url, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body), signal: controller.signal,
+        method: "POST", headers,
+        ...(approvedHttp ? { credentials: "omit" as const } : {}),
+        body: JSON.stringify(body), signal: controller.signal, redirect: "error",
       });
     } catch { throw serviceFailure(service, "network"); }
     if (!response.ok) {
-      throw serviceFailure(service, response.status === 429 ? "busy" : response.status >= 500 ? "unavailable" : "recognition");
+      throw serviceFailure(service, response.status === 401 ? "unauthenticated" : response.status === 403 ? "permission" : response.status === 429 ? "busy" : response.status >= 500 ? "unavailable" : "recognition");
     }
     let text: string;
     try { text = await response.text(); } catch { throw serviceFailure(service, "network"); }

@@ -8,3 +8,5 @@ pillow
 pandas
 rapidfuzz
 python-dotenv
+google-auth>=2.38,<3
+CacheControl>=0.14,<1

@@ -9,23 +9,31 @@ import requests
 import PIL.Image
 import pandas as pd
 from rapidfuzz import process, fuzz
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Union
 from google import genai
 from google.genai import types
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    # Production may inject configuration directly through the environment.
+    def load_dotenv():
+        return False
+from safe_image import download_prescription_image, MAX_IMAGE_BYTES, validate_prescription_url
+from access_control import require_user, consume_usage, RequestSizeLimit
 
 # 設定與初始化
 load_dotenv()
 
 # --- 設定 ---
 app = FastAPI(title="Prescription OCR & Translation API")
+app.add_middleware(RequestSizeLimit)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -37,7 +45,7 @@ if not API_KEY:
         "GEMINI_API_KEY environment variable is required. "
         "Set it before starting the backend."
     )
-client = genai.Client(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY, http_options=types.HttpOptions(timeout=35000))
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 TRANSLATION_MODEL = GEMINI_MODEL
@@ -278,7 +286,7 @@ class PrescriptionResponse(BaseModel):
     visit_date: Optional[str] = Field(None, description="就診日期")
     patient_name: Optional[str] = Field(None, description="病患姓名")
     medicines: List[MedicineItem] = Field(..., description="藥品清單")
-    memo: Optional[MemoDetails | str] = Field(
+    memo: Optional[Union[MemoDetails, str]] = Field(
         None,
         description="結構化備註資訊；相容既有純文字備註",
     )
@@ -301,15 +309,15 @@ class _PrescriptionRaw(BaseModel):
     memo: Optional[MemoDetails] = None
 
 class ImageUrlInput(BaseModel):
-    image_url: str = Field(..., description="藥單圖片URL", example="https://example.jpg")
+    image_url: str = Field(..., max_length=8192, description="藥單圖片URL", example="https://example.jpg")
 
 # ===== 翻譯用資料結構 =====
 
 class TranslationRequest(BaseModel):
-    text: str = Field(..., description="要翻譯的文字內容")
+    text: str = Field(..., min_length=1, max_length=10000, description="要翻譯的文字內容")
     target_language: Optional[str] = Field(
         None,
-        description="目標語言（僅在來源為中文時需要指定）。"
+        max_length=100, description="目標語言（僅在來源為中文時需要指定）。"
     )
 
 class TranslationResponse(BaseModel):
@@ -403,9 +411,8 @@ def process_prescription_with_gemini(img: PIL.Image.Image) -> PrescriptionRespon
             memo=raw.memo,
         )
 
-    except Exception as e:
-        print(f"AI Processing Error: {e}")
-        raise HTTPException(status_code=500, detail=f"AI 解析失敗: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="藥單辨識暫時無法完成，請稍後再試") from None
 
 # ===== 翻譯處理 =====
 
@@ -444,9 +451,8 @@ Text: {text}
         print(f"[translation_usage] model={TRANSLATION_MODEL} usage={usage}")
         return result
 
-    except Exception as e:
-        print(f"Translation Error: {e}")
-        raise HTTPException(status_code=500, detail=f"翻譯失敗: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="翻譯暫時無法完成，請稍後再試") from None
 
 def process_batch_translation_with_gemini(
     items: List[BatchTranslationItem], target_language: str
@@ -475,7 +481,6 @@ def process_batch_translation_with_gemini(
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=BatchTranslationModelResult,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         parsed = BatchTranslationModelResult.model_validate_json(response.text)
@@ -504,39 +509,48 @@ def root():
     return {"message": "AI Prescription OCR & Translation Service is Running!"}
 
 @app.post("/analyze/url", response_model=PrescriptionResponse)
-def analyze_from_url(data: ImageUrlInput):
+def analyze_from_url(data: ImageUrlInput, uid: str = Depends(require_user)):
     try:
-        print(f"Downloading image from: {data.image_url}")
-        resp = requests.get(data.image_url, timeout=10)
-        resp.raise_for_status()
-
-        image = PIL.Image.open(io.BytesIO(resp.content))
+        validate_prescription_url(data.image_url, uid=uid)
+        consume_usage(uid, "ocr")
+        image = PIL.Image.open(io.BytesIO(download_prescription_image(data.image_url)))
         result = process_prescription_with_gemini(image)
 
         return result
 
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=400, detail=f"無法下載圖片: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"伺服器內部錯誤: {str(e)}")
+    except HTTPException:
+        raise
+    except (requests.exceptions.RequestException, ValueError):
+        raise HTTPException(status_code=400, detail="無法下載或辨識圖片")
+    except Exception:
+        raise HTTPException(status_code=500, detail="圖片處理失敗，請稍後再試")
 
 @app.post("/analyze/upload", response_model=PrescriptionResponse)
-async def analyze_upload_file(file: UploadFile = File(...)):
+def analyze_upload_file(file: UploadFile = File(...), uid: str = Depends(require_user)):
     try:
-        contents = await file.read()
+        if file.content_type not in ("image/jpeg", "image/png"):
+            raise HTTPException(415, "請選擇 JPEG 或 PNG 圖片")
+        contents = file.file.read(MAX_IMAGE_BYTES + 1)
+        if len(contents) > MAX_IMAGE_BYTES:
+            raise HTTPException(413, "圖片太大，請縮小後重試")
         image = PIL.Image.open(io.BytesIO(contents))
+        image.load()
+        consume_usage(uid, "ocr")
         result = process_prescription_with_gemini(image)
         return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"檔案解析失敗: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="無法讀取圖片，請確認格式後重試") from None
 
 @app.post(
     "/translate",
     response_model=TranslationResponse,
     summary="智慧翻譯",
 )
-def translate_text(data: TranslationRequest):
+def translate_text(data: TranslationRequest, uid: str = Depends(require_user)):
     try:
+        consume_usage(uid, "translation", max(1, (len(data.text) + 999) // 1000))
         result = process_translation_with_gemini(data.text, data.target_language)
 
         return TranslationResponse(
@@ -548,16 +562,20 @@ def translate_text(data: TranslationRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"翻譯服務發生錯誤: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="翻譯暫時無法完成，請稍後再試") from None
 
 @app.post(
     "/translate/batch",
     response_model=BatchTranslationResponse,
     summary="批次翻譯",
 )
-def translate_texts(data: BatchTranslationRequest):
+def translate_texts(data: BatchTranslationRequest, uid: str = Depends(require_user)):
     try:
+        characters = sum(len(item.text) for item in data.items)
+        if characters > 30000 or len({item.key for item in data.items}) != len(data.items):
+            raise HTTPException(400, "翻譯內容太多或項目重複，請分批重試")
+        consume_usage(uid, "translation", max(1, (characters + 999) // 1000))
         translations = process_batch_translation_with_gemini(
             data.items, data.target_language
         )
@@ -569,5 +587,5 @@ def translate_texts(data: BatchTranslationRequest):
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"批次翻譯服務發生錯誤: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="翻譯暫時無法完成，請稍後再試") from None

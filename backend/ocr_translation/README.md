@@ -15,7 +15,7 @@ pip install -r requirements.txt
 Start the FastAPI server from this folder:
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 127.0.0.1 --port 8080
 ```
 
 Translations are cached in `translation_cache.sqlite3` by default. Set
@@ -24,17 +24,19 @@ translations survive deployments.
 
 ## Frontend Config
 
-The current app configuration uses the OCR server's plain-HTTP address in both
-development and production. To switch to HTTPS in another environment, set the
-public Expo value at build/start time:
+OCR, single translation and batch translation share one base URL. The current
+temporary default is the user-approved legacy server `http://123.195.84.227:8080`.
+This server does not verify the caller. Prescription image download URLs and
+translation text are sent without encryption. The App does not send Firebase
+login tokens or cookies to that HTTP server; other HTTP destinations are blocked.
+
+For an authenticated server with a trusted TLS certificate, set an HTTPS base
+URL when starting Expo or building the app. The App sends the current Firebase
+user's ID token to HTTPS servers:
 
 ```dotenv
 EXPO_PUBLIC_PRESCRIPTION_API_BASE_URL=https://your-ocr-domain.example
 ```
 
-The app rejects plain-HTTP endpoints unless
-`extra.allowInsecurePrescriptionApi` is explicitly set to `true` in
-`app.json`. That exception applies to both development and production builds
-and is the project's permanent compatibility setting for the current OCR
-server. Prescription data is sent without transport encryption. Do not put
-`GEMINI_API_KEY` or any other secret in an `EXPO_PUBLIC_` value.
+Keep `GEMINI_API_KEY` on the server. The authenticated backend in this folder
+uses a private persistent `OCR_USAGE_DB` for per-user and service-wide quotas.
