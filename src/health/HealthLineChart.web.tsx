@@ -1,9 +1,13 @@
 import React from "react";
+import { useLanguage } from "@/src/store/LanguageContext";
+import { healthChartCopy } from "./healthChartCopy";
 import type { LineChart as NativeLineChart } from "react-native-gifted-charts";
 
 // SVG on the web must not receive React Native responder event props.
 // Keep this adapter limited to the static health trends used by this app.
 export function LineChart(props: React.ComponentProps<typeof NativeLineChart>) {
+  const { language } = useLanguage();
+  const copy = healthChartCopy[language];
   const { data = [], data2 = [], width = 300, height = 260,
     yAxisOffset = 0, maxValue = 100, stepValue = 10 } = props;
   const series = [data, data2];
@@ -18,9 +22,9 @@ export function LineChart(props: React.ComponentProps<typeof NativeLineChart>) {
   const y = (v: number) => top + height * (high - v) / (high - low);
   const ticks = Math.min(100, Math.ceil((high - low) / step));
   return (
-    <div style={{ maxWidth: "100%", overflowX: "auto" }} tabIndex={0} aria-label="健康趨勢圖，可橫向捲動">
-      <svg width={plotWidth + left + 12} height={height + 60} role="img" aria-label="健康紀錄趨勢">
-        <title>健康紀錄趨勢；各資料點提供日期及數值</title>
+    <div style={{ maxWidth: "100%", overflowX: "auto" }} tabIndex={0} aria-label={copy.scrollLabel}>
+      <svg width={plotWidth + left + 12} height={height + 60} role="img" aria-label={copy.chartLabel}>
+        <title>{copy.chartDescription}</title>
         {Array.from({ length: ticks + 1 }, (_, i) => low + (high - low) * i / ticks).map(value => (
           <g key={value}>
             <line x1={left} x2={left + plotWidth} y1={y(value)} y2={y(value)} stroke="#D6D6D6" />
@@ -33,7 +37,7 @@ export function LineChart(props: React.ComponentProps<typeof NativeLineChart>) {
             <polyline fill="none" stroke={color} strokeWidth={3}
               points={points.map((p, i) => Number.isFinite(p.value) ? `${x(i)},${y(p.value!)}` : "").join(" ")} />
             {points.map((p, i) => Number.isFinite(p.value) && <circle key={i} cx={x(i)} cy={y(p.value!)} r={4} fill={color} data-value={p.value}>
-              <title>{p.label}：{p.value}</title>
+              <title>{(p as typeof p & { dateLabel?: string }).dateLabel || p.label}：{p.value}</title>
             </circle>)}
           </g>;
         })}

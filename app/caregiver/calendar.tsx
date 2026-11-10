@@ -336,7 +336,7 @@ function getEventTimeParts(event: CalendarEventViewModel) {
 export default function CaregiverCalendarScreen() {
   const bottomInset = useScreenBottomInset();
   const { user } = useAuth();
-  const { activePatientId, activePatient } = useActiveCareTarget();
+  const { activePatientId, activePatient, ready, hydrating } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
   const copy = calendarCopy[language];
@@ -347,6 +347,8 @@ export default function CaregiverCalendarScreen() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEventRecord[]>([]);
+  const [eventsStatus, setEventsStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [eventsRetry, setEventsRetry] = useState(0);
   const [form, setForm] = useState<FormState>({
     personName: "",
     title: "",
@@ -363,6 +365,8 @@ export default function CaregiverCalendarScreen() {
   const [dailyChecklistInput, setDailyChecklistInput] = useState("");
   const [editingChecklistItemId, setEditingChecklistItemId] = useState<string | null>(null);
   const [dailyChecklistError, setDailyChecklistError] = useState("");
+  const [dailyChecklistLoading, setDailyChecklistLoading] = useState(true);
+  const [dailyChecklistRetry, setDailyChecklistRetry] = useState(0);
   const dailyChecklistInitializationRef = useRef<string | null>(null);
 
   const calendarCells = useMemo(() => getMonthMeta(currentMonth), [currentMonth]);
@@ -448,11 +452,13 @@ export default function CaregiverCalendarScreen() {
     setDailyChecklistExpanded(true);
     setDailyChecklistItems([]);
     setDailyChecklistError("");
+    setDailyChecklistLoading(true);
   }
   const [previousPatientId, setPreviousPatientId] = useState(activePatientId);
   if (previousPatientId !== activePatientId) {
     setPreviousPatientId(activePatientId);
     setEvents([]);
+    setEventsStatus("loading");
   }
 
   useEffect(() => {
@@ -463,9 +469,16 @@ export default function CaregiverCalendarScreen() {
       where("patientId", "==", activePatientId)
     );
 
+    let resolved = false;
+    const timeout = setTimeout(() => { if (!resolved) setEventsStatus("error"); }, 12000);
     const unsubscribe = onSnapshot(
       q,
+      { includeMetadataChanges: true },
       (snap) => {
+        // An empty local cache is not evidence that the server has no events.
+        if (snap.empty && snap.metadata.fromCache) return;
+        resolved = true;
+        clearTimeout(timeout);
         setEvents(
           [...snap.docs]
             .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
@@ -474,15 +487,19 @@ export default function CaregiverCalendarScreen() {
             ...(docSnap.data() as Omit<CalendarEventRecord, "id">),
           }))
         );
+        setEventsStatus("ready");
       },
       (error) => {
         console.log("caregiver calendar snapshot failed:", error);
+        resolved = true;
+        clearTimeout(timeout);
+        setEventsStatus("error");
         setEvents([]);
       }
     );
 
-    return () => unsubscribe();
-  }, [activePatientId]);
+    return () => { clearTimeout(timeout); unsubscribe(); };
+  }, [activePatientId, eventsRetry]);
 
   useEffect(() => {
     if (!activePatientId || !user?.uid) return;
@@ -658,9 +675,21 @@ export default function CaregiverCalendarScreen() {
     };
 
     const itemsQuery = query(itemsRef, where("patientId", "==", activePatientId));
+    let cancelled = false;
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!cancelled && !resolved) {
+        setDailyChecklistLoading(false);
+        setDailyChecklistError(userErrorCopy[language].taskLoad);
+      }
+    }, 12000);
     const unsubscribe = onSnapshot(
       itemsQuery,
+      { includeMetadataChanges: true },
       (snap) => {
+        if (snap.empty && snap.metadata.fromCache) return;
+        resolved = true;
+        clearTimeout(timeout);
         if (snap.empty) {
           setDailyChecklistItems([]);
           if (dailyChecklistInitializationRef.current === dailyChecklistDocId) return;
@@ -685,9 +714,10 @@ export default function CaregiverCalendarScreen() {
                 message: firestoreError.message,
                 error,
               });
-              setDailyChecklistError(
-                userErrorCopy[language].taskCreate
-              );
+              if (!cancelled) {
+                setDailyChecklistLoading(false);
+                setDailyChecklistError(userErrorCopy[language].taskCreate);
+              }
             } finally {
               if (dailyChecklistInitializationRef.current === dailyChecklistDocId) {
                 dailyChecklistInitializationRef.current = null;
@@ -721,6 +751,7 @@ export default function CaregiverCalendarScreen() {
             };
           })
         );
+        setDailyChecklistLoading(false);
       },
       (error) => {
         console.error("daily checklist snapshot failed:", {
@@ -728,18 +759,20 @@ export default function CaregiverCalendarScreen() {
           message: error.message,
           error,
         });
-        setDailyChecklistError(
-          userErrorCopy[language].taskLoad
-        );
+        resolved = true;
+        clearTimeout(timeout);
+        setDailyChecklistLoading(false);
+        setDailyChecklistError(userErrorCopy[language].taskLoad);
         setDailyChecklistItems([]);
       }
     );
 
-    return () => unsubscribe();
+    return () => { cancelled = true; clearTimeout(timeout); unsubscribe(); };
   }, [
     activePatientId,
     activePatientsId,
     dailyChecklistDocId,
+    dailyChecklistRetry,
     legacyPatientDocChecklistDocId,
     legacyPatientsIdChecklistDocId,
     legacyTopLevelChecklistDocIds,
@@ -1172,7 +1205,9 @@ export default function CaregiverCalendarScreen() {
             onToday={() => selectDay(getTodayDate())}
           />
 
-          <DayAgenda date={selectedDate} count={selectedDayEvents.length} onAdd={openCreateForm}>
+          <DayAgenda date={selectedDate} count={selectedDayEvents.length} onAdd={openCreateForm}
+            status={!ready || hydrating ? "loading" : !activePatientId ? "missing" : eventsStatus}
+            onRetry={() => { setEventsStatus("loading"); setEventsRetry(value => value + 1); }}>
             {selectedDayEvents.map((event) => {
               const eventTime = getEventTimeParts(event);
               const eventPersonName = pickDynamicLocalizedString(
@@ -1233,7 +1268,13 @@ export default function CaregiverCalendarScreen() {
             doneCount={completedChecklistCount}
             expanded={dailyChecklistExpanded}
             onToggleExpanded={() => setDailyChecklistExpanded((prev) => !prev)}
-            error={dailyChecklistError}
+            error={ready && !hydrating && !activePatientId ? copy.needCareTarget : dailyChecklistError}
+            loading={!ready || hydrating || (!!activePatientId && dailyChecklistLoading)}
+            onRetry={activePatientId ? () => {
+              setDailyChecklistError("");
+              setDailyChecklistLoading(true);
+              setDailyChecklistRetry(value => value + 1);
+            } : undefined}
             input={dailyChecklistInput}
             onChangeInput={setDailyChecklistInput}
             editing={editingChecklistItemId !== null}

@@ -9,7 +9,7 @@ import { recordCopy } from '@/src/media/recordCopy';
 import * as ImagePicker from 'expo-image-picker';
 import { randomUUID } from 'expo-crypto';
 import { router, useNavigation, type Href } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 // Firebase 相關
@@ -28,6 +28,10 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { createMediaUploadFilename } from '@/firebase/uploadFilename';
 import { readLocalBlob } from "@/src/media/readLocalBlob";
 import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
+import { useScopedSnapshot } from '@/src/data/useScopedSnapshot';
+import { DataLoadFeedback } from '@/src/ui/components/DataLoadFeedback';
+
+const EMPTY_RECORDS: any[] = [];
 
 function pickAbnormalTitle(record: any, language: Language) {
   return pickDynamicLocalizedString(record, 'title', language, ['titleZh', 'titleOriginal'], record?.titleOriginal ?? '');
@@ -43,8 +47,8 @@ function pickAbnormalEntryNotes(entry: any, language: Language) {
 
 export default function AbnormalRecordScreen() {
   const bottomInset = useScreenBottomInset();
-  const { user } = useAuth();
-  const { activePatientId } = useActiveCareTarget();
+  const { user, ready: authReady } = useAuth();
+  const { activePatientId, ready: targetReady } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
   const mediaCopy = recordCopy[language];
@@ -61,7 +65,6 @@ export default function AbnormalRecordScreen() {
 
   // --- 畫面與資料狀態 ---
   const [currentView, setCurrentView] = useState<'list' | 'detail' | 'folder' | 'create' | 'folderEntryDetail' | 'createFolderEntry' | 'edit' | 'editFolderEntry'>('list');
-  const [records, setRecords] = useState<any[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [selectedFolderEntry, setSelectedFolderEntry] = useState<any>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -78,25 +81,32 @@ export default function AbnormalRecordScreen() {
   // ==========================================
   // 1. 抓取 Firebase 異常紀錄
   // ==========================================
-  useEffect(() => {
-    if (!activePatientId) return;
-    const q = query(
-      collection(db, 'abnormal_records'),
-      where('patientId', '==', activePatientId)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const fetchedRecords = [...snap.docs]
+  const uid = user?.uid;
+  const recordScope = uid && activePatientId ? JSON.stringify([uid, activePatientId]) : null;
+  const [previousRecordScope, setPreviousRecordScope] = useState(recordScope);
+  if (previousRecordScope !== recordScope) {
+    setPreviousRecordScope(recordScope);
+    setCurrentView('list');
+    setSelectedRecord(null);
+    setSelectedFolderEntry(null);
+    setDropdownOpen(false);
+  }
+  const subscribe = useCallback((onData: (records: any[], fromCache?: boolean) => void, onError: () => void) => {
+    if (!activePatientId || !uid) return () => {};
+    const q = query(collection(db, 'abnormal_records'), where('patientId', '==', activePatientId));
+    return onSnapshot(q, { includeMetadataChanges: true }, snap => {
+      onData([...snap.docs]
         .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
         .map(doc => {
-        const data = doc.data();
-        const dateObj = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
-        const dateStr = `${dateObj.getFullYear()}年 ${dateObj.getMonth() + 1}月 ${dateObj.getDate()}日`;
-        return { id: doc.id, ...data, displayDate: dateStr };
-      });
-      setRecords(fetchedRecords);
-    });
-    return unsub;
-  }, [activePatientId]);
+          const data = doc.data();
+          const dateObj = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+          const dateStr = `${dateObj.getFullYear()}年 ${dateObj.getMonth() + 1}月 ${dateObj.getDate()}日`;
+          return { id: doc.id, ...data, displayDate: dateStr };
+        }), snap.metadata.fromCache);
+    }, onError);
+  }, [activePatientId, uid]);
+  const recordState = useScopedSnapshot(recordScope, authReady && targetReady, subscribe);
+  const records = recordState.data ?? EMPTY_RECORDS;
 
   const [previousRecords, setPreviousRecords] = useState(records);
   if (previousRecords !== records) {
@@ -453,7 +463,8 @@ export default function AbnormalRecordScreen() {
     <View style={styles.viewContainer}>
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.xxl + bottomInset }]} showsVerticalScrollIndicator={false}>
         <Text style={styles.listHint}>{t.conditionHint}</Text>
-        {records.length === 0 ? (
+        <DataLoadFeedback status={recordState.status} language={language} retry={recordState.retry} />
+        {recordState.status === "ready" && records.length === 0 ? (
           <EmptyState icon="videocam-outline" title={c.recordEmpty} />
         ) : null}
         {records.map(record => (
@@ -483,7 +494,7 @@ export default function AbnormalRecordScreen() {
           </Card>
         ))}
       </ScrollView>
-      {renderFooter(<Button label={c.recordAdd} icon="add" size="lg" fullWidth onPress={goToCreate} />)}
+      {renderFooter(<Button label={c.recordAdd} icon="add" size="lg" fullWidth onPress={goToCreate} disabled={recordState.status !== "ready"} />)}
     </View>
   );
 

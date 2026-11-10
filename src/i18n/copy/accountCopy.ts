@@ -88,6 +88,8 @@ export const myDataExtraCopy = defineCopy({
       personal_data_export: "匯出個人資料",
       personal_data_summary_viewed: "查閱我的資料",
       profile_update: "更正個人資料",
+      profile_create: "建立個人資料", profile_delete: "刪除個人資料", invitation_reject: "拒絕邀請", invitation_regenerate: "更新邀請碼",
+      primary_family_transferred: "轉移主要家屬", invitation_get: "查閱邀請資訊", invitation_create: "建立邀請", invitation_issue: "建立邀請", invitation_approve: "核准邀請", invitation_revoke: "撤銷邀請", caregiver_self_leave: "解除照護關聯",
     } as Record<string, string>,
   },
   en: {
@@ -99,6 +101,8 @@ export const myDataExtraCopy = defineCopy({
       personal_data_export: "Exported personal data",
       personal_data_summary_viewed: "Viewed my data",
       profile_update: "Updated personal data",
+      profile_create: "Created personal data", profile_delete: "Deleted personal data", invitation_reject: "Declined invitation", invitation_regenerate: "Updated invitation code",
+      primary_family_transferred: "Transferred primary family role", invitation_get: "Viewed invitation", invitation_create: "Created invitation", invitation_issue: "Created invitation", invitation_approve: "Approved invitation", invitation_revoke: "Revoked invitation", caregiver_self_leave: "Left care group",
     } as Record<string, string>,
   },
   vi: {
@@ -110,6 +114,8 @@ export const myDataExtraCopy = defineCopy({
       personal_data_export: "Xuất dữ liệu cá nhân",
       personal_data_summary_viewed: "Xem dữ liệu của tôi",
       profile_update: "Sửa dữ liệu cá nhân",
+      profile_create: "Tạo dữ liệu cá nhân", profile_delete: "Xóa dữ liệu cá nhân", invitation_reject: "Từ chối lời mời", invitation_regenerate: "Đổi mã mời",
+      primary_family_transferred: "Chuyển vai trò người nhà chính", invitation_get: "Xem lời mời", invitation_create: "Tạo lời mời", invitation_issue: "Tạo lời mời", invitation_approve: "Chấp nhận lời mời", invitation_revoke: "Thu hồi lời mời", caregiver_self_leave: "Rời nhóm chăm sóc",
     } as Record<string, string>,
   },
   id: {
@@ -121,6 +127,8 @@ export const myDataExtraCopy = defineCopy({
       personal_data_export: "Ekspor data pribadi",
       personal_data_summary_viewed: "Melihat data saya",
       profile_update: "Perbaiki data pribadi",
+      profile_create: "Membuat data pribadi", profile_delete: "Menghapus data pribadi", invitation_reject: "Menolak undangan", invitation_regenerate: "Memperbarui kode undangan",
+      primary_family_transferred: "Memindahkan peran keluarga utama", invitation_get: "Melihat undangan", invitation_create: "Membuat undangan", invitation_issue: "Membuat undangan", invitation_approve: "Menyetujui undangan", invitation_revoke: "Mencabut undangan", caregiver_self_leave: "Keluar dari kelompok perawatan",
     } as Record<string, string>,
   },
 });

@@ -6,13 +6,16 @@ import { ClientOnly } from "@/src/ui/ClientOnly";
 import { Ionicons } from '@expo/vector-icons';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import type { Href } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppAlert as Alert } from '@/src/ui/AppAlert';
 
 // Firebase 相關
 import { db } from '@/firebase/firebaseConfig';
 import { useActiveCareTarget } from '@/src/care-target/useActiveCareTarget';
+import { useAuth } from '@/src/auth/useAuth';
+import { useScopedSnapshot } from '@/src/data/useScopedSnapshot';
+import { DataLoadFeedback } from '@/src/ui/components/DataLoadFeedback';
 import { translations } from '@/src/i18n/translations';
 import { useLanguage } from '@/src/store/LanguageContext';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
@@ -35,7 +38,8 @@ export default function CaregiverVoiceScreen() {
 
 function CaregiverVoiceContent() {
   const bottomInset = useScreenBottomInset();
-  const { activePatientId } = useActiveCareTarget();
+  const { activePatientId, ready: targetReady } = useActiveCareTarget();
+  const { user, ready: authReady } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
   const c = caregiverCopy[language];
@@ -50,7 +54,6 @@ function CaregiverVoiceContent() {
     8: t.voiceTaskEmotion,
   };
   
-  const [tasks, setTasks] = useState<any[]>(initialTasks.map(t => ({ ...t, hasRecording: false })));
   const [playingTaskId, setPlayingTaskId] = useState<number | null>(null);
   // expo-audio 的播放器由 hook 管理生命週期（元件卸載時自動釋放），
   // 不需要像舊版 expo-av 那樣自己 unloadAsync
@@ -69,35 +72,36 @@ function CaregiverVoiceContent() {
   // ==========================================
   // 1. 抓取 Firebase 語音紀錄
   // ==========================================
-  useEffect(() => {
-    if (!activePatientId) return;
-
-    const q = query(
-      collection(db, 'voice_records'),
-      where('patientId', '==', activePatientId)
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
+  const uid = user?.uid;
+  const subscribe = useCallback((onData: (tasks: any[], fromCache?: boolean) => void, onError: () => void) => {
+    if (!activePatientId || !uid) return () => {};
+    const q = query(collection(db, 'voice_records'), where('patientId', '==', activePatientId));
+    return onSnapshot(q, { includeMetadataChanges: true }, snap => {
       const recordsMap: Record<string, any> = {};
-      
       snap.docs.forEach(doc => {
         const data = doc.data();
         if (!recordsMap[data.title] || data.createdAt > recordsMap[data.title].createdAt) {
           recordsMap[data.title] = { docId: doc.id, ...data };
         }
       });
-
-      setTasks(initialTasks.map(task => {
+      onData(initialTasks.map(task => {
         const record = recordsMap[task.title];
-        if (record) {
-          return { ...task, hasRecording: true, audioUrl: record.audioUrl };
-        }
-        return { ...task, hasRecording: false, audioUrl: null };
-      }));
-    });
+        return record ? { ...task, hasRecording: true, audioUrl: record.audioUrl, awaitingServer: false }
+          : { ...task, hasRecording: false, audioUrl: null, awaitingServer: snap.metadata.fromCache };
+      }), snap.metadata.fromCache);
+    }, onError);
+  }, [activePatientId, uid]);
+  const voiceScope = uid && activePatientId ? JSON.stringify([uid, activePatientId]) : null;
+  const voiceState = useScopedSnapshot(voiceScope, authReady && targetReady, subscribe);
+  const tasks = voiceState.data ?? [];
 
-    return unsub;
-  }, [activePatientId]);
+  const playbackScope = JSON.stringify([uid, activePatientId]);
+  const [previousPlaybackScope, setPreviousPlaybackScope] = useState(playbackScope);
+  if (previousPlaybackScope !== playbackScope) {
+    setPreviousPlaybackScope(playbackScope);
+    setPlayingTaskId(null);
+  }
+  useEffect(() => { player.pause(); }, [activePatientId, uid, player]);
 
   // ==========================================
   // 2. 音波動畫控制
@@ -162,18 +166,21 @@ function CaregiverVoiceContent() {
           <Text style={styles.hintText}>{c.cardsHint}</Text>
         </View>
 
-        <View style={styles.gridContainer}>
+        <DataLoadFeedback status={voiceState.status} language={language} retry={voiceState.retry} />
+        {voiceState.data ? <View style={styles.gridContainer}>
           {tasks.map((task) => {
             const isPlaying = playingTaskId === task.id;
             const title = taskTitles[task.id] ?? task.title;
+            const awaitingServer = task.awaitingServer === true;
 
             return (
               <Pressable
                 key={task.id}
                 onPress={() => handleCardClick(task)}
+                disabled={awaitingServer}
                 accessibilityRole="button"
-                accessibilityLabel={task.hasRecording ? title : `${title} (${t.notRecorded})`}
-                accessibilityState={{ selected: isPlaying }}
+                accessibilityLabel={task.hasRecording ? title : `${title} (${awaitingServer ? t.loading : t.notRecorded})`}
+                accessibilityState={{ selected: isPlaying, disabled: awaitingServer }}
                 style={({ pressed }) => [
                   styles.card,
                   isPlaying && styles.cardPlaying,
@@ -214,12 +221,12 @@ function CaregiverVoiceContent() {
                   >
                     {title}
                   </Text>
-                  {!task.hasRecording ? <Text style={styles.cardMeta}>{t.notRecorded}</Text> : null}
+                  {!task.hasRecording ? <Text style={styles.cardMeta}>{awaitingServer ? t.loading : t.notRecorded}</Text> : null}
                 </View>
               </Pressable>
             );
           })}
-        </View>
+        </View> : null}
       </ScrollView>
     </View>
   );

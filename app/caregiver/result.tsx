@@ -1,6 +1,7 @@
 import { AppHeader, Button, Card, KeyboardAwareScroll, SectionHeader, TextField } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { AppAlert as Alert } from "@/src/ui/AppAlert";
+import { cleanOcrText, hasValidMedicineNames, medicineName } from "@/src/api/prescriptionRecognition";
 import { caregiverCopy } from "@/src/i18n/copy/caregiverCopy";
 import PrescriptionWriteGuard from "@/src/care-target/PrescriptionWriteGuard";
 import { useEffect, useMemo, useState } from "react";
@@ -44,14 +45,14 @@ type Item = {
 function toArray(v: any): string[] {
   if (Array.isArray(v)) {
     return v
-      .map((x) => String(x).trim())
+      .map((x) => cleanOcrText(x))
       .filter(Boolean);
   }
 
-  if (typeof v === "string" && v.trim()) {
+  if (typeof v === "string" && cleanOcrText(v)) {
     return v
       .split(/[，,]/)
-      .map((part) => part.trim())
+      .map((part) => cleanOcrText(part))
       .filter(Boolean);
   }
 
@@ -60,7 +61,7 @@ function toArray(v: any): string[] {
 
 function formatPrescriptionMemo(value: any): string {
   if (typeof value === "string") {
-    return value;
+    return cleanOcrText(value);
   }
 
   if (!value || typeof value !== "object") {
@@ -73,19 +74,17 @@ function formatPrescriptionMemo(value: any): string {
     value.refill_info,
     value.other,
   ]
-    .filter(
-      (item): item is string =>
-        typeof item === "string" && item.trim().length > 0
-    )
+    .map(cleanOcrText)
+    .filter(Boolean)
     .join("；");
 }
 
 function pickItemName(it: any): string {
-  return String(it?.drug_name_zh ?? it?.drug_name ?? it?.name ?? "");
+  return medicineName(it);
 }
 
 function pickItemDose(it: any): string {
-  return String(it?.dose ?? it?.dosage ?? "");
+  return cleanOcrText(it?.dose ?? it?.dosage);
 }
 
 function pickItemTime(it: any): string[] {
@@ -93,16 +92,16 @@ function pickItemTime(it: any): string[] {
 }
 
 function pickItemNote(it: any): string {
-  return String(it?.note_zh ?? it?.memo ?? it?.note ?? "");
+  return cleanOcrText(it?.note_zh ?? it?.memo ?? it?.note);
 }
 
 function mapItem(it: any): Item {
   return {
     itemId: it?.itemId,
     raw: it,
-    name: pickItemName(it) || "（未辨識藥品名稱）",
-    dose: pickItemDose(it) || "未提供",
-    quantity: it.quantity ?? "依醫囑",
+    name: pickItemName(it),
+    dose: pickItemDose(it),
+    quantity: cleanOcrText(it?.quantity),
     time: pickItemTime(it),
     note: pickItemNote(it),
   };
@@ -120,14 +119,14 @@ function pickLocalizedString(
   const base = raw[baseName];
 
   if (baseName === "drug_name") {
-    return String(localized ?? zh ?? base ?? raw.drug_name_translated ?? fallbackValue);
+    return [localized, zh, base, raw.drug_name_translated, fallbackValue].map(cleanOcrText).find(Boolean) ?? "";
   }
 
   if (baseName === "note") {
-    return String(localized ?? zh ?? raw.memo ?? base ?? raw.note_translated ?? fallbackValue);
+    return [localized, zh, raw.memo, base, raw.note_translated, fallbackValue].map(cleanOcrText).find(Boolean) ?? "";
   }
 
-  return String(localized ?? zh ?? base ?? fallbackValue);
+  return [localized, zh, base, fallbackValue].map(cleanOcrText).find(Boolean) ?? "";
 }
 
 function getDisplayItem(
@@ -225,13 +224,13 @@ function ResultScreen() {
       setImageUri(safeImageUrl);
 
       setTitle(
-        String(safe.department ?? "").trim() ||
-        draftTitle ||
+        cleanOcrText(safe.department) ||
+        cleanOcrText(draftTitle) ||
         t.cameraDefaultDraftTitle
       );
 
-      setClinicName(String(safe.clinic_name ?? safe.clinicName ?? ""));
-      setDepartment(String(safe.department ?? ""));
+      setClinicName(cleanOcrText(safe.clinic_name ?? safe.clinicName));
+      setDepartment(cleanOcrText(safe.department));
       setGlobalMemo(formatPrescriptionMemo(safe.memo));
       setItems(medicines.map((it) => mapItem(it)));
       setStatus("done");
@@ -263,13 +262,12 @@ function ResultScreen() {
         setImageUri(data.sourceImageUrl);
 
         setTitle(
-          String(data.department ?? "").trim() ||
-          data.title ||
-          ""
+          cleanOcrText(data.department) ||
+          cleanOcrText(data.title)
         );
 
-        setClinicName(String(data.clinic_name ?? data.clinicName ?? ""));
-        setDepartment(String(data.department ?? ""));
+        setClinicName(cleanOcrText(data.clinic_name ?? data.clinicName));
+        setDepartment(cleanOcrText(data.department));
         setGlobalMemo(formatPrescriptionMemo(data.memo));
 
         const itemsQ = query(
@@ -320,6 +318,11 @@ function ResultScreen() {
         return;
       }
 
+      if (!hasValidMedicineNames(items)) {
+        Alert.alert(t.resultMedicinesRequiredTitle, t.resultMedicinesRequiredMessage);
+        return;
+      }
+
       try {
         setSaving(true);
 
@@ -340,10 +343,10 @@ function ResultScreen() {
           status: "parsed",
           title: finalTitle,
           createdAt: serverTimestamp(),
-          clinic_name: safe.clinic_name ?? "",
-          department: safe.department ?? "",
-          visit_date: safe.visit_date ?? "",
-          patient_name: safe.patient_name ?? "",
+          clinic_name: cleanOcrText(safe.clinic_name),
+          department: cleanOcrText(safe.department),
+          visit_date: cleanOcrText(safe.visit_date),
+          patient_name: cleanOcrText(safe.patient_name),
           memo: normalizeEditableText(globalMemo),
           aiRaw: safe,
         });

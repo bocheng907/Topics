@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { uploadPrescriptionImage } from "@/firebase/uploadPrescriptionImage";
 import { useAuth } from "@/src/auth/useAuth";
 import { analyzePrescriptionByUrl } from "@/src/api/analyzePrescription";
+import { cleanOcrText, hasRecognizedMedicine } from "@/src/api/prescriptionRecognition";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
@@ -141,17 +142,16 @@ function CameraScreen() {
     setIsAnalyzing(true);
 
     try {
-      console.log("[1] uploading image...");
       const downloadURL = await uploadPrescriptionImage(
         imageUri, user.uid, activePatientId);
       const analyzeResult = await analyzePrescriptionByUrl(downloadURL);
-      console.log("[2] analyzeResult:", analyzeResult);
 
       const safe = JSON.parse(JSON.stringify(analyzeResult ?? {}));
-      const draftTitle = safe.clinic_name ?? t.cameraDefaultDraftTitle;
-
-      console.log("[3] navigate to result draft...");
-      console.log("[3] draftTitle =", draftTitle);
+      if (!hasRecognizedMedicine(safe)) {
+        Alert.alert(t.cameraProcessFailed, t.cameraNoMedicinesMessage);
+        return;
+      }
+      const draftTitle = cleanOcrText(safe.clinic_name) || t.cameraDefaultDraftTitle;
 
       router.replace({
         pathname: "/caregiver/result" as any,

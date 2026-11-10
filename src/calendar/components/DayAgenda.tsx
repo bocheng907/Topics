@@ -6,7 +6,7 @@ import { Button, Card, EmptyState, IconButton } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 /* ------------------------------------------------------------- DayAgenda */
 
@@ -14,11 +14,15 @@ export function DayAgenda({
   date,
   count,
   onAdd,
+  status = "ready",
+  onRetry,
   children,
 }: {
   date: Date;
   count: number;
   onAdd: () => void;
+  status?: "loading" | "error" | "missing" | "ready";
+  onRetry?: () => void;
   children?: React.ReactNode;
 }) {
   const { language } = useLanguage();
@@ -30,11 +34,21 @@ export function DayAgenda({
           <Text style={styles.headerTitle} accessibilityRole="header">
             {copy.dayTitle(date)}
           </Text>
-          {count > 0 ? <Text style={styles.headerCount}>{copy.eventsCount(count)}</Text> : null}
+          {status === "ready" && count > 0 ? <Text style={styles.headerCount}>{copy.eventsCount(count)}</Text> : null}
         </View>
-        {count > 0 ? <Button label={copy.addEvent} icon="add" variant="ghost" onPress={onAdd} /> : null}
+        {status === "ready" && count > 0 ? <Button label={copy.addEvent} icon="add" variant="ghost" onPress={onAdd} /> : null}
       </View>
-      {count > 0 ? (
+      {status === "loading" ? (
+        <Card><View style={styles.loading} accessibilityLiveRegion="polite">
+          <ActivityIndicator color={colors.primary} />
+          <Text>{copy.agendaLoading}</Text>
+        </View></Card>
+      ) : status === "error" ? (
+        <Card padding={0}><EmptyState icon="cloud-offline-outline" title={copy.agendaLoadFailed}
+          actionLabel={copy.retry} onAction={onRetry} style={styles.empty} /></Card>
+      ) : status === "missing" ? (
+        <Card padding={0}><EmptyState icon="person-outline" title={copy.needCareTarget} style={styles.empty} /></Card>
+      ) : count > 0 ? (
         <View style={styles.list}>{children}</View>
       ) : (
         <Card padding={0}>
@@ -112,6 +126,16 @@ export function AgendaEventCard({
               onPress={onToggleComplete}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: completed }}
+              {...(Platform.OS === "web" ? {
+                "aria-checked": completed,
+                onKeyDown: (event: { preventDefault: () => void }) => {
+                  const keyEvent = event as typeof event & { key?: string; repeat?: boolean };
+                  if (keyEvent.key === " " || keyEvent.key === "Spacebar") {
+                    keyEvent.preventDefault();
+                    if (!keyEvent.repeat) onToggleComplete();
+                  }
+                },
+              } : {})}
               accessibilityLabel={completed ? copy.markUndoneA11y(title) : copy.markDoneA11y(title)}
               style={({ pressed }) => [styles.toggle, completed && styles.toggleDone, pressed && styles.bodyPressed]}
             >
@@ -150,6 +174,7 @@ const styles = StyleSheet.create({
   headerTitle: { ...typography.header },
   headerCount: { ...typography.bodySmall, color: colors.textMuted },
   list: { gap: spacing.md },
+  loading: { padding: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   empty: { paddingVertical: spacing.xl },
 
   cardRow: { flexDirection: "row", alignItems: "stretch" },

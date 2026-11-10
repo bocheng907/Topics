@@ -254,7 +254,7 @@ function getEventTimeParts(event: CalendarEventViewModel) {
 
 export default function FamilyCalendarScreen() {
   const { user } = useAuth();
-  const { activePatientId } = useActiveCareTarget();
+  const { activePatientId, ready, hydrating } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
   const copy = calendarCopy[language];
@@ -265,6 +265,8 @@ export default function FamilyCalendarScreen() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEventRecord[]>([]);
+  const [eventsStatus, setEventsStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [eventsRetry, setEventsRetry] = useState(0);
   const [form, setForm] = useState<FormState>({
     personName: "",
     title: "",
@@ -304,6 +306,7 @@ export default function FamilyCalendarScreen() {
   if (previousPatientId !== activePatientId) {
     setPreviousPatientId(activePatientId);
     setEvents([]);
+    setEventsStatus("loading");
   }
 
   useEffect(() => {
@@ -314,9 +317,16 @@ export default function FamilyCalendarScreen() {
       where("patientId", "==", activePatientId)
     );
 
+    let resolved = false;
+    const timeout = setTimeout(() => { if (!resolved) setEventsStatus("error"); }, 12000);
     const unsubscribe = onSnapshot(
       q,
+      { includeMetadataChanges: true },
       (snap) => {
+        // An empty local cache is not evidence that the server has no events.
+        if (snap.empty && snap.metadata.fromCache) return;
+        resolved = true;
+        clearTimeout(timeout);
         setEvents(
           [...snap.docs]
             .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
@@ -325,15 +335,19 @@ export default function FamilyCalendarScreen() {
             ...(docSnap.data() as Omit<CalendarEventRecord, "id">),
           }))
         );
+        setEventsStatus("ready");
       },
       (error) => {
         console.log("family calendar snapshot failed:", error);
+        resolved = true;
+        clearTimeout(timeout);
+        setEventsStatus("error");
         setEvents([]);
       }
     );
 
-    return () => unsubscribe();
-  }, [activePatientId]);
+    return () => { clearTimeout(timeout); unsubscribe(); };
+  }, [activePatientId, eventsRetry]);
 
   useEffect(() => {
     if (language === "zh") return;
@@ -589,7 +603,9 @@ export default function FamilyCalendarScreen() {
             onToday={() => selectDay(getTodayDate())}
           />
 
-          <DayAgenda date={selectedDate} count={selectedDayEvents.length} onAdd={openCreateForm}>
+          <DayAgenda date={selectedDate} count={selectedDayEvents.length} onAdd={openCreateForm}
+            status={!ready || hydrating ? "loading" : !activePatientId ? "missing" : eventsStatus}
+            onRetry={() => { setEventsStatus("loading"); setEventsRetry(value => value + 1); }}>
             {selectedDayEvents.map((event) => {
               const eventTime = getEventTimeParts(event);
               const eventPersonName = pickDynamicLocalizedString(

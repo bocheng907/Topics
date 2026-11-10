@@ -38,7 +38,8 @@ import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { useAuth } from "@/src/auth/useAuth";
 import { useChatTranslation } from "@/src/chat/useChatTranslation";
 import { ChatTranslationStatus } from "@/src/chat/ChatTranslationStatus";
-import { chatLocales } from "@/src/chat/chatTranslation";
+import { TranslatedChatText } from "@/src/chat/TranslatedChatText";
+import { chatLocales, originalChatText } from "@/src/chat/chatTranslation";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { chatMessageCollection } from "@/src/chat/rooms";
@@ -282,7 +283,7 @@ export default function CaregiverChatRoomScreen() {
             const isMe = msg.senderId === user?.uid;
             const identity = chatIdentity(msg, profiles, t.caregiver);
             const localizedText = translated.text(msg);
-            const originalText = msg.text || msg.text_original || "";
+            const originalText = originalChatText(msg);
             return (
               <View
                 key={msg.id}
@@ -302,7 +303,9 @@ export default function CaregiverChatRoomScreen() {
                   {msg.imageUrl ? (
                     <Image source={{ uri: msg.imageUrl }} style={styles.sentImage} resizeMode="cover" />
                   ) : (
-                    <Text style={[styles.mainText, isMe && styles.mainTextMe]}>{localizedText || originalText}</Text>
+                    <TranslatedChatText original={originalText} translated={localizedText} language={language}
+                      textStyle={[styles.mainText, isMe && styles.mainTextMe]}
+                      originalStyle={[styles.originalText, isMe && styles.originalTextMe]} />
                   )}
                     </View>
                     <Text style={[styles.timeText, { alignSelf: isMe ? "flex-end" : "flex-start" }]}>
@@ -412,6 +415,8 @@ const styles = StyleSheet.create({
   otherBubble: { backgroundColor: colors.surfaceSunken, borderTopLeftRadius: spacing.xs },
   mainText: { ...typography.body },
   mainTextMe: { color: colors.onPrimary },
+  originalText: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm },
+  originalTextMe: { color: colors.onPrimary },
   sentImage: { width: 220, height: 165, borderRadius: radii.control, maxWidth: "100%" },
   timeText: { ...typography.caption, flexShrink: 0, marginTop: spacing.xs },
 

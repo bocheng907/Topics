@@ -6,7 +6,7 @@ import { Button, Card, Divider, IconButton, StatusBadge, TextField } from "@/src
 import { colors, radii, spacing, typography } from "@/src/ui/theme";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 export type DailyChecklistRow = { id: string; title: string; completed: boolean };
 
@@ -17,6 +17,8 @@ export type DailyChecklistCardProps = {
   expanded: boolean;
   onToggleExpanded: () => void;
   error?: string;
+  loading?: boolean;
+  onRetry?: () => void;
   input: string;
   onChangeInput: (text: string) => void;
   editing: boolean;
@@ -34,6 +36,8 @@ export function DailyChecklistCard({
   expanded,
   onToggleExpanded,
   error,
+  loading = false,
+  onRetry,
   input,
   onChangeInput,
   editing,
@@ -54,7 +58,8 @@ export function DailyChecklistCard({
         onPress={onToggleExpanded}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel={`${copy.checklistTitle}, ${copy.checklistProgressA11y(doneCount, total)}. ${expanded ? copy.checklistCollapse : copy.checklistExpand}`}
+        {...(Platform.OS === "web" ? { "aria-expanded": expanded } : {})}
+        accessibilityLabel={loading ? copy.checklistLoading : error ? copy.checklistTitle : copy.checklistTitle + ", " + copy.checklistProgressA11y(doneCount, total) + ". " + (expanded ? copy.checklistCollapse : copy.checklistExpand)}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
       >
         <View style={styles.headerIcon}>
@@ -66,7 +71,7 @@ export function DailyChecklistCard({
           </Text>
           <Text style={styles.subtitle}>{copy.checklistFor(copy.dayTitle(date))}</Text>
         </View>
-        <StatusBadge label={`${doneCount}/${total}`} tone={allDone ? "success" : "neutral"} icon={allDone ? "checkmark" : undefined} />
+        {!loading && !error ? <StatusBadge label={String(doneCount) + "/" + String(total)} tone={allDone ? "success" : "neutral"} icon={allDone ? "checkmark" : undefined} /> : null}
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={22} color={colors.textMuted} />
       </Pressable>
 
@@ -80,8 +85,12 @@ export function DailyChecklistCard({
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             ) : null}
+            {error && onRetry ? <Button label={copy.retry} variant="ghost" onPress={onRetry} /> : null}
 
-            <View style={styles.inputRow}>
+            {loading ? <View style={styles.loading} accessibilityLiveRegion="polite">
+              <ActivityIndicator color={colors.primary} /><Text>{copy.checklistLoading}</Text>
+            </View> : null}
+            {!loading && !error ? <View style={styles.inputRow}>
               <TextField
                 label={editing ? copy.checklistEditingLabel : copy.checklistInputLabel}
                 value={input}
@@ -92,11 +101,11 @@ export function DailyChecklistCard({
                 containerStyle={styles.input}
               />
               <Button label={editing ? copy.checklistSave : copy.checklistAdd} icon={editing ? "checkmark" : "add"} onPress={onSubmit} style={styles.submit} />
-            </View>
-            {editing ? <Button label={copy.checklistCancelEdit} variant="ghost" onPress={onCancelEdit} /> : null}
+            </View> : null}
+            {!loading && !error && editing ? <Button label={copy.checklistCancelEdit} variant="ghost" onPress={onCancelEdit} /> : null}
           </View>
 
-          {items.length === 0 ? (
+          {loading || error ? null : items.length === 0 ? (
             <Text style={styles.empty}>{copy.checklistEmpty}</Text>
           ) : (
             items.map((item, index) => (
@@ -108,6 +117,16 @@ export function DailyChecklistCard({
                     accessibilityRole="checkbox"
                     accessibilityLabel={item.title}
                     accessibilityState={{ checked: item.completed }}
+                    {...(Platform.OS === "web" ? {
+                      "aria-checked": item.completed,
+                      onKeyDown: (event: { preventDefault: () => void }) => {
+                        const keyEvent = event as typeof event & { key?: string; repeat?: boolean };
+                        if (keyEvent.key === " " || keyEvent.key === "Spacebar") {
+                          keyEvent.preventDefault();
+                          if (!keyEvent.repeat) onToggleItem(item.id);
+                        }
+                      },
+                    } : {})}
                     style={({ pressed }) => [styles.check, pressed && styles.pressed]}
                     hitSlop={4}
                   >
@@ -153,6 +172,7 @@ const styles = StyleSheet.create({
   subtitle: { ...typography.bodySmall, color: colors.textMuted },
 
   body: { padding: spacing.lg, gap: spacing.sm },
+  loading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   errorBox: {
     flexDirection: "row",
     alignItems: "flex-start",

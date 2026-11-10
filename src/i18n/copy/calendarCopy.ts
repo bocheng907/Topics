@@ -25,6 +25,10 @@ export type CalendarCopy = {
 
   // Agenda
   eventsCount: (count: number) => string;
+  agendaLoading: string;
+  agendaLoadFailed: string;
+  retry: string;
+  checklistLoading: string;
   emptyTitle: string;
   emptyBody: string;
   addEvent: string;
@@ -112,6 +116,10 @@ export const calendarCopy: Record<Language, CalendarCopy> = {
     am: "上午",
     pm: "下午",
     eventsCount: (n) => `${n} 個事件`,
+    agendaLoading: "正在載入行程…",
+    agendaLoadFailed: "無法載入行程，請檢查網路後再試。",
+    retry: "重試",
+    checklistLoading: "正在載入每日事項…",
     emptyTitle: "這天沒有事件",
     emptyBody: "回診、復健或其他安排，都可以記在這裡。",
     addEvent: "新增事件",
@@ -186,6 +194,10 @@ export const calendarCopy: Record<Language, CalendarCopy> = {
     am: "AM",
     pm: "PM",
     eventsCount: (n) => `${n} ${n === 1 ? "event" : "events"}`,
+    agendaLoading: "Loading events…",
+    agendaLoadFailed: "Unable to load events. Check your connection and try again.",
+    retry: "Try again",
+    checklistLoading: "Loading daily tasks…",
     emptyTitle: "No events on this day",
     emptyBody: "Keep track of check-ups, therapy sessions and other plans here.",
     addEvent: "Add event",
@@ -260,6 +272,10 @@ export const calendarCopy: Record<Language, CalendarCopy> = {
     am: "SA",
     pm: "CH",
     eventsCount: (n) => `${n} lịch hẹn`,
+    agendaLoading: "Đang tải lịch hẹn…",
+    agendaLoadFailed: "Không thể tải lịch hẹn. Hãy kiểm tra mạng và thử lại.",
+    retry: "Thử lại",
+    checklistLoading: "Đang tải việc hằng ngày…",
     emptyTitle: "Ngày này chưa có lịch hẹn",
     emptyBody: "Ghi lại lịch tái khám, vật lý trị liệu và các việc khác tại đây.",
     addEvent: "Thêm lịch hẹn",
@@ -334,6 +350,10 @@ export const calendarCopy: Record<Language, CalendarCopy> = {
     am: "AM",
     pm: "PM",
     eventsCount: (n) => `${n} jadwal`,
+    agendaLoading: "Memuat jadwal…",
+    agendaLoadFailed: "Jadwal tidak dapat dimuat. Periksa koneksi lalu coba lagi.",
+    retry: "Coba lagi",
+    checklistLoading: "Memuat tugas harian…",
     emptyTitle: "Tidak ada jadwal di hari ini",
     emptyBody: "Catat jadwal kontrol, terapi, dan rencana lainnya di sini.",
     addEvent: "Tambah jadwal",

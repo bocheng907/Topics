@@ -1,13 +1,15 @@
 import { AppHeader } from "@/src/ui/components";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
-import { chatMessageCollection, type CareChatRoom } from "@/src/chat/rooms";
+import { type CareChatRoom } from "@/src/chat/rooms";
+import { useLastChatMessage } from "@/src/chat/useLastChatMessage";
+import { chatCopy } from "@/src/chat/chatCopy";
+import type { SnapshotStatus } from "@/src/data/useScopedSnapshot";
+import { DataLoadFeedback } from "@/src/ui/components/DataLoadFeedback";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
@@ -20,24 +22,6 @@ import { chatIdentity } from "@/src/chat/chatIdentity";
 import { useChatProfiles } from "@/src/chat/useChatProfiles";
 import UserAvatar from "@/src/ui/components/UserAvatar";
 
-function useLastMessage(patientId: string | null, room: CareChatRoom) {
-  const { user } = useAuth();
-  const [message, setMessage] = useState<any>(null);
-  const scope = `${user?.uid}/${patientId}/${room}`;
-  const [previousScope, setPreviousScope] = useState(scope);
-  if (previousScope !== scope) { setPreviousScope(scope); setMessage(null); }
-  useEffect(() => {
-    if (!patientId || !user?.uid) return;
-    let active = true;
-    const q = query(collection(db, "chats", patientId, chatMessageCollection(room)), orderBy("createdAt", "desc"), limit(1));
-    const unsubscribe = onSnapshot(q, snap => {
-      if (active) setMessage(snap.empty ? null : { ...snap.docs[0].data(), id: snap.docs[0].id });
-    }, () => { if (active) setMessage(null); });
-    return () => { active = false; unsubscribe(); };
-  }, [patientId, room, user?.uid]);
-  return message;
-}
-
 function time(message: any, language: Language) {
   return message?.createdAt?.toMillis
     ? new Date(message.createdAt.toMillis()).toLocaleTimeString(chatLocales[language], { hour: "2-digit", minute: "2-digit" })
@@ -45,16 +29,20 @@ function time(message: any, language: Language) {
 }
 
 export default function FamilyChatListScreen() {
-  const { activePatientId, activePatient } = useActiveCareTarget();
+  const { activePatientId, activePatient, ready: targetReady } = useActiveCareTarget();
   const { language } = useLanguage();
   const { user } = useAuth();
   const t = translations[language];
-  const caregiverMessage = useLastMessage(activePatientId, "caregiver");
-  const familyMessage = useLastMessage(activePatientId, "family");
+  const caregiverLast = useLastChatMessage(activePatientId, "caregiver", targetReady);
+  const familyLast = useLastChatMessage(activePatientId, "family", targetReady);
+  const caregiverMessage = caregiverLast.data;
+  const familyMessage = familyLast.data;
   const caregiverTranslation = useChatTranslation(caregiverMessage ? [caregiverMessage] : [], language, `${user?.uid}/${activePatientId}/messages`);
   const familyTranslation = useChatTranslation(familyMessage ? [familyMessage] : [], language, `${user?.uid}/${activePatientId}/familyMessages`);
-  const preview = (message: any, translated: typeof caregiverTranslation, fallback: string) =>
-    !message ? fallback : message.imageUrl ? chatTranslationCopy[language].photo : translated.text(message) || fallback;
+  const preview = (message: any, translated: typeof caregiverTranslation, fallback: string, status: SnapshotStatus) =>
+    message ? (message.imageUrl ? chatTranslationCopy[language].photo : translated.text(message) || fallback)
+      : status === "loading" || status === "cached" ? t.loadingMessages : status === "error" ? chatCopy[language].loadFailed
+      : status === "idle" ? t.noSelectedPatient : fallback;
   const elderName = activePatient?.name || t.chatRoom;
   // 照服員對話：最後一則若是對方傳的，顯示對方頭像（與聊天室同一份 getChatProfiles 結果）
   const { profiles: caregiverProfiles } = useChatProfiles(
@@ -75,6 +63,7 @@ export default function FamilyChatListScreen() {
     message: any,
     translated: typeof caregiverTranslation,
     fallback: string,
+    status: SnapshotStatus,
   ) => (
     <Pressable
       disabled={!activePatientId}
@@ -101,7 +90,7 @@ export default function FamilyChatListScreen() {
           <Text style={styles.time}>{time(message, language)}</Text>
         </View>
         <Text style={styles.elder} numberOfLines={1}>{elderName}</Text>
-        <Text style={styles.preview} numberOfLines={1}>{preview(message, translated, fallback)}</Text>
+        <Text style={styles.preview} numberOfLines={1}>{preview(message, translated, fallback, status)}</Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
     </Pressable>
@@ -111,10 +100,12 @@ export default function FamilyChatListScreen() {
     <View style={styles.container}>
       <AppHeader title={t.chatRoom} left="menu" />
       <ScrollView contentContainerStyle={styles.list}>
-        {renderRoom("caregiver", "person", t.caregiverChatTitle, caregiverMessage, caregiverTranslation, t.noChatRecords)}
+        {renderRoom("caregiver", "person", t.caregiverChatTitle, caregiverMessage, caregiverTranslation, t.noChatRecords, caregiverLast.status)}
+        <DataLoadFeedback status={caregiverLast.status === "error" || caregiverLast.status === "cached" ? caregiverLast.status : "ready"} language={language} retry={caregiverLast.retry} />
         <ChatTranslationStatus language={language} {...caregiverTranslation} />
 
-        {renderRoom("family", "people", t.familyGroupTitle, familyMessage, familyTranslation, t.familyGroupAutoJoinHint)}
+        {renderRoom("family", "people", t.familyGroupTitle, familyMessage, familyTranslation, t.familyGroupAutoJoinHint, familyLast.status)}
+        <DataLoadFeedback status={familyLast.status === "error" || familyLast.status === "cached" ? familyLast.status : "ready"} language={language} retry={familyLast.retry} />
         <ChatTranslationStatus language={language} {...familyTranslation} />
         <Text style={styles.hint}>{t.familyGroupFixedHint}</Text>
       </ScrollView>

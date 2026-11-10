@@ -3,10 +3,10 @@ import { Pressable, Text, View } from "react-native";
 import type { Language } from "../i18n/translations";
 
 export const chatTranslationCopy = {
-  zh: { pending: "正在翻譯訊息…", failed: "部分訊息暫時無法翻譯，已保留原文。", retry: "重試翻譯", photo: "[照片]" },
-  en: { pending: "Translating messages…", failed: "Some messages could not be translated. Original text is shown.", retry: "Retry translation", photo: "[Photo]" },
-  vi: { pending: "Đang dịch tin nhắn…", failed: "Một số tin nhắn chưa dịch được. Đang hiển thị bản gốc.", retry: "Thử dịch lại", photo: "[Ảnh]" },
-  id: { pending: "Menerjemahkan pesan…", failed: "Sebagian pesan belum dapat diterjemahkan. Teks asli ditampilkan.", retry: "Coba terjemahkan lagi", photo: "[Foto]" },
+  zh: { pending: "正在翻譯訊息…", failed: "部分訊息暫時無法翻譯，已保留原文。", retry: "重試翻譯", original: "原文", photo: "[照片]" },
+  en: { pending: "Translating messages…", failed: "Some messages could not be translated. Original text is shown.", retry: "Retry translation", original: "Original", photo: "[Photo]" },
+  vi: { pending: "Đang dịch tin nhắn…", failed: "Một số tin nhắn chưa dịch được. Đang hiển thị bản gốc.", retry: "Thử dịch lại", original: "Bản gốc", photo: "[Ảnh]" },
+  id: { pending: "Menerjemahkan pesan…", failed: "Sebagian pesan belum dapat diterjemahkan. Teks asli ditampilkan.", retry: "Coba terjemahkan lagi", original: "Asli", photo: "[Foto]" },
 };
 
 export function ChatTranslationStatus({ language, pending, failed, retry }: {

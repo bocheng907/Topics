@@ -16,7 +16,7 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useWindowDimensions,
   ActivityIndicator,
@@ -37,6 +37,9 @@ import {
   makeMedicationLogDocumentId,
 } from "@/src/data/firestoreDocumentIds";
 import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
+import { useScopedSnapshot } from "@/src/data/useScopedSnapshot";
+import { DataLoadFeedback } from "@/src/ui/components/DataLoadFeedback";
+import { reminderLoadState } from "@/src/reminders/reminderLoadState";
 
 type CareTarget = {
   id: string;
@@ -68,6 +71,9 @@ type MedicationLog = {
   dateKey: string;
   scheduleTime?: string;
 };
+
+const EMPTY_REMINDERS: Reminder[] = [];
+const EMPTY_LOGS: MedicationLog[] = [];
 
 // DONE 只在預定餵藥時間附近開放。
 // 若未來要調整時段，只需修改這兩個常數。
@@ -119,18 +125,13 @@ export default function CaregiverHomeScreen() {
   const bottomInset = useScreenBottomInset();
   const { width, fontScale } = useWindowDimensions();
   const { narrowCards } = getHomeLayout(width, fontScale);
-  const { user } = useAuth();
+  const { user, ready: authReady } = useAuth();
   const { activePatient, activePatientId, ready } = useActiveCareTarget();
   const { language } = useLanguage();
   const t = translations[language];
   const c = caregiverCopy[language];
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const target = ready && user && activePatientId ? activePatient as CareTarget | null : null;
-  const loading = !ready;
-
-  const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [todayLogs, setTodayLogs] = useState<MedicationLog[]>([]);
   const [doneLoading, setDoneLoading] = useState(false);
   const doneSubmissionRef = useRef({ pending: false, completedId: "" });
   const [clock, setClock] = useState(() => ({
@@ -153,104 +154,45 @@ export default function CaregiverHomeScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  // ==========================================
-  // 邏輯：防呆與權限檢查 (沒有長輩則去加入)
-  // ==========================================
-  const dataScope = `${ready}/${user?.uid}/${activePatientId}/${todayKey}`;
-  const [previousScope, setPreviousScope] = useState(dataScope);
-  if (previousScope !== dataScope) {
-    setPreviousScope(dataScope); setReminders([]); setTodayLogs([]);
-  }
-
-  // ==========================================
-  // 邏輯：監聽目前長輩的提醒
-  // ==========================================
-  useEffect(() => {
-    if (!ready || !user || !activePatientId) {
-      return;
-    }
-
-    const q = query(
-      collection(db, "medication_reminders"),
-      where("patientId", "==", activePatientId),
-      where("enabled", "==", true)
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const rows: Reminder[] = snap.docs.map((d) => {
-          const data = d.data() as any;
-          return {
-            id: d.id,
-            patientId: data.patientId ?? "",
-            prescriptionId: data.prescriptionId ?? "",
-            medicineName: data.medicineName ?? t.unknownMedicine,
-            doseText: data.doseText ?? "",
-            scheduleTime: data.scheduleTime ?? "",
-            enabled: !!data.enabled,
-            notifyUserIds: Array.isArray(data.notifyUserIds)
-              ? data.notifyUserIds
-              : [],
-            lastSentDate: data.lastSentDate ?? "",
-            createdAt: data.createdAt,
-          };
-        });
-
-        rows.sort(
-          (a, b) =>
-            hhmmToMinutes(a.scheduleTime) - hhmmToMinutes(b.scheduleTime)
-        );
-
-        setReminders(rows);
-      },
-      (err) => {
-        console.log("reminders snapshot error:", err);
-        setReminders([]);
-      }
-    );
-
-    return unsub;
-  }, [ready, user, activePatientId, t.unknownMedicine]);
-
-  // ==========================================
-  // 邏輯：監聽今天已完成的服藥紀錄
-  // ==========================================
-  useEffect(() => {
-    if (!ready || !user || !activePatientId) {
-      return;
-    }
-
-    const q = query(
-      collection(db, "medication_logs"),
-      where("patientId", "==", activePatientId),
-      where("dateKey", "==", todayKey)
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const rows: MedicationLog[] = snap.docs.map((d) => {
-          const data = d.data() as any;
-          return {
-            id: d.id,
-            reminderId: data.reminderId ?? "",
-            patientId: data.patientId ?? "",
-            dateKey: data.dateKey ?? "",
-            scheduleTime: data.scheduleTime ?? "",
-            reminderIds: Array.isArray(data.reminderIds) ? data.reminderIds : [],
-          };
-        });
-        setTodayLogs(rows);
-      },
-      (err) => {
-        console.log("medication logs snapshot error:", err);
-        setTodayLogs([]);
-      }
-    );
-
-    return unsub;
-  }, [ready, user, activePatientId, todayKey]);
+  // Scope listeners by both account and care target so data never carries across a switch.
+  const uid = user?.uid;
+  const reminderScope = uid && activePatientId ? JSON.stringify([uid, activePatientId]) : null;
+  const logScope = uid && activePatientId ? JSON.stringify([uid, activePatientId, todayKey]) : null;
+  const subscribeReminders = useCallback((onData: (rows: Reminder[], fromCache?: boolean) => void, onError: () => void) => {
+    if (!uid || !activePatientId) return () => {};
+    const q = query(collection(db, "medication_reminders"), where("patientId", "==", activePatientId), where("enabled", "==", true));
+    return onSnapshot(q, { includeMetadataChanges: true }, snap => {
+      const rows: Reminder[] = snap.docs.map(d => {
+        const data = d.data() as any;
+        return {
+          id: d.id, patientId: data.patientId ?? "", prescriptionId: data.prescriptionId ?? "",
+          medicineName: data.medicineName ?? t.unknownMedicine, doseText: data.doseText ?? "",
+          scheduleTime: data.scheduleTime ?? "", enabled: !!data.enabled,
+          notifyUserIds: Array.isArray(data.notifyUserIds) ? data.notifyUserIds : [],
+          lastSentDate: data.lastSentDate ?? "", createdAt: data.createdAt,
+        };
+      });
+      rows.sort((a, b) => hhmmToMinutes(a.scheduleTime) - hhmmToMinutes(b.scheduleTime));
+      onData(rows, snap.metadata.fromCache);
+    }, onError);
+  }, [uid, activePatientId, t.unknownMedicine]);
+  const subscribeLogs = useCallback((onData: (rows: MedicationLog[], fromCache?: boolean) => void, onError: () => void) => {
+    if (!uid || !activePatientId) return () => {};
+    const q = query(collection(db, "medication_logs"), where("patientId", "==", activePatientId), where("dateKey", "==", todayKey));
+    return onSnapshot(q, { includeMetadataChanges: true }, snap => {
+      const rows: MedicationLog[] = snap.docs.map(d => {
+        const data = d.data() as any;
+        return { id: d.id, reminderId: data.reminderId ?? "", patientId: data.patientId ?? "",
+          dateKey: data.dateKey ?? "", scheduleTime: data.scheduleTime ?? "",
+          reminderIds: Array.isArray(data.reminderIds) ? data.reminderIds : [] };
+      });
+      onData(rows, snap.metadata.fromCache);
+    }, onError);
+  }, [uid, activePatientId, todayKey]);
+  const reminderState = useScopedSnapshot(reminderScope, authReady && ready, subscribeReminders);
+  const logState = useScopedSnapshot(logScope, authReady && ready, subscribeLogs);
+  const reminders = reminderState.data ?? EMPTY_REMINDERS;
+  const todayLogs = logState.data ?? EMPTY_LOGS;
 
   const reminderSlots = useMemo(() => {
     const grouped = new Map<string, Reminder[]>();
@@ -309,9 +251,11 @@ export default function CaregiverHomeScreen() {
     );
   }, [activeSlot, todayLogs]);
 
+  const cardLoad = reminderLoadState(reminderState.status, logState.status, !!currentReminder);
+
   async function handleDonePress() {
     // React's disabled state updates after this event; block another tap immediately.
-    if (doneSubmissionRef.current.pending) return;
+    if (doneSubmissionRef.current.pending || !cardLoad.canConfirm) return;
 
     if (!user) {
       Alert.alert(t.cameraNotLoggedInTitle, t.resultNotLoggedIn);
@@ -393,12 +337,7 @@ export default function CaregiverHomeScreen() {
     }
   }
 
-  const isFullyLoaded = !loading && ready;
-  if (isFullyLoaded && !hasLoadedOnce) {
-    setHasLoadedOnce(true);
-  }
-
-  if (!hasLoadedOnce && !isFullyLoaded) {
+  if (!authReady || !ready) {
     return (
       <View style={styles.container}>
         <AppHeader title={t.navHome} left="menu" />
@@ -441,7 +380,7 @@ export default function CaregiverHomeScreen() {
     );
   }
 
-  const doneDisabled = !activeSlot || activeSlotDone || doneLoading;
+  const doneDisabled = !cardLoad.canConfirm || !activeSlot || activeSlotDone || doneLoading;
 
   return (
     <View style={styles.container}>
@@ -457,6 +396,11 @@ export default function CaregiverHomeScreen() {
 
           {/* 用藥提醒卡片 */}
           <Card style={styles.reminderCard}>
+            <DataLoadFeedback status={cardLoad.feedback} language={language} retry={() => {
+              if (reminderState.status === "error") reminderState.retry();
+              if (logState.status === "error") logState.retry();
+            }} />
+            {cardLoad.showReminder ? <>
             <View style={styles.reminderTitleRow}>
               <Ionicons name="alarm-outline" size={28} color={colors.primary} />
               <Text style={styles.reminderTitle}>
@@ -476,7 +420,7 @@ export default function CaregiverHomeScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.doneBtn,
-                doneLoading || (!activeSlot && !activeSlotDone)
+                doneDisabled && !activeSlotDone
                   ? styles.doneBtnDisabled
                   : activeSlotDone
                   ? styles.doneBtnDone
@@ -498,10 +442,11 @@ export default function CaregiverHomeScreen() {
                   <Text style={styles.doneBtnTextLight}>{c.homeDone}</Text>
                 </>
               ) : (
-                <Text style={activeSlot ? styles.doneBtnTextLight : styles.doneBtnTextMuted}>{c.homeDone}</Text>
+                <Text style={!doneDisabled && activeSlot ? styles.doneBtnTextLight : styles.doneBtnTextMuted}>{c.homeDone}</Text>
               )}
             </Pressable>
             {!activeSlot && currentReminder ? <Text style={styles.doneHint}>{c.homeDoneWindowHint}</Text> : null}
+            </> : null}
           </Card>
 
           <SectionHeader title={t.functionMenu} style={styles.sectionHeader} />

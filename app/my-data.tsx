@@ -1,6 +1,7 @@
 import { functions } from "@/firebase/firebaseConfig";
 import { myDataCopy } from "@/src/profile/myDataCopy";
 import { myDataExtraCopy } from "@/src/i18n/copy/accountCopy";
+import { activityOperationLabel, activityResourceLabel } from "@/src/profile/activityLabels";
 import { useAuth } from "@/src/auth/useAuth";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { AppHeader, Card, Divider, EmptyState, ListRow, SectionHeader } from "@/src/ui/components";
@@ -68,7 +69,7 @@ export default function MyDataScreen() {
     ["voiceRecordings", t.voiceRecordings], ["chatImages", t.chatImages],
     ["total", t.total],
   ];
-  const operation = (value: string) => x.operations[value] || value.replaceAll("_", " ");
+
 
   return (
     <View style={styles.screen}>
@@ -142,11 +143,9 @@ export default function MyDataScreen() {
                   <View key={item.id}>
                     {index > 0 ? <Divider inset={spacing.lg} /> : null}
                     <View style={styles.activity}>
-                      <Text style={styles.activityTitle}>{operation(item.operation)}</Text>
+                      <Text style={styles.activityTitle}>{activityOperationLabel(language, item.operation)}</Text>
                       <Text style={styles.muted}>{formatTime(item.occurredAt)}
-                        {item.resourceType ? ` · ${item.resourceType}` : ""}</Text>
-                      {!!item.changedFields.length && <Text style={styles.muted}>
-                        {item.changedFields.join("、")}</Text>}
+                        {activityResourceLabel(language, item.resourceType) ? ` · ${activityResourceLabel(language, item.resourceType)}` : ""}</Text>
                     </View>
                   </View>
                 ))}

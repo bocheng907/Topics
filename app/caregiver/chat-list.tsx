@@ -1,16 +1,17 @@
 import { AppHeader, Card } from "@/src/ui/components";
 import { colors, layout, spacing, typography } from "@/src/ui/theme";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
-import { db } from "@/firebase/firebaseConfig";
 import { useActiveCareTarget } from "@/src/care-target/useActiveCareTarget";
 import { translations } from "@/src/i18n/translations";
 import { useLanguage } from "@/src/store/LanguageContext";
 import { useAuth } from "@/src/auth/useAuth";
 import { useChatTranslation } from "@/src/chat/useChatTranslation";
+import { useLastChatMessage } from "@/src/chat/useLastChatMessage";
+import { chatCopy } from "@/src/chat/chatCopy";
+import { DataLoadFeedback } from "@/src/ui/components/DataLoadFeedback";
 import { ChatTranslationStatus, chatTranslationCopy } from "@/src/chat/ChatTranslationStatus";
 import { chatLocales } from "@/src/chat/chatTranslation";
 import { chatIdentity } from "@/src/chat/chatIdentity";
@@ -20,54 +21,19 @@ import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 export default function CaregiverChatListScreen() {
   const bottomInset = useScreenBottomInset();
-  const { activePatientId, activePatient } = useActiveCareTarget();
+  const { activePatientId, activePatient, ready: targetReady } = useActiveCareTarget();
   const { language } = useLanguage();
   const { user } = useAuth();
   const t = translations[language];
-  const [lastMessage, setLastMessage] = useState<any>(null);
+  const last = useLastChatMessage(activePatientId, "caregiver", targetReady);
+  const lastMessage = last.data;
   const scope = `${user?.uid}/${activePatientId}/messages`;
-  const [previousPatient, setPreviousPatient] = useState(scope);
-  if (previousPatient !== scope) { setPreviousPatient(scope); setLastMessage(null); }
   const translated = useChatTranslation(lastMessage ? [lastMessage] : [], language, scope);
   // 最後一則訊息若是對方傳的，顯示對方頭像（與聊天室同一份 getChatProfiles 結果）；否則顯示長輩字首
   const { profiles } = useChatProfiles(user?.uid, activePatientId, "caregiver", lastMessage ? [lastMessage] : []);
   const counterpart = lastMessage?.senderId && lastMessage.senderId !== user?.uid
     ? { ...chatIdentity(lastMessage, profiles, activePatient?.name ?? ""), uid: lastMessage.senderId as string }
     : null;
-
-  useEffect(() => {
-    if (!activePatientId || !user?.uid) {
-      return;
-    }
-
-    let active = true;
-    const q = query(
-      collection(db, "chats", activePatientId, "messages"),
-      orderBy("createdAt", "desc"),
-      limit(1)
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        if (!active) return;
-        if (!snap.empty) {
-          setLastMessage({ ...snap.docs[0].data(), id: snap.docs[0].id });
-        } else {
-          setLastMessage(null);
-        }
-      },
-      (error) => {
-        if (!active) return;
-        console.log("caregiver chat-list snapshot failed:", error);
-        setLastMessage(null);
-      }
-    );
-
-    return () => { active = false; unsub(); };
-  }, [activePatientId, user?.uid]);
-
-
 
   return (
     <View style={styles.container}>
@@ -123,12 +89,16 @@ export default function CaregiverChatListScreen() {
                 ? lastMessage.imageUrl
                   ? chatTranslationCopy[language].photo
                   : translated.text(lastMessage)
+                : last.status === "loading" || last.status === "cached" ? t.loadingMessages
+                : last.status === "error" ? chatCopy[language].loadFailed
+                : last.status === "idle" ? t.noSelectedPatient
                 : t.noChatRecords}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
         </Pressable>
         </Card>
+        <DataLoadFeedback status={last.status === "error" || last.status === "cached" ? last.status : "ready"} language={language} retry={last.retry} />
         <ChatTranslationStatus language={language} {...translated} />
 
       </ScrollView>

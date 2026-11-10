@@ -1,4 +1,5 @@
 import { db } from "@/firebase/firebaseConfig";
+import { formatChartAxisLabel, formatChartDate } from "./chartDate";
 import { useEffect, useState } from "react";
 import {
   collection,
@@ -19,6 +20,7 @@ type UseHealthChartDataArgs = {
 type ChartPoint = {
   value: number;
   label: string;
+  dateLabel: string;
   dataPointText?: string;
 };
 
@@ -66,26 +68,6 @@ function getRangeStart(range: ChartTimeRange): number | null {
   }
 }
 
-function formatLabel(ts: number, index: number, total: number): string {
-  const d = new Date(ts);
-  const month = d.getMonth() + 1;
-  const day = d.getDate();
-
-  if (total <= 7) {
-    return `${month}/${day}`;
-  }
-
-  if (total <= 14) {
-    return index % 2 === 0 ? `${month}/${day}` : "";
-  }
-
-  if (total <= 24) {
-    return index % 3 === 0 ? `${month}/${day}` : "";
-  }
-
-  return index % 4 === 0 ? `${month}/${day}` : "";
-}
-
 function buildSingleLineData(
   records: HealthRecordItem[],
   valueKey: "temperature" | "heartRate" | "bloodSugar"
@@ -97,7 +79,8 @@ function buildSingleLineData(
 
   return valid.map((item, index) => ({
     value: item[valueKey] as number,
-    label: formatLabel(item.ts, index, valid.length),
+    label: formatChartAxisLabel(item.ts, index, valid.length),
+    dateLabel: formatChartDate(item.ts),
     dataPointText: String(item[valueKey]),
   }));
 }
@@ -117,12 +100,14 @@ function buildBloodPressureData(records: HealthRecordItem[]): {
   return {
     sys: valid.map((item, index) => ({
       value: item.bloodPressureSys as number,
-      label: formatLabel(item.ts, index, valid.length),
+      label: formatChartAxisLabel(item.ts, index, valid.length),
+    dateLabel: formatChartDate(item.ts),
       dataPointText: String(item.bloodPressureSys),
     })),
     dia: valid.map((item, index) => ({
       value: item.bloodPressureDia as number,
-      label: formatLabel(item.ts, index, valid.length),
+      label: formatChartAxisLabel(item.ts, index, valid.length),
+    dateLabel: formatChartDate(item.ts),
       dataPointText: String(item.bloodPressureDia),
     })),
   };

@@ -1,6 +1,8 @@
 import { AppHeader, Chip, EmptyState } from "@/src/ui/components";
 import { colors, layout, radii, spacing, typography } from "@/src/ui/theme";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useScopedSnapshot } from "@/src/data/useScopedSnapshot";
+import { DataLoadFeedback } from "@/src/ui/components/DataLoadFeedback";
 import {
   Pressable,
   ScrollView,
@@ -46,6 +48,7 @@ import {
 import { useScreenBottomInset } from "@/src/ui/BottomInsetContext";
 
 type NotificationRow = NotificationDocument & Record<string, any> & { id: string };
+const EMPTY_NOTIFICATIONS: NotificationRow[] = [];
 
 type Props = {
   detailRoute: string;
@@ -53,16 +56,15 @@ type Props = {
 
 export function NotificationListView({ detailRoute }: Props) {
   const bottomInset = useScreenBottomInset();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, ready: authReady } = useAuth();
   const { language } = useLanguage();
   const t = translations[language];
   const { linkedCareTargets } = useActiveCareTarget();
-  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [category, setCategory] = useState<NotificationCategoryId>("all");
   const [patientFilter, setPatientFilter] = useState<string>("all");
   const [previousUid, setPreviousUid] = useState(currentUser?.uid);
   if (previousUid !== currentUser?.uid) {
-    setPreviousUid(currentUser?.uid); setNotifications([]); setPatientFilter("all");
+    setPreviousUid(currentUser?.uid); setPatientFilter("all");
   }
 
   const patientNameById = useMemo(
@@ -70,36 +72,18 @@ export function NotificationListView({ detailRoute }: Props) {
     [linkedCareTargets]
   );
 
-  useEffect(() => {
-    if (!currentUser?.uid) {
-      return;
-    }
-
-    const q = query(
-      collection(db, NOTIFICATIONS_COLLECTION),
-      where("recipientUid", "==", currentUser.uid)
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setNotifications(
-          [...snap.docs]
-            .sort((a, b) => ((b.data() as any).createdAt?.toMillis?.() ?? 0) - ((a.data() as any).createdAt?.toMillis?.() ?? 0))
-            .map((docSnap) => ({
-            id: docSnap.id,
-            ...(docSnap.data() as NotificationDocument),
-          })) as NotificationRow[]
-        );
-      },
-      (error) => {
-        console.log("notifications snapshot failed:", error);
-        setNotifications([]);
-      }
-    );
-
-    return () => unsub();
-  }, [currentUser?.uid]);
+  const uid = currentUser?.uid;
+  const subscribe = useCallback((onData: (rows: NotificationRow[], fromCache?: boolean) => void, onError: () => void) => {
+    if (!uid) return () => {};
+    const q = query(collection(db, NOTIFICATIONS_COLLECTION), where("recipientUid", "==", uid));
+    return onSnapshot(q, { includeMetadataChanges: true }, snap => {
+      onData([...snap.docs]
+        .sort((a, b) => ((b.data() as any).createdAt?.toMillis?.() ?? 0) - ((a.data() as any).createdAt?.toMillis?.() ?? 0))
+        .map(docSnap => ({ id: docSnap.id, ...(docSnap.data() as NotificationDocument) })) as NotificationRow[], snap.metadata.fromCache);
+    }, onError);
+  }, [uid]);
+  const notificationState = useScopedSnapshot(uid ?? null, authReady, subscribe);
+  const notifications = notificationState.data ?? EMPTY_NOTIFICATIONS;
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.isRead !== true).length,
@@ -216,8 +200,12 @@ export function NotificationListView({ detailRoute }: Props) {
         renderSectionHeader={({ section }) => (
           <Text style={styles.sectionHeader} accessibilityRole="header">{section.title}</Text>
         )}
+        ListHeaderComponent={filtered.length > 0 && (notificationState.status === "cached" || notificationState.status === "error")
+          ? <DataLoadFeedback status={notificationState.status} language={language} retry={notificationState.retry} /> : undefined}
         ListEmptyComponent={
-          <EmptyState icon="notifications-off-outline" title={t[CATEGORY_EMPTY_KEY[category]]} />
+          notificationState.status === "ready"
+            ? <EmptyState icon="notifications-off-outline" title={t[CATEGORY_EMPTY_KEY[category]]} />
+            : <DataLoadFeedback status={notificationState.status} language={language} retry={notificationState.retry} />
         }
         renderItem={({ item }) => {
           const isUnread = item.isRead !== true;

@@ -1,17 +1,22 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
 import { LineChart } from "./HealthLineChart";
+import { healthChartCopy } from "./healthChartCopy";
+import { useLanguage } from "@/src/store/LanguageContext";
 import type { ChartDataType } from "./useHealthChartData";
 
 type ChartPoint = {
   value: number;
   label: string;
+  dateLabel?: string;
 };
 
 type Props = {
@@ -23,15 +28,15 @@ type Props = {
   bpDiaData: ChartPoint[];
 };
 
-function getChartConfig(chartDataType: ChartDataType) {
+function getChartConfig(chartDataType: ChartDataType, copy: typeof healthChartCopy.zh) {
   if (chartDataType === "體溫") {
     return {
       minValue: 33,
       maxValue: 7, // 33 ~ 40
       stepValue: 0.5,
       noOfSections: 14,
-      title: "體溫趨勢",
-      subTitle: "每格 0.5°C",
+      title: copy.temperature,
+      subTitle: copy.perGrid("0.5°C"),
       unit: "°C",
     };
   }
@@ -42,8 +47,8 @@ function getChartConfig(chartDataType: ChartDataType) {
       maxValue: 100, // 50 ~ 150
       stepValue: 10,
       noOfSections: 10,
-      title: "心跳趨勢",
-      subTitle: "每格 10 bpm",
+      title: copy.heartRate,
+      subTitle: copy.perGrid("10 bpm"),
       unit: "bpm",
     };
   }
@@ -54,8 +59,8 @@ function getChartConfig(chartDataType: ChartDataType) {
       maxValue: 170, // 50 ~ 220
       stepValue: 10,
       noOfSections: 17,
-      title: "血糖趨勢",
-      subTitle: "每格 10 mg/dL",
+      title: copy.bloodSugar,
+      subTitle: copy.perGrid("10 mg/dL"),
       unit: "mg/dL",
     };
   }
@@ -65,8 +70,8 @@ function getChartConfig(chartDataType: ChartDataType) {
     maxValue: 150, // 50 ~ 200
     stepValue: 10,
     noOfSections: 15,
-    title: "血壓趨勢",
-    subTitle: "每格 10 mmHg",
+    title: copy.bloodPressure,
+    subTitle: copy.perGrid("10 mmHg"),
     unit: "mmHg",
   };
 }
@@ -92,18 +97,38 @@ export default function HealthTrendChart({
   bpDiaData,
 }: Props) {
   const { width } = useWindowDimensions();
+  const { language } = useLanguage();
+  const copy = healthChartCopy[language];
   const [containerWidth, setContainerWidth] = useState(0);
+  const [showDetails, setShowDetails] = useState(false);
   const chartWidth = Math.max(1, (containerWidth || width - 48) - 64);
-  const config = getChartConfig(chartDataType);
+  const config = getChartConfig(chartDataType, copy);
 
   const temperatureYAxisLabels =
     chartDataType === "體溫" ? buildTemperatureYAxisLabels() : undefined;
+
+  const renderDetails = (primary: ChartPoint[], secondary?: ChartPoint[]) => (
+    <View style={styles.details}>
+      <Pressable onPress={() => setShowDetails(value => !value)} accessibilityRole="button"
+        accessibilityState={{ expanded: showDetails }}
+        {...(Platform.OS === "web" ? { "aria-expanded": showDetails } : {})}
+        style={styles.detailsToggle}>
+        <Text style={styles.detailsToggleText}>{showDetails ? copy.hideDetails : copy.showDetails}</Text>
+      </Pressable>
+      {showDetails ? primary.map((point, index) => (
+        <Text key={index} style={styles.detailRow}>
+          {point.dateLabel || point.label || copy.unknownDate}{" · "}
+          {secondary ? `${copy.systolic} ${point.value} / ${copy.diastolic} ${secondary[index]?.value ?? "--"} ${config.unit}` : `${point.value} ${config.unit}`}
+        </Text>
+      )) : null}
+    </View>
+  );
 
   if (loading) {
     return (
       <View style={styles.stateBox}>
         <ActivityIndicator size="large" color="#E59752" />
-        <Text style={styles.stateText}>圖表資料載入中...</Text>
+        <Text style={styles.stateText}>{copy.loading}</Text>
       </View>
     );
   }
@@ -111,8 +136,8 @@ export default function HealthTrendChart({
   if (empty) {
     return (
       <View style={styles.stateBox}>
-        <Text style={styles.emptyTitle}>目前沒有可顯示的資料</Text>
-        <Text style={styles.stateText}>先新增幾筆紀錄，這裡就會顯示趨勢圖</Text>
+        <Text style={styles.emptyTitle}>{copy.emptyTitle}</Text>
+        <Text style={styles.stateText}>{copy.emptyBody}</Text>
       </View>
     );
   }
@@ -130,12 +155,12 @@ export default function HealthTrendChart({
         <View style={styles.legendRow}>
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, styles.sysDot]} />
-            <Text style={styles.legendText}>收縮壓</Text>
+            <Text style={styles.legendText}>{copy.systolic}</Text>
           </View>
 
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, styles.diaDot]} />
-            <Text style={styles.legendText}>舒張壓</Text>
+            <Text style={styles.legendText}>{copy.diastolic}</Text>
           </View>
         </View>
 
@@ -174,6 +199,7 @@ export default function HealthTrendChart({
           yAxisOffset={config.minValue}
           disableScroll
         />
+        {renderDetails(bpSysData, bpDiaData)}
       </View>
     );
   }
@@ -219,6 +245,7 @@ export default function HealthTrendChart({
         yAxisLabelTexts={temperatureYAxisLabels}
         disableScroll
       />
+      {renderDetails(lineData)}
     </View>
   );
 }
@@ -289,6 +316,10 @@ const styles = StyleSheet.create({
     color: "#333",
     fontWeight: "600",
   },
+  details: { marginTop: 12, gap: 6 },
+  detailsToggle: { alignSelf: "flex-start", paddingVertical: 8, paddingHorizontal: 4 },
+  detailsToggleText: { color: "#245E96", fontWeight: "600" },
+  detailRow: { color: "#444", fontSize: 14, paddingVertical: 3 },
   axisText: {
     color: "#444",
     fontSize: 12,
